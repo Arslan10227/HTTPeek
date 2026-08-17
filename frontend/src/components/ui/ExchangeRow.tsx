@@ -37,6 +37,15 @@ export const ExchangeRow: React.FC<ExchangeRowProps> = ({
       <MethodBadge method={request.method} />
       <StatusBadge code={resp?.statusCode} statusText={resp?.statusText} pending={!resp} />
 
+      {request.appliedRules && request.appliedRules.length > 0 && (
+        <span
+          className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shrink-0"
+          title={`Rule Applied: ${request.appliedRules.map((r) => r.summary || r.type).join(', ')}`}
+        >
+          {request.appliedRules[0].type || 'RULE'}
+        </span>
+      )}
+
       <span className="flex-1 min-w-0 truncate font-medium" title={hostPath}>
         {request.hostPort?.host}
         <span className="text-[var(--htk-text-muted)] font-normal font-mono text-[10px]">{request.path || ''}</span>

@@ -22,10 +22,15 @@ import {
   RotateCcw,
   Tag,
   Key,
-  ShieldAlert
+  ShieldAlert,
+  Send,
+  SlidersHorizontal,
+  FileCode,
+  Settings,
+  HelpCircle
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
-import { HttpRequest, RuleActionType, UrlMatchType, HttpBodyType, FormDataEntry } from '../../types';
+import { HttpRequest, RuleActionType, UrlMatchType, HttpBodyType, FormDataEntry, HttpMethod } from '../../types';
 import { StatusCodePicker } from '../common/StatusCodePicker';
 import { HeaderKeyCombobox, HeaderValueCombobox } from '../common/HeaderCombobox';
 import { HttpMethodPicker } from '../common/HttpMethodPicker';
@@ -60,9 +65,9 @@ export interface QuickRuleDialogProps {
 
 const COMMON_HEADER_PRESETS = [
   { label: '+ Auth Token', key: 'Authorization', value: 'Bearer token_secret_123', action: 'set' as const },
-  { label: '+ Content-Type JSON', key: 'Content-Type', value: 'application/json; charset=utf-8', action: 'set' as const },
-  { label: '+ CORS Allow All', key: 'Access-Control-Allow-Origin', value: '*', action: 'set' as const },
-  { label: '+ Disable Cache', key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate', action: 'set' as const },
+  { label: '+ JSON Content', key: 'Content-Type', value: 'application/json; charset=utf-8', action: 'set' as const },
+  { label: '+ CORS Allow *', key: 'Access-Control-Allow-Origin', value: '*', action: 'set' as const },
+  { label: '+ No-Cache', key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate', action: 'set' as const },
   { label: '+ Custom API Key', key: 'X-API-Key', value: 'apikey_live_998877', action: 'set' as const },
 ];
 
@@ -90,10 +95,14 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
   const { requests } = useProxyStore();
   const { monacoTheme } = useThemeStore();
 
-  const [activeTab, setActiveTab] = useState<'editor' | 'headers' | 'params' | 'simulator'>('editor');
+  // Active subtab matching Request Composer (params, headers, body, action, simulator)
+  const [activeTab, setActiveTab] = useState<'params' | 'headers' | 'body' | 'action' | 'simulator'>('body');
+  
+  // Rule Classification & Identification
   const [ruleType, setRuleType] = useState<'rewrite' | 'mock' | 'breakpoint' | 'script'>(initialType);
   const [ruleName, setRuleName] = useState('');
   const [urlPattern, setUrlPattern] = useState('');
+  const [matchMethod, setMatchMethod] = useState<string>('ANY');
   const [matchType, setMatchType] = useState<UrlMatchType>('wildcard');
   const [enabled, setEnabled] = useState(true);
 
@@ -112,13 +121,19 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
   // Query parameters builder
   const [paramList, setParamList] = useState<QueryParamItem[]>([]);
 
-  // Body Types: json, form-urlencoded, raw, xml, html, base64, graphql
-  const [bodyType, setBodyType] = useState<HttpBodyType>('json');
+  // Body Types: none, json, form-data, x-www-form-urlencoded, raw, graphql, xml, html, binary
+  const [bodyType, setBodyType] = useState<'none' | 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw' | 'graphql' | 'xml' | 'html' | 'binary'>('json');
   const [bodyContent, setBodyContent] = useState('{\n  "code": 0,\n  "message": "success",\n  "data": {}\n}');
+  
+  // Form Key-Value entries
   const [formEntries, setFormEntries] = useState<FormDataEntry[]>([
     { key: 'username', value: 'admin', enabled: true },
     { key: 'token', value: 'sample_token_xyz', enabled: true }
   ]);
+
+  // GraphQL state
+  const [gqlQuery, setGqlQuery] = useState('query GetUserData {\n  user(id: "123") {\n    id\n    name\n    email\n  }\n}');
+  const [gqlVariables, setGqlVariables] = useState('{\n  "id": "123"\n}');
 
   // Breakpoint Rule State
   const [breakpointMethod, setBreakpointMethod] = useState('');
@@ -185,6 +200,7 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
       setUrlPattern(defaultPattern);
       setSimUrl(url || `https://${domain}${path}`);
       setSimMethod(request.method || 'GET');
+      setMatchMethod(request.method || 'ANY');
       setStatusCode(status);
 
       // Generate smart rule name
@@ -210,7 +226,7 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
         ? request.response.headers 
         : request.headers || {};
       
-      Object.entries(srcHeaders).slice(0, 12).forEach(([k, rawV]) => {
+      Object.entries(srcHeaders).slice(0, 15).forEach(([k, rawV]) => {
         const v = Array.isArray(rawV) ? rawV.join(', ') : String(rawV ?? '');
         parsedHeaders.push({
           id: `h_${Date.now()}_${Math.random()}`,
@@ -238,7 +254,7 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
           } else if (bodyToUse.includes('<') && bodyToUse.includes('>')) {
             setBodyType('xml');
           } else if (bodyToUse.includes('=') && bodyToUse.includes('&')) {
-            setBodyType('form-urlencoded');
+            setBodyType('x-www-form-urlencoded');
           } else {
             setBodyType('raw');
           }
@@ -250,7 +266,7 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
 
       // Pre-fill Script
       setScriptCode(`/**
- * JavaScript Dynamic Rule for ${domain || 'HTTPeek'}
+ * JavaScript Dynamic Interceptor Rule for ${domain || 'HTTPeek'}
  * Powered by Goja ECMAScript engine
  */
 
@@ -274,6 +290,21 @@ function onResponse(context, request, response) {
       if (prefill.delayMs) setDelayMs(prefill.delayMs);
     }
   }, [isOpen, initialType, request, prefill]);
+
+  // Sync GraphQL fields into body payload
+  useEffect(() => {
+    if (bodyType === 'graphql') {
+      try {
+        let varsObj = {};
+        if (gqlVariables.trim()) {
+          varsObj = JSON.parse(gqlVariables);
+        }
+        setBodyContent(JSON.stringify({ query: gqlQuery, variables: varsObj }, null, 2));
+      } catch (_) {
+        setBodyContent(JSON.stringify({ query: gqlQuery, variables: {} }, null, 2));
+      }
+    }
+  }, [bodyType, gqlQuery, gqlVariables]);
 
   if (!isOpen) return null;
 
@@ -375,7 +406,7 @@ function onResponse(context, request, response) {
     setSimResult({
       matched,
       output: matched
-        ? `Matched URL: ${targetUrl}\nAction: ${actionType.toUpperCase()}\nTarget Stage: ${targetStage.toUpperCase()}\nStatus Override: ${statusCode}\nHeaders Modified: ${headerList.filter(h => h.enabled).length}\nBody Size: ${bodyContent.length} bytes`
+        ? `Matched URL: ${targetUrl}\nRule Type: ${ruleType.toUpperCase()}\nAction: ${actionType.toUpperCase()}\nTarget Stage: ${targetStage.toUpperCase()}\nStatus Override: ${statusCode}\nHeaders Modified: ${headerList.filter(h => h.enabled).length}\nBody Size: ${bodyContent.length} bytes`
         : `URL Pattern did not match target URL.\nPattern: ${testPattern}\nTarget: ${targetUrl}`,
     });
   };
@@ -385,6 +416,7 @@ function onResponse(context, request, response) {
       name: ruleName.trim() || 'Custom Interceptor Rule',
       enabled,
       urlPattern: urlPattern.trim(),
+      matchMethod,
       matchType,
       type: ruleType,
       actionType,
@@ -395,7 +427,7 @@ function onResponse(context, request, response) {
       headers: headerList.filter(h => h.enabled && h.key.trim()),
       queryParams: paramList.filter(p => p.enabled && p.key.trim()),
       bodyType,
-      body: bodyContent,
+      body: bodyType === 'none' ? '' : bodyContent,
       breakpointMethod,
       interceptRequest,
       interceptResponse,
@@ -412,10 +444,10 @@ function onResponse(context, request, response) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none font-sans p-4">
       <div 
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-4xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         style={{ backgroundColor: 'var(--md-dialog-bg, var(--md-sys-color-surface))' }}
       >
-        {/* Top Header */}
+        {/* Top Dialog Header */}
         <div 
           className="h-14 px-5 border-b flex items-center justify-between shrink-0"
           style={{ borderColor: 'var(--md-sys-color-divider)', backgroundColor: 'var(--md-sys-color-surface-container, rgba(0,0,0,0.02))' }}
@@ -425,54 +457,149 @@ function onResponse(context, request, response) {
               <Sliders className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                Visual GUI Rule Builder &amp; Interceptor
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                  Visual GUI Rule Builder &amp; Interceptor
+                </h2>
+                <span className="px-2 py-0.2 rounded-full text-[10px] font-black uppercase bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  Composer UI
+                </span>
+              </div>
               <p className="text-[11px] text-gray-500">Configure synthetic mocks, mutations, headers, parameters, and delays</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-md transition-all text-xs"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save &amp; Activate</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Tab Selector & Presets Bar */}
+        {/* Composer-Style Top URL & Rule Match Bar */}
         <div 
-          className="px-5 py-2 border-b flex items-center justify-between shrink-0 text-xs gap-3 overflow-x-auto no-scrollbar"
+          className="p-3 border-b flex flex-col gap-2 shrink-0 bg-gray-50/50 dark:bg-gray-800/30"
+          style={{ borderColor: 'var(--md-sys-color-divider)' }}
+        >
+          {/* Row 1: Rule Name & Rule Classification */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="flex items-center gap-1.5 md:col-span-2">
+              <span className="font-bold text-gray-700 dark:text-gray-300 text-xs shrink-0">Rule Name:</span>
+              <input
+                type="text"
+                value={ruleName}
+                onChange={(e) => setRuleName(e.target.value)}
+                placeholder="e.g. Mock User Profile 200"
+                className="flex-1 px-2.5 py-1 rounded-xl border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const d = request?.hostPort?.host || 'api.example.com';
+                  setRuleName(generateRuleName(d, request?.path || '/*', ruleType, statusCode));
+                }}
+                className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[10px] text-blue-600 font-bold cursor-pointer shrink-0"
+                title="Regenerate rule name"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-gray-700 dark:text-gray-300 text-xs shrink-0">Type:</span>
+              <select
+                value={ruleType}
+                onChange={(e) => setRuleType(e.target.value as any)}
+                className="flex-1 px-2.5 py-1 rounded-xl border border-gray-300 dark:border-gray-700 font-bold text-xs bg-white dark:bg-gray-800 focus:outline-none cursor-pointer"
+              >
+                <option value="mock">🎭 Mock Response (Map)</option>
+                <option value="rewrite">⚡ Rewrite Mutation</option>
+                <option value="breakpoint">⏸️ Request Breakpoint</option>
+                <option value="script">📜 Custom Script Rule</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: Method, URL Pattern & Match Mode (Composer Style Input Bar) */}
+          <div className="flex items-center gap-1.5">
+            <select
+              value={matchMethod}
+              onChange={(e) => setMatchMethod(e.target.value)}
+              className="px-2.5 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-black text-xs bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer shrink-0"
+            >
+              <option value="ANY">ANY METHOD</option>
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+              <option value="PATCH">PATCH</option>
+              <option value="OPTIONS">OPTIONS</option>
+              <option value="HEAD">HEAD</option>
+            </select>
+
+            <div className="flex-1 flex items-center relative">
+              <input
+                type="text"
+                value={urlPattern}
+                onChange={(e) => setUrlPattern(e.target.value)}
+                placeholder="*://api.example.com/v1/* (Target URL Match Pattern)"
+                className="w-full pl-3 pr-24 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <div className="absolute right-1.5 flex items-center">
+                <select
+                  value={matchType}
+                  onChange={(e) => setMatchType(e.target.value as any)}
+                  className="px-2 py-0.5 rounded-lg border border-gray-200 dark:border-gray-700 text-[10px] font-semibold bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none cursor-pointer"
+                >
+                  <option value="wildcard">Wildcard (*)</option>
+                  <option value="exact">Exact</option>
+                  <option value="prefix">Prefix</option>
+                  <option value="contains">Contains</option>
+                  <option value="regex">Regex</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Captured Domains Chip Bar */}
+          {capturedDomains.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
+              <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0 flex items-center gap-1">
+                <Globe className="w-3 h-3 text-emerald-500" />
+                <span>Captured Domains:</span>
+              </span>
+              {capturedDomains.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => handleSelectDomain(d)}
+                  className="px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 text-[10px] font-mono shrink-0 transition-colors cursor-pointer"
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Composer Sub-Tabs Header (Params, Headers, Body, Action / Status, Simulator) */}
+        <div 
+          className="px-5 py-2 border-b flex items-center justify-between shrink-0 text-xs gap-3 overflow-x-auto no-scrollbar bg-gray-50/30 dark:bg-gray-900/30"
           style={{ borderColor: 'var(--md-sys-color-divider)' }}
         >
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab('editor')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs ${
-                activeTab === 'editor'
-                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs'
-                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-              }`}
-            >
-              1. General &amp; Body
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('headers')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs ${
-                activeTab === 'headers'
-                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs'
-                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-              }`}
-            >
-              <span>2. Headers</span>
-              {headerList.length > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                  {headerList.length}
-                </span>
-              )}
-            </button>
             <button
               type="button"
               onClick={() => setActiveTab('params')}
@@ -482,13 +609,59 @@ function onResponse(context, request, response) {
                   : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
               }`}
             >
-              <span>3. URL Params</span>
+              <span>Params</span>
               {paramList.length > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300">
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300 font-bold">
                   {paramList.length}
                 </span>
               )}
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('headers')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs ${
+                activeTab === 'headers'
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              <span>Headers</span>
+              {headerList.length > 0 && (
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold">
+                  {headerList.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('body')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs ${
+                activeTab === 'body'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              <span>Body</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 uppercase font-black">
+                {bodyType}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('action')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer text-xs ${
+                activeTab === 'action'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Action &amp; Status</span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
@@ -502,11 +675,11 @@ function onResponse(context, request, response) {
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>4. Live Simulator</span>
+              <span>Live Test</span>
             </button>
           </div>
 
-          {/* Quick Mock Templates */}
+          {/* Quick Mock Presets */}
           <div className="flex items-center gap-1 overflow-x-auto shrink-0">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Presets:</span>
             {MOCK_RESPONSE_TEMPLATES.map((tmpl) => (
@@ -522,330 +695,85 @@ function onResponse(context, request, response) {
           </div>
         </div>
 
-        {/* Content Body */}
+        {/* Tab Content Panes (Composer Style) */}
         <div className="flex-1 p-4 overflow-y-auto min-h-0 flex flex-col gap-3 text-xs">
-          {/* Top Domain Selector Bar */}
-          {capturedDomains.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
-              <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0 flex items-center gap-1">
-                <Globe className="w-3 h-3 text-emerald-500" />
-                <span>Captured Domains:</span>
-              </span>
-              {capturedDomains.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => handleSelectDomain(d)}
-                  className="px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700 bg-emerald-50/40 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 text-[10px] font-mono shrink-0 transition-colors cursor-pointer"
-                >
-                  {d}
-                </button>
-              ))}
+          {/* TAB 1: PARAMS */}
+          {activeTab === 'params' && (
+            <div className="flex flex-col gap-2.5 flex-1 min-h-0">
+              <div className="border border-gray-200 dark:border-gray-800 rounded-2xl p-3 bg-gray-50/40 dark:bg-gray-900/40 flex-1 overflow-y-auto flex flex-col gap-2">
+                <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800 shrink-0">
+                  <span className="font-bold text-gray-700 dark:text-gray-300 text-xs">
+                    Query Parameters ({paramList.filter(p => p.enabled).length} Active)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddParam}
+                    className="flex items-center gap-1 text-orange-600 font-bold hover:underline cursor-pointer text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Parameter</span>
+                  </button>
+                </div>
+
+                {paramList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-8 text-gray-400 text-center">
+                    <p className="font-semibold text-xs">No URL query parameters configured</p>
+                    <p className="text-[11px] mt-0.5">Click &quot;Add Parameter&quot; to define query parameter matching.</p>
+                  </div>
+                ) : (
+                  paramList.map((p, idx) => (
+                    <div key={p.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={p.enabled}
+                        onChange={(e) => {
+                          const next = [...paramList];
+                          next[idx].enabled = e.target.checked;
+                          setParamList(next);
+                        }}
+                        className="rounded text-orange-600 cursor-pointer ml-1"
+                      />
+                      <input
+                        type="text"
+                        value={p.key}
+                        onChange={(e) => {
+                          const next = [...paramList];
+                          next[idx].key = e.target.value;
+                          setParamList(next);
+                        }}
+                        placeholder="Key (e.g. limit)"
+                        className="w-1/3 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-900 focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={p.value}
+                        onChange={(e) => {
+                          const next = [...paramList];
+                          next[idx].value = e.target.value;
+                          setParamList(next);
+                        }}
+                        placeholder="Value (e.g. 50)"
+                        className="flex-1 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-900 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setParamList(paramList.filter((_, i) => i !== idx))}
+                        className="p-1 text-rose-500 hover:bg-rose-50 rounded cursor-pointer"
+                        title="Delete parameter"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
-          {activeTab === 'editor' && (
-            <>
-              {/* Row 1: Rule Name, Action Type & Match Mode */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-gray-700 dark:text-gray-300">Rule Name:</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const d = request?.hostPort?.host || 'api.example.com';
-                        setRuleName(generateRuleName(d, request?.path || '/*', ruleType, statusCode));
-                      }}
-                      className="text-[10px] text-blue-500 hover:underline cursor-pointer flex items-center gap-0.5"
-                    >
-                      <RotateCcw className="w-2.5 h-2.5" /> Auto
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={ruleName}
-                    onChange={(e) => setRuleName(e.target.value)}
-                    placeholder="e.g. Mock User Profile 200"
-                    className="w-full px-2.5 py-1 rounded-xl border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="font-bold text-gray-700 dark:text-gray-300">Action Type:</label>
-                  <select
-                    value={actionType}
-                    onChange={(e) => setActionType(e.target.value as any)}
-                    className="w-full px-2.5 py-1 rounded-xl border border-gray-300 dark:border-gray-700 font-bold text-xs bg-white dark:bg-gray-800 focus:outline-none cursor-pointer"
-                  >
-                    <option value="replace">Replace (Status, Headers, Body)</option>
-                    <option value="redirect">Redirect (URL Forward / Rewrite)</option>
-                    <option value="update">Update (Regex Search &amp; Replace)</option>
-                    <option value="modify_headers">Modify Headers Only</option>
-                    <option value="drop">Drop Connection (Abort / TCP RST)</option>
-                    <option value="delay">Inject Latency / Delay (Lag)</option>
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="font-bold text-gray-700 dark:text-gray-300">URL Match Mode:</label>
-                  <select
-                    value={matchType}
-                    onChange={(e) => setMatchType(e.target.value as any)}
-                    className="w-full px-2.5 py-1 rounded-xl border border-gray-300 dark:border-gray-700 font-bold text-xs bg-white dark:bg-gray-800 focus:outline-none cursor-pointer"
-                  >
-                    <option value="wildcard">Wildcard Pattern (*://*.com/*)</option>
-                    <option value="exact">Exact Full URL Match</option>
-                    <option value="prefix">URL Prefix / Starts With</option>
-                    <option value="contains">Contains / Substring</option>
-                    <option value="regex">Regular Expression (^https://...$)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 2: Target URL Match Pattern */}
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-gray-700 dark:text-gray-300">Target URL Match Pattern:</label>
-                  <span className="text-[10px] text-gray-400 font-mono">
-                    Example: *://api.github.com/users/*
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  value={urlPattern}
-                  onChange={(e) => setUrlPattern(e.target.value)}
-                  placeholder="*://api.example.com/v1/*"
-                  className="w-full px-2.5 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Action Specific Fields */}
-              {actionType === 'redirect' && (
-                <div className="flex flex-col gap-1 p-3 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800">
-                  <label className="font-bold text-blue-900 dark:text-blue-200">Redirect Target URL:</label>
-                  <input
-                    type="text"
-                    value={redirectUrl}
-                    onChange={(e) => setRedirectUrl(e.target.value)}
-                    placeholder="https://staging.example.com/v1/$1"
-                    className="w-full px-2.5 py-1.5 rounded-xl border border-blue-300 dark:border-blue-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {actionType === 'delay' && (
-                <div className="flex items-center gap-4 p-3 bg-amber-50/50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800">
-                  <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <div className="flex-1">
-                    <div className="flex justify-between font-bold text-amber-900 dark:text-amber-200">
-                      <span>Simulated Latency Delay:</span>
-                      <span className="font-mono">{delayMs} ms</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="50"
-                      max="5000"
-                      step="50"
-                      value={delayMs}
-                      onChange={(e) => setDelayMs(Number(e.target.value))}
-                      className="w-full accent-amber-600 cursor-pointer"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {actionType === 'drop' && (
-                <div className="flex items-center gap-3 p-3 bg-rose-50/50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
-                  <Ban className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                  <div>
-                    <span className="font-bold">Silent Connection Dropper:</span>
-                    <p className="text-[11px] opacity-80 mt-0.5">Matching requests will be immediately aborted with connection reset simulation.</p>
-                  </div>
-                </div>
-              )}
-
-              {(actionType === 'replace' || actionType === 'update') && (
-                <>
-                  {/* Status Code & Stage Bar */}
-                  <div className="flex flex-col gap-2 p-3 bg-slate-50/70 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-800">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-gray-700 dark:text-gray-300">Status Code Override:</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-gray-500 mr-1">Target Stage:</span>
-                        {(['response', 'request', 'both'] as const).map((stage) => (
-                          <button
-                            key={stage}
-                            type="button"
-                            onClick={() => setTargetStage(stage)}
-                            className={`px-2 py-0.5 rounded-lg font-bold capitalize transition-all cursor-pointer text-[10px] ${
-                              targetStage === stage
-                                ? 'bg-blue-600 text-white shadow-xs'
-                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
-                            }`}
-                          >
-                            {stage}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Quick Status Code Pills */}
-                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
-                      {STATUS_CODE_PILLS.map((p) => (
-                        <button
-                          key={p.code}
-                          type="button"
-                          onClick={() => setStatusCode(p.code)}
-                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer shrink-0 ${
-                            statusCode === p.code
-                              ? `${p.color} text-white shadow-xs`
-                              : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Body Type Bar & Payload Editor */}
-                  <div className="flex flex-col gap-2 flex-1 min-h-[220px]">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        <span className="font-bold text-gray-700 dark:text-gray-300 mr-1.5">Body Type:</span>
-                        {(['json', 'form-urlencoded', 'graphql', 'xml', 'html', 'raw', 'base64'] as const).map((bt) => (
-                          <button
-                            key={bt}
-                            type="button"
-                            onClick={() => setBodyType(bt)}
-                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                              bodyType === bt
-                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                            }`}
-                          >
-                            {bt}
-                          </button>
-                        ))}
-                      </div>
-
-                      {bodyType === 'json' && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={handleFormatJson}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[10px] font-semibold cursor-pointer"
-                          >
-                            <Braces className="w-3 h-3 text-blue-500" />
-                            <span>Prettify</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleMinifyJson}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[10px] font-semibold cursor-pointer"
-                          >
-                            <AlignLeft className="w-3 h-3 text-gray-500" />
-                            <span>Minify</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {bodyType === 'form-urlencoded' ? (
-                      /* Form Key-Value Table */
-                      <div className="border border-gray-200 dark:border-gray-700 rounded-2xl p-2.5 bg-gray-50/50 dark:bg-gray-900/50 flex flex-col gap-1.5 max-h-[220px] overflow-y-auto">
-                        <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800">
-                          <span className="font-bold text-gray-600 dark:text-gray-300 text-[11px]">Form Key/Values:</span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setFormEntries([
-                                ...formEntries,
-                                { key: '', value: '', enabled: true },
-                              ])
-                            }
-                            className="flex items-center gap-1 text-emerald-600 font-bold hover:underline cursor-pointer text-[11px]"
-                          >
-                            <Plus className="w-3 h-3" />
-                            <span>Add Field</span>
-                          </button>
-                        </div>
-
-                        {formEntries.map((fe, idx) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={fe.enabled}
-                              onChange={(e) => {
-                                const next = [...formEntries];
-                                next[idx].enabled = e.target.checked;
-                                setFormEntries(next);
-                              }}
-                              className="rounded text-blue-600 cursor-pointer"
-                            />
-                            <input
-                              type="text"
-                              value={fe.key}
-                              onChange={(e) => {
-                                const next = [...formEntries];
-                                next[idx].key = e.target.value;
-                                setFormEntries(next);
-                              }}
-                              placeholder="Parameter Name"
-                              className="w-1/3 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-800 focus:outline-none"
-                            />
-                            <input
-                              type="text"
-                              value={fe.value}
-                              onChange={(e) => {
-                                const next = [...formEntries];
-                                next[idx].value = e.target.value;
-                                setFormEntries(next);
-                              }}
-                              placeholder="Value"
-                              className="flex-1 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-800 focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setFormEntries(formEntries.filter((_, i) => i !== idx))}
-                              className="p-1 text-rose-500 hover:bg-rose-50 rounded cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      /* Monaco Editor for JSON / GraphQL / XML / Raw */
-                      <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex-1 min-h-[160px] h-[180px]">
-                        <Editor
-                          height="100%"
-                          language={bodyType === 'graphql' ? 'graphql' : bodyType === 'xml' ? 'xml' : bodyType === 'html' ? 'html' : bodyType === 'json' ? 'json' : 'plaintext'}
-                          value={bodyContent}
-                          theme={monacoTheme}
-                          onChange={(val) => setBodyContent(val || '')}
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 11,
-                            lineNumbers: 'on',
-                            wordWrap: 'on',
-                            scrollBeyondLastLine: false,
-                            automaticLayout: true,
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* Tab 2: Dynamic Headers Builder */}
+          {/* TAB 2: HEADERS */}
           {activeTab === 'headers' && (
             <div className="flex flex-col gap-2.5 flex-1 min-h-0">
-              {/* Common Header Preset Chips */}
+              {/* Presets */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
                 <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Presets:</span>
                 {COMMON_HEADER_PRESETS.map((hp) => (
@@ -860,7 +788,7 @@ function onResponse(context, request, response) {
                 ))}
               </div>
 
-              {/* Headers Table */}
+              {/* Table */}
               <div className="border border-gray-200 dark:border-gray-800 rounded-2xl p-3 bg-gray-50/40 dark:bg-gray-900/40 flex-1 overflow-y-auto flex flex-col gap-2">
                 <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800 shrink-0">
                   <span className="font-bold text-gray-700 dark:text-gray-300 text-xs">
@@ -878,7 +806,7 @@ function onResponse(context, request, response) {
 
                 {headerList.length === 0 ? (
                   <div className="flex flex-col items-center justify-center p-8 text-gray-400 text-center">
-                    <p className="font-semibold text-xs">No headers configured</p>
+                    <p className="font-semibold text-xs">No custom headers configured</p>
                     <p className="text-[11px] mt-0.5">Click &quot;Add Custom Header&quot; or select a preset above.</p>
                   </div>
                 ) : (
@@ -914,7 +842,7 @@ function onResponse(context, request, response) {
                           next[idx].key = e.target.value;
                           setHeaderList(next);
                         }}
-                        placeholder="Header Name (e.g. Authorization)"
+                        placeholder="Header (e.g. Authorization)"
                         className="w-1/3 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-900 focus:outline-none"
                       />
                       <input
@@ -925,7 +853,7 @@ function onResponse(context, request, response) {
                           next[idx].value = e.target.value;
                           setHeaderList(next);
                         }}
-                        placeholder="Header Value"
+                        placeholder="Value"
                         className="flex-1 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-900 focus:outline-none"
                       />
                       <button
@@ -943,80 +871,300 @@ function onResponse(context, request, response) {
             </div>
           )}
 
-          {/* Tab 3: URL Parameters Builder */}
-          {activeTab === 'params' && (
-            <div className="flex flex-col gap-2.5 flex-1 min-h-0">
-              <div className="border border-gray-200 dark:border-gray-800 rounded-2xl p-3 bg-gray-50/40 dark:bg-gray-900/40 flex-1 overflow-y-auto flex flex-col gap-2">
-                <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800 shrink-0">
-                  <span className="font-bold text-gray-700 dark:text-gray-300 text-xs">
-                    Query Parameters ({paramList.filter(p => p.enabled).length} Active)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleAddParam}
-                    className="flex items-center gap-1 text-orange-600 font-bold hover:underline cursor-pointer text-xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Query Parameter</span>
-                  </button>
+          {/* TAB 3: BODY (Composer-Style Format Selector & Rich Editors) */}
+          {activeTab === 'body' && (
+            <div className="flex flex-col gap-2.5 flex-1 min-h-[300px]">
+              {/* Body Type Radio Pills */}
+              <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800 shrink-0">
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                  {(['none', 'json', 'form-data', 'x-www-form-urlencoded', 'raw', 'graphql', 'xml', 'html', 'binary'] as const).map((bt) => (
+                    <button
+                      key={bt}
+                      type="button"
+                      onClick={() => setBodyType(bt)}
+                      className={`px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                        bodyType === bt
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                      }`}
+                    >
+                      {bt}
+                    </button>
+                  ))}
                 </div>
 
-                {paramList.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-8 text-gray-400 text-center">
-                    <p className="font-semibold text-xs">No URL query parameters</p>
-                    <p className="text-[11px] mt-0.5">Click &quot;Add Query Parameter&quot; to define custom params.</p>
+                {bodyType === 'json' && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleFormatJson}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[10px] font-semibold cursor-pointer"
+                    >
+                      <Braces className="w-3 h-3 text-blue-500" />
+                      <span>Prettify</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleMinifyJson}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[10px] font-semibold cursor-pointer"
+                    >
+                      <AlignLeft className="w-3 h-3 text-gray-500" />
+                      <span>Minify</span>
+                    </button>
                   </div>
-                ) : (
-                  paramList.map((p, idx) => (
-                    <div key={p.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xs">
+                )}
+              </div>
+
+              {/* Body Content Renderers */}
+              {bodyType === 'none' ? (
+                <div className="flex flex-col items-center justify-center flex-1 p-8 text-gray-400 bg-gray-50/50 dark:bg-gray-900/30 rounded-2xl border border-gray-200 dark:border-gray-800">
+                  <p className="font-semibold text-xs">This rule will not modify the HTTP body payload.</p>
+                </div>
+              ) : bodyType === 'form-data' || bodyType === 'x-www-form-urlencoded' ? (
+                /* Form Key-Value Table Builder */
+                <div className="border border-gray-200 dark:border-gray-700 rounded-2xl p-3 bg-gray-50/50 dark:bg-gray-900/50 flex flex-col gap-2 flex-1 overflow-y-auto">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800">
+                    <span className="font-bold text-gray-600 dark:text-gray-300 text-[11px]">
+                      {bodyType === 'form-data' ? 'Multipart Form Fields' : 'URL-Encoded Key/Values'}:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormEntries([
+                          ...formEntries,
+                          { key: '', value: '', enabled: true },
+                        ])
+                      }
+                      className="flex items-center gap-1 text-emerald-600 font-bold hover:underline cursor-pointer text-[11px]"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Field</span>
+                    </button>
+                  </div>
+
+                  {formEntries.map((fe, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700">
                       <input
                         type="checkbox"
-                        checked={p.enabled}
+                        checked={fe.enabled}
                         onChange={(e) => {
-                          const next = [...paramList];
+                          const next = [...formEntries];
                           next[idx].enabled = e.target.checked;
-                          setParamList(next);
+                          setFormEntries(next);
                         }}
-                        className="rounded text-orange-600 cursor-pointer ml-1"
+                        className="rounded text-emerald-600 cursor-pointer ml-1"
                       />
                       <input
                         type="text"
-                        value={p.key}
+                        value={fe.key}
                         onChange={(e) => {
-                          const next = [...paramList];
+                          const next = [...formEntries];
                           next[idx].key = e.target.value;
-                          setParamList(next);
+                          setFormEntries(next);
                         }}
-                        placeholder="Param Name (e.g. limit)"
+                        placeholder="Field Key"
                         className="w-1/3 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-900 focus:outline-none"
                       />
                       <input
                         type="text"
-                        value={p.value}
+                        value={fe.value}
                         onChange={(e) => {
-                          const next = [...paramList];
+                          const next = [...formEntries];
                           next[idx].value = e.target.value;
-                          setParamList(next);
+                          setFormEntries(next);
                         }}
-                        placeholder="Param Value (e.g. 50)"
+                        placeholder="Field Value"
                         className="flex-1 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-[11px] bg-white dark:bg-gray-900 focus:outline-none"
                       />
                       <button
                         type="button"
-                        onClick={() => setParamList(paramList.filter((_, i) => i !== idx))}
+                        onClick={() => setFormEntries(formEntries.filter((_, i) => i !== idx))}
                         className="p-1 text-rose-500 hover:bg-rose-50 rounded cursor-pointer"
-                        title="Delete parameter"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : bodyType === 'graphql' ? (
+                /* GraphQL Editor with Query & Variables */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 flex-1 min-h-[240px]">
+                  <div className="flex flex-col gap-1 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b text-[10px] font-bold text-gray-500">
+                      GraphQL Query / Mutation
+                    </div>
+                    <div className="flex-1 min-h-[180px]">
+                      <Editor
+                        height="100%"
+                        language="graphql"
+                        value={gqlQuery}
+                        theme={monacoTheme}
+                        onChange={(v) => setGqlQuery(v || '')}
+                        options={{ minimap: { enabled: false }, fontSize: 11, wordWrap: 'on' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b text-[10px] font-bold text-gray-500">
+                      JSON Variables
+                    </div>
+                    <div className="flex-1 min-h-[180px]">
+                      <Editor
+                        height="100%"
+                        language="json"
+                        value={gqlVariables}
+                        theme={monacoTheme}
+                        onChange={(v) => setGqlVariables(v || '')}
+                        options={{ minimap: { enabled: false }, fontSize: 11, wordWrap: 'on' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Monaco Code Editor for JSON / XML / HTML / Raw / Binary */
+                <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex-1 min-h-[220px]">
+                  <Editor
+                    height="100%"
+                    language={bodyType === 'xml' ? 'xml' : bodyType === 'html' ? 'html' : bodyType === 'json' ? 'json' : 'plaintext'}
+                    value={bodyContent}
+                    theme={monacoTheme}
+                    onChange={(val) => setBodyContent(val || '')}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 11,
+                      lineNumbers: 'on',
+                      wordWrap: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          {/* Tab 4: Live Rule Simulator */}
+          {/* TAB 4: ACTION & STATUS (Settings, Status Codes, Delays, Drops) */}
+          {activeTab === 'action' && (
+            <div className="flex flex-col gap-3 flex-1 min-h-0">
+              {/* Action Type & Stage Selector */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-gray-50/50 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-800">
+                <div className="flex flex-col gap-1">
+                  <label className="font-bold text-gray-700 dark:text-gray-300">Action Type:</label>
+                  <select
+                    value={actionType}
+                    onChange={(e) => setActionType(e.target.value as any)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-bold text-xs bg-white dark:bg-gray-800 focus:outline-none cursor-pointer"
+                  >
+                    <option value="replace">Replace (Status, Headers, Body)</option>
+                    <option value="redirect">Redirect (URL Forward / Rewrite)</option>
+                    <option value="update">Update (Regex Search &amp; Replace)</option>
+                    <option value="modify_headers">Modify Headers Only</option>
+                    <option value="drop">Drop Connection (Abort / TCP RST)</option>
+                    <option value="delay">Inject Latency / Delay (Lag)</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="font-bold text-gray-700 dark:text-gray-300">Target Stage:</label>
+                  <div className="flex items-center gap-1 pt-0.5">
+                    {(['response', 'request', 'both'] as const).map((stage) => (
+                      <button
+                        key={stage}
+                        type="button"
+                        onClick={() => setTargetStage(stage)}
+                        className={`flex-1 py-1 rounded-xl font-bold capitalize transition-all cursor-pointer text-xs ${
+                          targetStage === stage
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+                        }`}
+                      >
+                        {stage}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Code Override Pills */}
+              <div className="flex flex-col gap-2 p-3 bg-slate-50/70 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-800">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-700 dark:text-gray-300">Status Code Override:</span>
+                  <input
+                    type="number"
+                    value={statusCode}
+                    onChange={(e) => setStatusCode(Number(e.target.value))}
+                    className="w-20 px-2 py-0.5 rounded-lg border border-gray-300 dark:border-gray-700 font-mono font-bold text-center text-xs bg-white dark:bg-gray-900"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {STATUS_CODE_PILLS.map((p) => (
+                    <button
+                      key={p.code}
+                      type="button"
+                      onClick={() => setStatusCode(p.code)}
+                      className={`px-2.5 py-1 rounded-xl text-[10px] font-bold font-mono transition-all cursor-pointer shrink-0 ${
+                        statusCode === p.code
+                          ? `${p.color} text-white shadow-xs`
+                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Redirect Target URL */}
+              {actionType === 'redirect' && (
+                <div className="flex flex-col gap-1 p-3 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800">
+                  <label className="font-bold text-blue-900 dark:text-blue-200">Redirect Target URL:</label>
+                  <input
+                    type="text"
+                    value={redirectUrl}
+                    onChange={(e) => setRedirectUrl(e.target.value)}
+                    placeholder="https://staging.example.com/v1/$1"
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-blue-300 dark:border-blue-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Latency Delay Slider */}
+              {actionType === 'delay' && (
+                <div className="flex items-center gap-4 p-3 bg-amber-50/50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800">
+                  <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <div className="flex-1">
+                    <div className="flex justify-between font-bold text-amber-900 dark:text-amber-200">
+                      <span>Simulated Latency Delay:</span>
+                      <span className="font-mono">{delayMs} ms</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50"
+                      max="5000"
+                      step="50"
+                      value={delayMs}
+                      onChange={(e) => setDelayMs(Number(e.target.value))}
+                      className="w-full accent-amber-600 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Drop / Reset Connection */}
+              {actionType === 'drop' && (
+                <div className="flex items-center gap-3 p-3 bg-rose-50/50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
+                  <Ban className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <div>
+                    <span className="font-bold">Silent Connection Dropper:</span>
+                    <p className="text-[11px] opacity-80 mt-0.5">Matching requests will be immediately aborted with TCP RST / connection drop.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: LIVE TEST / SIMULATOR */}
           {activeTab === 'simulator' && (
             <div className="flex flex-col gap-3 flex-1 min-h-0">
               <div className="flex flex-col gap-1">
@@ -1074,7 +1222,7 @@ function onResponse(context, request, response) {
                 type="checkbox"
                 checked={enabled}
                 onChange={(e) => setEnabled(e.target.checked)}
-                className="rounded text-blue-600"
+                className="rounded text-blue-600 cursor-pointer"
               />
               <span className="font-bold text-gray-700 dark:text-gray-300 text-xs">Enable Rule Immediately</span>
             </label>

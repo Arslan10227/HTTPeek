@@ -137,7 +137,7 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
-            Request
+            Request ({request.method || 'GET'})
           </button>
           <button
             type="button"
@@ -148,7 +148,7 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
-            Response {request.response && `(${request.response.statusCode})`}
+            Response ({request.response?.statusCode ?? '...'})
           </button>
 
           {isGraphQL && (
@@ -273,8 +273,8 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
         </div>
       </div>
 
-      {/* Tab Content Panes */}
-      <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
+      {/* Tab Content Panes (Full Tab Scrollable) */}
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
         {activeTab === 'general' && <GeneralTab request={request} />}
         {activeTab === 'request' && (
           <RequestTab

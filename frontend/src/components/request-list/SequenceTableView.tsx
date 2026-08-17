@@ -274,16 +274,18 @@ export const SequenceTableView: React.FC = () => {
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
-                  className={`flex items-center px-3 border-b border-slate-100 cursor-pointer transition-colors text-[11px] select-none ${
+                  className={`flex items-center px-3 border-b border-slate-100 dark:border-gray-800 cursor-pointer transition-colors text-[11px] select-none ${
                     isSelected
-                      ? 'bg-emerald-50/80 text-slate-900 border-l-3 border-l-emerald-600'
-                      : 'hover:bg-slate-50 text-slate-700'
+                      ? 'bg-emerald-50/80 dark:bg-emerald-950/40 text-slate-900 dark:text-white border-l-3 border-l-emerald-600'
+                      : req.appliedRules && req.appliedRules.length > 0
+                      ? 'bg-purple-50/30 dark:bg-purple-950/20 text-slate-700 dark:text-gray-200 border-l-3 border-l-purple-500'
+                      : 'hover:bg-slate-50 dark:hover:bg-gray-800/50 text-slate-700 dark:text-gray-300'
                   }`}
                 >
                   <div className="w-8 text-center text-slate-400 text-[10px]">
                     {virtualRow.index + 1}
                   </div>
-                  <div className="w-16">
+                  <div className="w-16 flex items-center gap-1">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${getMethodBadge(req.method)}`}>
                       {req.method}
                     </span>
@@ -291,11 +293,16 @@ export const SequenceTableView: React.FC = () => {
                   <div className="w-14">
                     {getStatusBadge(req.response?.statusCode)}
                   </div>
-                  <div className="w-48 truncate text-slate-800 font-medium" title={req.hostPort?.host || 'unknown'}>
+                  <div className="w-48 truncate text-slate-800 dark:text-gray-200 font-medium" title={req.hostPort?.host || 'unknown'}>
                     {req.hostPort?.host || 'unknown'}
                   </div>
-                  <div className="flex-1 min-w-[200px] truncate text-slate-600 font-mono" title={req.path}>
-                    {req.path || req.url || '/'}
+                  <div className="flex-1 min-w-[200px] truncate text-slate-600 dark:text-gray-300 font-mono flex items-center" title={req.path}>
+                    {req.appliedRules && req.appliedRules.length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shrink-0 mr-1.5">
+                        ⚡ {req.appliedRules[0].type || 'RULE'}
+                      </span>
+                    )}
+                    <span className="truncate">{req.path || req.url || '/'}</span>
                   </div>
                   <div className="w-20 text-right font-mono text-slate-500 text-[10px]">
                     {formatSize(req.response?.bodySize)}

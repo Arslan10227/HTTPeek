@@ -32,6 +32,10 @@ interface TreeNode {
 export const DomainTreeView: React.FC = () => {
   const { requests, favorites, selectedRequestId, selectRequest, searchQuery, activeTab, deleteRequest } = useProxyStore();
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [blinkingDomains, setBlinkingDomains] = useState<Record<string, number>>({});
+  const lastRequestCountRef = useRef<number>(requests.length);
+  const lastRequestIdRef = useRef<string | null>(requests.length > 0 ? requests[requests.length - 1].id : null);
+
   const [exportModalState, setExportModalState] = useState<{
     isOpen: boolean;
     domain?: string;
@@ -48,6 +52,31 @@ export const DomainTreeView: React.FC = () => {
   } | null>(null);
 
   const [activeExportMenu, setActiveExportMenu] = useState<string | null>(null);
+
+  // Detect when new traffic arrives or updates to blink the specific domain
+  useEffect(() => {
+    if (requests.length > 0) {
+      const latest = requests[requests.length - 1];
+      if (latest && latest.id !== lastRequestIdRef.current) {
+        lastRequestIdRef.current = latest.id;
+        const host = latest.hostPort?.host || 'unknown';
+        const now = Date.now();
+        setBlinkingDomains((prev) => ({ ...prev, [host]: now }));
+
+        // Clear blink after 1.5 seconds
+        const timer = setTimeout(() => {
+          setBlinkingDomains((prev) => {
+            const next = { ...prev };
+            if (next[host] === now) {
+              delete next[host];
+            }
+            return next;
+          });
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [requests]);
 
   useEffect(() => {
     const handleClick = () => {
@@ -166,8 +195,9 @@ export const DomainTreeView: React.FC = () => {
 
   const renderNode = (node: TreeNode, depth: number = 0) => {
     const hasChildren = Object.keys(node.children).length > 0 || node.requests.length > 0;
-    const isExpanded = expandedNodes[node.fullPath] ?? depth === 0;
+    const isExpanded = expandedNodes[node.fullPath] ?? false;
     const isDomainRoot = depth === 0;
+    const isBlinking = isDomainRoot && Boolean(blinkingDomains[node.name]);
     const allDomainRequests = isDomainRoot ? collectNodeRequests(node) : [];
 
     return (
@@ -176,9 +206,9 @@ export const DomainTreeView: React.FC = () => {
           onClick={() => toggleNode(node.fullPath)}
           onContextMenu={(e) => isDomainRoot ? handleDomainContextMenu(e, node) : undefined}
           style={{ paddingLeft: `${depth * 14 + 8}px` }}
-          className={`group flex items-center gap-1.5 py-1.5 hover:bg-slate-100 dark:hover:bg-gray-800 cursor-pointer rounded-lg text-slate-700 dark:text-gray-200 transition-colors ${
+          className={`group flex items-center gap-1.5 py-1.5 hover:bg-slate-100 dark:hover:bg-gray-800 cursor-pointer rounded-lg text-slate-700 dark:text-gray-200 transition-all ${
             isDomainRoot ? 'font-bold bg-slate-50/70 dark:bg-gray-800/30 my-0.5 border-y border-slate-100 dark:border-gray-800' : ''
-          }`}
+          } ${isBlinking ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-400 text-amber-950 dark:text-amber-200 shadow-sm animate-pulse' : ''}`}
         >
           {hasChildren ? (
             isExpanded ? (

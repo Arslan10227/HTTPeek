@@ -257,25 +257,80 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <select
-            value={format}
-            onChange={(e) => setFormat(e.target.value as BodyFormat)}
-            className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
-            style={{ borderColor: 'var(--md-sys-color-divider)' }}
-          >
-            <option value="auto">Auto ({detectedLanguage})</option>
-            <option value="json">JSON</option>
-            <option value="graphql">GraphQL</option>
-            <option value="xml">XML</option>
-            <option value="html">HTML</option>
-            <option value="javascript">JavaScript</option>
-            <option value="css">CSS</option>
-            <option value="yaml">YAML</option>
-            <option value="form">Form URL-Encoded</option>
-            <option value="text">Raw Text</option>
-            <option value="hex">Hex Matrix</option>
-            {isMedia && <option value="preview">Visual Preview</option>}
-          </select>
+          {/* Explicit Format Selector Pills */}
+          <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5 overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setFormat('auto')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                format === 'auto'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+              title="Auto-detect data format based on content-type and payload"
+            >
+              Auto ({detectedLanguage})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormat('json')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                format === 'json'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormat('text')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                format === 'text'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Raw
+            </button>
+            {isForm && (
+              <button
+                type="button"
+                onClick={() => setFormat('form')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                  format === 'form'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                Form
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setFormat('hex')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                format === 'hex'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Hex
+            </button>
+            {isMedia && (
+              <button
+                type="button"
+                onClick={() => setFormat('preview')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                  format === 'preview'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-purple-600 hover:text-purple-900 dark:hover:text-purple-300'
+                }`}
+              >
+                Preview
+              </button>
+            )}
+          </div>
 
           {isImage && isPreviewMode && (
             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
@@ -351,7 +406,7 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
       <div className="p-3">
         {isPreviewMode && isImage ? (
           /* Image Preview with Zoom & Transparency Checkerboard */
-          <div className="flex flex-col items-center justify-center p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] overflow-auto max-h-[420px]">
+          <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] overflow-auto max-h-[460px] gap-3">
             <img
               src={mediaDataUrl || `data:${contentType};base64,${body}`}
               alt="Preview"
@@ -362,10 +417,31 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
               }}
               className="max-h-80 max-w-full object-contain rounded-lg shadow-md transition-transform duration-100"
             />
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-xs transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Save / Download Image</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(mediaDataUrl || `data:${contentType};base64,${body}`);
+                  toast.success('Image Data URL Copied');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy Data URL</span>
+              </button>
+            </div>
           </div>
         ) : isPreviewMode && isVideo ? (
           /* Video Player */
-          <div className="flex flex-col items-center justify-center p-4 bg-black rounded-xl overflow-hidden">
+          <div className="flex flex-col items-center justify-center p-4 bg-black rounded-xl overflow-hidden gap-3">
             <video
               controls
               src={mediaDataUrl}
@@ -373,6 +449,14 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
             >
               Your browser does not support the video tag.
             </video>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-xs"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Save / Download Video</span>
+            </button>
           </div>
         ) : isPreviewMode && isAudio ? (
           /* Audio Player */
@@ -381,11 +465,31 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
             <audio controls src={mediaDataUrl} className="w-full max-w-md">
               Your browser does not support the audio tag.
             </audio>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-xs"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Save / Download Audio</span>
+            </button>
           </div>
         ) : isPreviewMode && isPdf ? (
           /* PDF Viewer */
-          <div className="h-96 rounded-xl border overflow-hidden">
-            <iframe src={mediaDataUrl} title="PDF Preview" className="w-full h-full" />
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Save / Download PDF</span>
+              </button>
+            </div>
+            <div className="h-96 rounded-xl border overflow-hidden">
+              <iframe src={mediaDataUrl} title="PDF Preview" className="w-full h-full" />
+            </div>
           </div>
         ) : format === 'hex' ? (
           /* Hex Dump Matrix */
