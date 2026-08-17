@@ -242,7 +242,7 @@ function onResponse(context, request, response) {
   };
 
   const content = (
-    <div className={`font-sans select-none ${isEmbedded ? 'flex-1 flex flex-col h-full bg-[var(--htk-panel)]' : 'border border-slate-200 rounded-2xl w-full max-w-5xl h-[760px] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 bg-white'}`}>
+    <div className={`font-sans select-none ${isEmbedded ? 'flex-1 flex flex-col h-full bg-[var(--htk-panel)]' : 'border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-4xl max-h-[86vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 bg-white dark:bg-gray-900'}`}>
       {!isEmbedded && (
       <div className="h-14 border-b border-slate-200 px-6 flex items-center justify-between bg-slate-50 shrink-0">
         <div className="flex items-center gap-2.5">

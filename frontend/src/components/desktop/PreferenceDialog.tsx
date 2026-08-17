@@ -25,6 +25,10 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose }) =
     setMinimizeToTray,
     clearConfirm,
     setClearConfirm,
+    confirmOnClose,
+    setConfirmOnClose,
+    enabledHttp2,
+    setEnabledHttp2,
     memoryCleanupThreshold,
     setMemoryCleanupThreshold,
     getActiveColorPreset,
@@ -230,6 +234,50 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose }) =
                 className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"
                 style={{
                   backgroundColor: clearConfirm ? activeColor.hex : undefined,
+                }}
+              />
+            </label>
+          </div>
+
+          {/* Confirm on Exit */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-medium text-sm">Confirm Before Exiting</div>
+              <div className="text-gray-500 text-[11px]">Prompt confirmation before closing the application</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={confirmOnClose}
+                onChange={(e) => setConfirmOnClose(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div
+                className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"
+                style={{
+                  backgroundColor: confirmOnClose ? activeColor.hex : undefined,
+                }}
+              />
+            </label>
+          </div>
+
+          {/* Enable HTTP/2 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-medium text-sm">{t.enabledHTTP2 || 'Enable HTTP/2'}</div>
+              <div className="text-gray-500 text-[11px]">Intercept and capture HTTP/2 multiplexed streams</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={enabledHttp2}
+                onChange={(e) => setEnabledHttp2(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div
+                className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"
+                style={{
+                  backgroundColor: enabledHttp2 ? activeColor.hex : undefined,
                 }}
               />
             </label>

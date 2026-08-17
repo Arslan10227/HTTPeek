@@ -103,22 +103,13 @@ export const ResponseTab: React.FC<ResponseTabProps> = ({ request, onOpenRule })
         </div>
       </div>
 
-      {/* 2. Smart Suggested Rules Card */}
-      {onOpenRule && (
-        <SuggestedRulesCard
-          request={request}
-          response={response}
-          onOpenRule={onOpenRule}
-        />
-      )}
-
-      {/* 3. Response Cookies Card (Dynamic: only rendered if Set-Cookie exists) */}
+      {/* 2. Response Cookies Card (Dynamic: only rendered if Set-Cookie exists) */}
       <CookiesCard type="response" cookieHeader={setCookieHeader} />
 
-      {/* 4. Response Headers Card (Dynamic: only rendered if headers exist) */}
+      {/* 3. Response Headers Card (Dynamic: only rendered if headers exist) */}
       <HeadersViewer title="Response" headers={response.headers} />
 
-      {/* 5. Response Body Card (Dynamic: only rendered if body exists) */}
+      {/* 4. Response Body Card (Dynamic: only rendered if body exists) */}
       {hasBody && (
         <HttpBodyViewer
           title="Response"
@@ -126,6 +117,15 @@ export const ResponseTab: React.FC<ResponseTabProps> = ({ request, onOpenRule })
           bodyBase64={response.bodyBase64}
           contentType={contentType}
           bodySize={response.bodySize || (response.body ? response.body.length : 0)}
+        />
+      )}
+
+      {/* 5. Smart Suggested Rules Card (Placed as the last card) */}
+      {onOpenRule && (
+        <SuggestedRulesCard
+          request={request}
+          response={response}
+          onOpenRule={onOpenRule}
         />
       )}
     </div>

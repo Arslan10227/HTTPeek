@@ -16,6 +16,7 @@ export interface AppConfigState {
   enableSocks5: boolean;
   enabledHttp2: boolean;
   proxyPassDomains: string;
+  confirmOnClose: boolean;
   
   // Actions
   setThemeMode: (mode: ThemeMode) => void;
@@ -30,6 +31,7 @@ export interface AppConfigState {
   setEnableSocks5: (enable: boolean) => void;
   setEnabledHttp2: (enable: boolean) => void;
   setProxyPassDomains: (domains: string) => void;
+  setConfirmOnClose: (confirm: boolean) => void;
   
   getActiveColorPreset: () => ColorPreset;
   getEffectiveIsDark: () => boolean;
@@ -46,6 +48,8 @@ export const useAppConfig = create<AppConfigState>((set, get) => {
   const savedThreshold = localStorage.getItem('proxypin_memoryCleanup') ? parseInt(localStorage.getItem('proxypin_memoryCleanup')!, 10) : null;
   const savedHeaderMode = (localStorage.getItem('proxypin_headerViewMode') as 'table' | 'text') || 'table';
   const savedProxyPass = localStorage.getItem('proxypin_proxyPassDomains') || 'localhost;127.0.0.1;';
+  const savedConfirmOnClose = localStorage.getItem('httpeek_confirmOnClose') !== 'false';
+  const savedHttp2 = localStorage.getItem('httpeek_enabledHttp2') !== 'false';
 
   return {
     themeMode: savedThemeMode,
@@ -58,8 +62,9 @@ export const useAppConfig = create<AppConfigState>((set, get) => {
     memoryCleanupThreshold: savedThreshold,
     headerViewMode: savedHeaderMode,
     enableSocks5: false,
-    enabledHttp2: false,
+    enabledHttp2: savedHttp2,
     proxyPassDomains: savedProxyPass,
+    confirmOnClose: savedConfirmOnClose,
 
     setThemeMode: (mode) => {
       localStorage.setItem('proxypin_themeMode', mode);
@@ -102,10 +107,17 @@ export const useAppConfig = create<AppConfigState>((set, get) => {
       set({ headerViewMode: mode });
     },
     setEnableSocks5: (enable) => set({ enableSocks5: enable }),
-    setEnabledHttp2: (enable) => set({ enabledHttp2: enable }),
+    setEnabledHttp2: (enable) => {
+      localStorage.setItem('httpeek_enabledHttp2', String(enable));
+      set({ enabledHttp2: enable });
+    },
     setProxyPassDomains: (domains) => {
       localStorage.setItem('proxypin_proxyPassDomains', domains);
       set({ proxyPassDomains: domains });
+    },
+    setConfirmOnClose: (confirm) => {
+      localStorage.setItem('httpeek_confirmOnClose', String(confirm));
+      set({ confirmOnClose: confirm });
     },
 
     getActiveColorPreset: () => {

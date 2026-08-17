@@ -173,6 +173,16 @@ func (a *App) emitInitError(message string) {
 	})
 }
 
+// beforeClose is invoked before the window is destroyed.
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	// Guaranteed failsafe: Immediately disable Windows system proxy
+	_ = system.SetSystemProxy(false, "", 0, "")
+	if a.server != nil && a.server.IsRunning() {
+		_ = a.server.Stop()
+	}
+	return false
+}
+
 // shutdown is called when the app closes.
 func (a *App) shutdown(ctx context.Context) {
 	// Always cleanly disable system proxy on application exit
@@ -183,6 +193,22 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if a.db != nil {
 		_ = a.db.Close()
+	}
+}
+
+// ExitApp cleanly closes the application, disables system proxy, and stops all services.
+func (a *App) ExitApp() {
+	_ = system.SetSystemProxy(false, "", 0, "")
+	if a.server != nil && a.server.IsRunning() {
+		_ = a.server.Stop()
+	}
+	if a.db != nil {
+		_ = a.db.Close()
+	}
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	} else {
+		os.Exit(0)
 	}
 }
 

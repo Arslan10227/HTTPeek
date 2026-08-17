@@ -3,8 +3,12 @@ package main
 import (
 	"embed"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"httpeek/pkg/logger"
+	"httpeek/pkg/system"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -19,6 +23,20 @@ func main() {
 	// 1. Initialize Centralized Logger immediately
 	logger.Init()
 	defer logger.Close()
+
+	// Guaranteed failsafe: Always reset system proxy when process exits
+	defer func() {
+		_ = system.SetSystemProxy(false, "", 0, "")
+	}()
+
+	// Signal handling for graceful termination
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigChan
+		_ = system.SetSystemProxy(false, "", 0, "")
+		os.Exit(0)
+	}()
 
 	logger.Info("Main", "Starting HTTPeek - Next Gen HTTP Debugging Tool by OneManByte...")
 
@@ -35,6 +53,7 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 255},
 		OnStartup:        app.startup,
+		OnBeforeClose:    app.beforeClose,
 		OnShutdown:       app.shutdown,
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,

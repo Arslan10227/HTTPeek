@@ -24,6 +24,8 @@ export function DeleteSession(arg1:string):Promise<void>;
 
 export function DetectJavaInstallations():Promise<Array<cert.JavaInstallation>>;
 
+export function ExitApp():Promise<void>;
+
 export function ExportHAR(arg1:Array<proxy.HttpRequest>):Promise<string>;
 
 export function ExportRequestsAs(arg1:Array<proxy.HttpRequest>,arg2:string):Promise<string>;

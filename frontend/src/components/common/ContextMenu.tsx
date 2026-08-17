@@ -12,10 +12,14 @@ import {
   PauseCircle,
   FileCode,
   Check,
-  ShieldAlert
+  ShieldAlert,
+  Layers,
+  FileJson,
+  Download
 } from 'lucide-react';
 import { HttpRequest } from '../../types';
 import { toast } from '../../store/useToastStore';
+import { exportRequests } from '../../utils/exportHelper';
 
 interface ContextMenuProps {
   x: number;
@@ -209,6 +213,46 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           {copiedKey === 'respBody' && <Check className="w-3.5 h-3.5" style={{ color: 'var(--htk-success)' }} />}
         </button>
       )}
+
+      <div className="htk-context-menu-divider" />
+
+      <div className="htk-context-menu-label">Export Single Request</div>
+      <button
+        onClick={() => {
+          exportRequests([request], 'har', `request_${request.id}`);
+          onClose();
+        }}
+        className="htk-context-menu-item"
+      >
+        <div className="flex items-center gap-2">
+          <Layers className="w-3.5 h-3.5 text-blue-500" />
+          <span>Export as .HAR</span>
+        </div>
+      </button>
+      <button
+        onClick={() => {
+          exportRequests([request], 'json', `request_${request.id}`);
+          onClose();
+        }}
+        className="htk-context-menu-item"
+      >
+        <div className="flex items-center gap-2">
+          <FileJson className="w-3.5 h-3.5 text-amber-500" />
+          <span>Export as .JSON</span>
+        </div>
+      </button>
+      <button
+        onClick={() => {
+          exportRequests([request], 'sh', `request_${request.id}`);
+          onClose();
+        }}
+        className="htk-context-menu-item"
+      >
+        <div className="flex items-center gap-2">
+          <Terminal className="w-3.5 h-3.5 text-purple-500" />
+          <span>Export as .SH cURL Replay</span>
+        </div>
+      </button>
 
       <div className="htk-context-menu-divider" />
 

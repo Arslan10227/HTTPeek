@@ -192,7 +192,7 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
                 </div>
               )}
 
-              <div className="flex flex-col border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden font-mono text-[11px]">
+              <div className="flex flex-col border border-gray-200 dark:border-gray-800 rounded-xl overflow-y-auto max-h-64 font-mono text-[11px]">
                 {filtered.map((c, idx) => (
                   <div
                     key={`${c.name}-${idx}`}

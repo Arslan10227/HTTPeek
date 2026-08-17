@@ -38,6 +38,10 @@ export function DetectJavaInstallations() {
   return window['go']['main']['App']['DetectJavaInstallations']();
 }
 
+export function ExitApp() {
+  return window['go']['main']['App']['ExitApp']();
+}
+
 export function ExportHAR(arg1) {
   return window['go']['main']['App']['ExportHAR'](arg1);
 }

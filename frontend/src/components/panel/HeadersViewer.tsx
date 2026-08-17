@@ -134,7 +134,7 @@ export const HeadersViewer: React.FC<HeadersViewerProps> = ({ title, headers }) 
                   />
                 </div>
               )}
-              <div className="flex flex-col border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden font-mono text-[11px]">
+              <div className="flex flex-col border border-gray-200 dark:border-gray-800 rounded-xl overflow-y-auto max-h-64 font-mono text-[11px]">
                 {filtered.map(([key, val], idx) => (
                   <div
                     key={`${key}-${idx}`}

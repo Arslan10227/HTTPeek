@@ -86,16 +86,7 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
         </button>
       </div>
 
-      {/* 2. Smart Suggested Rules Card */}
-      {onOpenRule && (
-        <SuggestedRulesCard
-          request={request}
-          response={response}
-          onOpenRule={onOpenRule}
-        />
-      )}
-
-      {/* 3. Query Params Card (Only shown if populated) */}
+      {/* 2. Query Params Card (Only shown if populated) */}
       {queryParams.length > 0 && (
         <div
           className="rounded-2xl border overflow-hidden shadow-xs bg-white dark:bg-gray-900 transition-all shrink-0"
@@ -186,7 +177,7 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
                       />
                     </div>
                   )}
-                  <div className="flex flex-col border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden font-mono text-[11px]">
+                  <div className="flex flex-col border border-gray-200 dark:border-gray-800 rounded-xl overflow-y-auto max-h-64 font-mono text-[11px]">
                     {filteredParams.map(([k, v], idx) => (
                       <div
                         key={`${k}-${idx}`}
@@ -242,19 +233,28 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
         </div>
       )}
 
-      {/* 4. Request Cookies Card (Dynamic: only rendered if cookies exist) */}
+      {/* 3. Request Cookies Card (Dynamic: only rendered if cookies exist) */}
       <CookiesCard type="request" cookieHeader={cookieHeader} />
 
-      {/* 5. Headers Card (Dynamic: only rendered if headers exist) */}
+      {/* 4. Headers Card (Dynamic: only rendered if headers exist) */}
       <HeadersViewer title="Request" headers={request.headers} />
 
-      {/* 6. Body Card (Dynamic: only rendered if body exists) */}
+      {/* 5. Body Card (Dynamic: only rendered if body exists) */}
       {hasBody && (
         <HttpBodyViewer
           title="Request"
           body={request.bodyString || request.body}
           contentType={contentType}
           bodySize={request.body ? request.body.length : 0}
+        />
+      )}
+
+      {/* 6. Smart Suggested Rules Card (Placed as the last card) */}
+      {onOpenRule && (
+        <SuggestedRulesCard
+          request={request}
+          response={response}
+          onOpenRule={onOpenRule}
         />
       )}
     </div>
