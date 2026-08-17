@@ -39,6 +39,15 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
   const activeColor = getActiveColorPreset();
 
+  // Detect GraphQL unconditionally before early returns
+  const isGraphQL = useMemo(() => {
+    if (!request) return false;
+    const reqBody = request.bodyString || request.body || '';
+    if (parseGraphQLPayload(reqBody)) return true;
+    const urlLower = (request.url || '').toLowerCase();
+    return urlLower.includes('/graphql') || urlLower.includes('/gql');
+  }, [request]);
+
   if (!request) {
     return (
       <div
@@ -64,14 +73,6 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
     ? (request.response?.headers?.['content-type'] || request.response?.headers?.['Content-Type']).join(', ')
     : String(request.response?.contentType || request.response?.headers?.['content-type'] || request.response?.headers?.['Content-Type'] || '');
   const isSse = ctHeader.toLowerCase().includes('text/event-stream');
-
-  // Detect GraphQL
-  const isGraphQL = useMemo(() => {
-    const reqBody = request.bodyString || request.body || '';
-    if (parseGraphQLPayload(reqBody)) return true;
-    const urlLower = (request.url || '').toLowerCase();
-    return urlLower.includes('/graphql') || urlLower.includes('/gql');
-  }, [request]);
 
   const handleRepeat = async () => {
     try {
