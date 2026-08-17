@@ -32,6 +32,34 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose }) =
 
   const activeColor = getActiveColorPreset();
   const [maxReqInput, setMaxReqInput] = React.useState(String(useProxyStore.getState().maxRequests || 10000));
+  const [isHarAssoc, setIsHarAssoc] = React.useState(false);
+
+  React.useEffect(() => {
+    if ((window as any).go?.main?.App?.IsHARAssociated) {
+      (window as any).go.main.App.IsHARAssociated().then(setIsHarAssoc).catch(() => {});
+    }
+  }, []);
+
+  const handleToggleHAR = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const checked = e.target.checked;
+    setIsHarAssoc(checked);
+    try {
+      if (checked) {
+        if ((window as any).go?.main?.App?.RegisterHARAssociation) {
+          await (window as any).go.main.App.RegisterHARAssociation();
+          toast.success('File Association Active', '.har files will now open in HTTPeek');
+        }
+      } else {
+        if ((window as any).go?.main?.App?.UnregisterHARAssociation) {
+          await (window as any).go.main.App.UnregisterHARAssociation();
+          toast.info('File Association Removed', '.har files unassociated');
+        }
+      }
+    } catch (err: any) {
+      toast.error('File Association Failed', err.message || String(err));
+      setIsHarAssoc(!checked);
+    }
+  };
 
   const memoryCleanupOptions = [
     { label: t.followSystem, value: null },
@@ -228,6 +256,28 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose }) =
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* HAR File Association */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Associate with .HAR Files</div>
+              <div className="text-[11px] text-gray-500">Open .har HTTP archives directly with HTTPeek</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={isHarAssoc}
+                onChange={handleToggleHAR}
+                className="sr-only peer"
+              />
+              <div
+                className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"
+                style={{
+                  backgroundColor: isHarAssoc ? activeColor.hex : undefined,
+                }}
+              />
+            </label>
           </div>
 
           {/* Max Requests */}

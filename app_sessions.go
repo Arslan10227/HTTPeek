@@ -65,20 +65,25 @@ func (a *App) ExportHAR(requests []*proxy.HttpRequest) (string, error) {
 	return string(data), nil
 }
 
-// ImportHAR parses a HAR 1.2 JSON string and creates a new session containing the requests.
-func (a *App) ImportHAR(harJSON string, sessionName string) (*storage.Session, error) {
-	if sessionName == "" {
-		sessionName = fmt.Sprintf("Imported HAR %s", time.Now().Format("15:04:05"))
+// ExportRequestsAs serializes requests into the specified format (har, json, csv, curl).
+func (a *App) ExportRequestsAs(requests []*proxy.HttpRequest, format string) (string, error) {
+	if a.sessions != nil {
+		return a.sessions.ExportRequestsAs(requests, format)
 	}
-	var har storage.HAR
-	if err := json.Unmarshal([]byte(harJSON), &har); err != nil {
-		return nil, fmt.Errorf("invalid HAR JSON: %w", err)
-	}
+	return a.ExportHAR(requests)
+}
 
-	var requests []*proxy.HttpRequest
-	for _, entry := range har.Log.Entries {
-		req := storage.HAREntryToRequest(entry)
-		requests = append(requests, req)
+// ImportHAR parses a HAR / JSON string with resilient fallback and creates a new recorded session.
+func (a *App) ImportHAR(harJSON string, sessionName string) (*storage.Session, error) {
+	if a.sessions != nil {
+		return a.sessions.ImportHAR(harJSON, sessionName)
+	}
+	if sessionName == "" {
+		sessionName = fmt.Sprintf("Imported Session %s", time.Now().Format("15:04:05"))
+	}
+	requests, err := storage.ImportHARBytes([]byte(harJSON))
+	if err != nil {
+		return nil, err
 	}
 
 	if a.sessionRepo == nil {

@@ -5,18 +5,20 @@ import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
-import { RewriteRule } from '../../types';
+import { HttpRequest, RewriteRule } from '../../types';
 import { StatusCodePicker } from '../common/StatusCodePicker';
 import { HeaderKeyCombobox, HeaderValueCombobox } from '../common/HeaderCombobox';
 
 interface RequestRewriteDialogProps {
   onClose: () => void;
   presetRule?: RewriteRule;
+  initialRequest?: HttpRequest | null;
 }
 
 export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
   onClose,
   presetRule,
+  initialRequest,
 }) => {
   const { t, language } = useTranslation();
   const { rewriteRules, setRewriteRules } = useProxyStore();
@@ -24,7 +26,33 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
   const activeColor = getActiveColorPreset();
 
   const [rules, setRules] = useState<RewriteRule[]>(rewriteRules || []);
-  const [editingRule, setEditingRule] = useState<RewriteRule | null>(presetRule || null);
+  const [editingRule, setEditingRule] = useState<RewriteRule | null>(() => {
+    if (presetRule) return presetRule;
+    if (initialRequest) {
+      const domain = initialRequest.hostPort?.host || '';
+      const path = initialRequest.path || '/*';
+      const headersObj: Record<string, string> = {};
+      if (initialRequest.headers) {
+        Object.entries(initialRequest.headers).forEach(([k, v]) => {
+          headersObj[k] = Array.isArray(v) ? v.join(', ') : String(v);
+        });
+      }
+      return {
+        id: `rule-${Date.now()}`,
+        name: `Rewrite - ${domain || 'Rule'}`,
+        enabled: true,
+        urlPattern: domain ? `*://${domain}${path}` : initialRequest.url || '*',
+        action: 'replace',
+        stage: 'response',
+        replaceStatus: initialRequest.response?.statusCode || 200,
+        statusCode: initialRequest.response?.statusCode || 200,
+        headers: headersObj,
+        replaceHeaders: headersObj,
+        replaceBody: initialRequest.response?.bodyString || (typeof initialRequest.response?.body === 'string' ? initialRequest.response.body : ''),
+      };
+    }
+    return null;
+  });
 
   const isZh = language.startsWith('zh');
 

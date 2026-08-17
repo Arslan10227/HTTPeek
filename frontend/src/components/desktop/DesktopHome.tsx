@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Toolbar } from './Toolbar';
 import { LeftNavigationBar, LeftNavTab } from './LeftNavigationBar';
 import { VerticalSplitView } from './SplitView';
@@ -16,21 +16,25 @@ import { RequestMapDialog } from '../rules/RequestMapDialog';
 import { RequestCryptoDialog } from '../rules/RequestCryptoDialog';
 import { ScriptDialog } from '../rules/ScriptDialog';
 import { BreakpointDialog } from '../rules/BreakpointDialog';
+import { QuickRuleDialog } from '../rules/QuickRuleDialog';
 import { WeakNetworkDialog } from '../rules/WeakNetworkDialog';
 import { ExternalProxyDialog } from '../rules/ExternalProxyDialog';
 import { AboutDialog } from './AboutDialog';
 import { DocumentationModal } from './DocumentationModal';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { ExportModal } from '../common/ExportModal';
 import { PCCertDialog } from '../ssl/PCCertDialog';
 import { MobileCertDialog } from '../ssl/MobileCertDialog';
 import { EnvironmentModal } from '../environment/EnvironmentModal';
+import { RequestComposerModal } from '../composer/RequestComposerModal';
 
 import { HttpRequest, HttpResponse } from '../../types';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
+import { toast } from '../../store/useToastStore';
 
 export const DesktopHome: React.FC = () => {
-  const { requests, selectedRequestId, setSelectedRequestId } = useProxyStore();
+  const { requests, selectedRequestId, setSelectedRequestId, addRequest } = useProxyStore();
   const { panelRatio, setPanelRatio } = useAppConfig();
 
   const [activeNavTab, setActiveNavTab] = useState<LeftNavTab>('requests');
@@ -55,9 +59,21 @@ export const DesktopHome: React.FC = () => {
   const [isPcCertOpen, setIsPcCertOpen] = useState(false);
   const [mobileCertPlatform, setMobileCertPlatform] = useState<'ios' | 'android' | null>(null);
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
-  // Global F1 Shortcut for in-app documentation
-  React.useEffect(() => {
+  // Quick Rule Modal
+  const [quickRuleState, setQuickRuleState] = useState<{
+    isOpen: boolean;
+    type: 'rewrite' | 'mock' | 'breakpoint' | 'script';
+    request: HttpRequest | null;
+  }>({
+    isOpen: false,
+    type: 'rewrite',
+    request: null,
+  });
+
+  // Global F1 Shortcut for in-app documentation & startup file check
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F1') {
         e.preventDefault();
@@ -65,16 +81,38 @@ export const DesktopHome: React.FC = () => {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
+
+    // Startup File Check (.har or .json passed via CLI / double click)
+    if ((window as any).go?.main?.App?.GetStartupFile) {
+      (window as any).go.main.App.GetStartupFile().then((filePath: string) => {
+        if (filePath) {
+          toast.info('Loading Startup File', filePath);
+        }
+      }).catch(() => {});
+    }
+
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Request Editor State
-  const [editorRequest, setEditorRequest] = useState<HttpRequest | undefined>(undefined);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  // Request Composer / Editor State
+  const [composerRequest, setComposerRequest] = useState<HttpRequest | null>(null);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
 
   const handleEditAndResend = (req: HttpRequest) => {
-    setEditorRequest(req);
-    setIsEditorOpen(true);
+    setComposerRequest(req);
+    setIsComposerOpen(true);
+  };
+
+  const handleOpenQuickRule = (
+    type: 'rewrite' | 'mock' | 'breakpoint' | 'script',
+    req: HttpRequest,
+    prefill?: any
+  ) => {
+    setQuickRuleState({
+      isOpen: true,
+      type,
+      request: req,
+    });
   };
 
   const renderLeftNavigationView = () => {
@@ -109,10 +147,14 @@ export const DesktopHome: React.FC = () => {
           />
         );
       case 'toolbox':
-        return <Toolbox onOpenRequestEditor={() => {
-          setEditorRequest(undefined);
-          setIsEditorOpen(true);
-        }} />;
+        return (
+          <Toolbox
+            onOpenRequestEditor={() => {
+              setComposerRequest(null);
+              setIsComposerOpen(true);
+            }}
+          />
+        );
       default:
         return null;
     }
@@ -161,6 +203,7 @@ export const DesktopHome: React.FC = () => {
                 onOpenRewriteRule={() => setIsRewriteOpen(true)}
                 onOpenMapLocal={() => setIsMapOpen(true)}
                 onOpenBreakpoint={() => setIsBreakpointOpen(true)}
+                onOpenQuickRule={handleOpenQuickRule}
               />
             }
           />
@@ -175,11 +218,29 @@ export const DesktopHome: React.FC = () => {
       {isFilterOpen && <FilterDialog onClose={() => setIsFilterOpen(false)} />}
       {isHostsOpen && <HostsDialog onClose={() => setIsHostsOpen(false)} />}
       {isBlockOpen && <RequestBlockDialog onClose={() => setIsBlockOpen(false)} />}
-      {isRewriteOpen && <RequestRewriteDialog onClose={() => setIsRewriteOpen(false)} />}
+      {isRewriteOpen && (
+        <RequestRewriteDialog
+          onClose={() => setIsRewriteOpen(false)}
+          initialRequest={selectedRequest}
+        />
+      )}
       {isMapOpen && <RequestMapDialog onClose={() => setIsMapOpen(false)} />}
       {isCryptoOpen && <RequestCryptoDialog onClose={() => setIsCryptoOpen(false)} />}
       {isScriptOpen && <ScriptDialog onClose={() => setIsScriptOpen(false)} />}
-      {isBreakpointOpen && <BreakpointDialog onClose={() => setIsBreakpointOpen(false)} />}
+      {isBreakpointOpen && (
+        <BreakpointDialog
+          onClose={() => setIsBreakpointOpen(false)}
+          initialRequest={selectedRequest}
+        />
+      )}
+      {quickRuleState.isOpen && (
+        <QuickRuleDialog
+          isOpen={quickRuleState.isOpen}
+          onClose={() => setQuickRuleState({ ...quickRuleState, isOpen: false })}
+          type={quickRuleState.type}
+          request={quickRuleState.request}
+        />
+      )}
       {isWeakNetworkOpen && <WeakNetworkDialog onClose={() => setIsWeakNetworkOpen(false)} />}
       {isExternalProxyOpen && <ExternalProxyDialog onClose={() => setIsExternalProxyOpen(false)} />}
       {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
@@ -200,10 +261,20 @@ export const DesktopHome: React.FC = () => {
         />
       )}
       {isEnvModalOpen && <EnvironmentModal isOpen onClose={() => setIsEnvModalOpen(false)} />}
-      {isEditorOpen && (
-        <RequestEditor
-          request={editorRequest}
-          onClose={() => setIsEditorOpen(false)}
+      {isComposerOpen && (
+        <RequestComposerModal
+          isOpen={isComposerOpen}
+          initialRequest={composerRequest}
+          onClose={() => setIsComposerOpen(false)}
+        />
+      )}
+      {isExportOpen && (
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          allRequests={requests}
+          selectedRequests={selectedRequest ? [selectedRequest] : []}
+          activeDomain={selectedRequest?.hostPort?.host}
         />
       )}
       <ConfirmModal />

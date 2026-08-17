@@ -26,6 +26,8 @@ export function DetectJavaInstallations():Promise<Array<cert.JavaInstallation>>;
 
 export function ExportHAR(arg1:Array<proxy.HttpRequest>):Promise<string>;
 
+export function ExportRequestsAs(arg1:Array<proxy.HttpRequest>,arg2:string):Promise<string>;
+
 export function ExportRootCA():Promise<string>;
 
 export function GetAllRules():Promise<Record<string, any>>;
@@ -64,6 +66,8 @@ export function GetScriptRules():Promise<Array<interceptor.ScriptRule>>;
 
 export function GetSessionRequests(arg1:string):Promise<Array<proxy.HttpRequest>>;
 
+export function GetStartupFile():Promise<string>;
+
 export function GetStatus():Promise<Record<string, any>>;
 
 export function GetThrottleConfig():Promise<interceptor.ThrottleConfig>;
@@ -80,6 +84,8 @@ export function InstallRootCA():Promise<void>;
 
 export function IsCAInstalled():Promise<boolean>;
 
+export function IsHARAssociated():Promise<boolean>;
+
 export function ListADBDevices():Promise<Array<cert.ADBDeviceInfo>>;
 
 export function ListSessions():Promise<Array<storage.Session>>;
@@ -87,6 +93,8 @@ export function ListSessions():Promise<Array<storage.Session>>;
 export function LogFromUI(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function OpenLogFolder():Promise<void>;
+
+export function RegisterHARAssociation():Promise<void>;
 
 export function RepeatRequest(arg1:proxy.HttpRequest,arg2:number,arg3:number):Promise<Array<proxy.HttpResponse>>;
 
@@ -153,5 +161,7 @@ export function ToolboxRunJS(arg1:string,arg2:string):Promise<Record<string, any
 export function UninstallCertFromJava(arg1:string):Promise<void>;
 
 export function UninstallRootCA():Promise<void>;
+
+export function UnregisterHARAssociation():Promise<void>;
 
 export function WriteLog(arg1:string,arg2:string,arg3:string):Promise<void>;

@@ -42,6 +42,10 @@ export function ExportHAR(arg1) {
   return window['go']['main']['App']['ExportHAR'](arg1);
 }
 
+export function ExportRequestsAs(arg1, arg2) {
+  return window['go']['main']['App']['ExportRequestsAs'](arg1, arg2);
+}
+
 export function ExportRootCA() {
   return window['go']['main']['App']['ExportRootCA']();
 }
@@ -118,6 +122,10 @@ export function GetSessionRequests(arg1) {
   return window['go']['main']['App']['GetSessionRequests'](arg1);
 }
 
+export function GetStartupFile() {
+  return window['go']['main']['App']['GetStartupFile']();
+}
+
 export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
@@ -150,6 +158,10 @@ export function IsCAInstalled() {
   return window['go']['main']['App']['IsCAInstalled']();
 }
 
+export function IsHARAssociated() {
+  return window['go']['main']['App']['IsHARAssociated']();
+}
+
 export function ListADBDevices() {
   return window['go']['main']['App']['ListADBDevices']();
 }
@@ -164,6 +176,10 @@ export function LogFromUI(arg1, arg2, arg3, arg4) {
 
 export function OpenLogFolder() {
   return window['go']['main']['App']['OpenLogFolder']();
+}
+
+export function RegisterHARAssociation() {
+  return window['go']['main']['App']['RegisterHARAssociation']();
 }
 
 export function RepeatRequest(arg1, arg2, arg3) {
@@ -296,6 +312,10 @@ export function UninstallCertFromJava(arg1) {
 
 export function UninstallRootCA() {
   return window['go']['main']['App']['UninstallRootCA']();
+}
+
+export function UnregisterHARAssociation() {
+  return window['go']['main']['App']['UnregisterHARAssociation']();
 }
 
 export function WriteLog(arg1, arg2, arg3) {

@@ -129,6 +129,10 @@ func (b *appMobileBridge) AbortBreakpoint(requestID string, isResponse bool) err
 	return b.app.AbortBreakpoint(requestID, isResponse)
 }
 
+func (b *appMobileBridge) SendCustomRequest(reqJSON string) (any, error) {
+	return b.app.SendCustomRequest(reqJSON)
+}
+
 func (a *App) attachMobileBridge() {
 	if a.server != nil {
 		a.server.SetMobileAPIBridge(&appMobileBridge{app: a})

@@ -18,5 +18,6 @@ type MobileAPIBridge interface {
 	GetReportConfigs() (any, error)
 	SetReportConfigs(payload []byte) error
 	RepeatRequest(requestID string) (any, error)
+	SendCustomRequest(reqJSON string) (any, error)
 }
 

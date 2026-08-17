@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   Copy,
   Code2,
@@ -6,21 +6,46 @@ import {
   WrapText,
   Image as ImageIcon,
   Download,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Eye,
+  FileCode,
+  Music,
+  Video,
+  FileText,
+  Binary,
+  Maximize2
 } from 'lucide-react';
+import Editor from '@monaco-editor/react';
 import { toast } from '../../store/useToastStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useThemeStore } from '../../store/useThemeStore';
 
-export type BodyFormat = 'auto' | 'json' | 'xml' | 'form' | 'text' | 'hex' | 'preview';
+export type BodyFormat =
+  | 'auto'
+  | 'json'
+  | 'graphql'
+  | 'xml'
+  | 'html'
+  | 'javascript'
+  | 'css'
+  | 'yaml'
+  | 'form'
+  | 'text'
+  | 'hex'
+  | 'preview';
 
 interface HttpBodyViewerProps {
   title: string;
   body?: string;
   contentType?: string;
   bodySize?: number;
+  bodyBase64?: string;
 }
 
-const toHexDump = (text: string): string => {
-  const bytes = new TextEncoder().encode(text);
+const toHexDump = (raw: string): string => {
+  const bytes = new TextEncoder().encode(raw);
   const lines: string[] = [];
   for (let i = 0; i < bytes.length; i += 16) {
     const chunk = bytes.slice(i, i + 16);
@@ -42,33 +67,74 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
   body = '',
   contentType = '',
   bodySize = 0,
+  bodyBase64,
 }) => {
   const { t } = useTranslation();
+  const { monacoTheme } = useThemeStore();
   const [format, setFormat] = useState<BodyFormat>('auto');
   const [isWrap, setIsWrap] = useState(true);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imageDimensions, setImageDimensions] = useState<{ w: number; h: number } | null>(null);
 
   const ct = (Array.isArray(contentType) ? contentType.join(', ') : String(contentType || '')).toLowerCase();
-  const isImage = ct.startsWith('image/');
+  
+  // Media classifications
+  const isImage = ct.startsWith('image/') || ct.includes('svg');
+  const isVideo = ct.startsWith('video/');
   const isAudio = ct.startsWith('audio/');
+  const isPdf = ct.includes('pdf');
+  const isHtml = ct.includes('html');
+  const isXml = ct.includes('xml');
+  const isCss = ct.includes('css');
+  const isJs = ct.includes('javascript') || ct.includes('typescript') || ct.includes('ecmascript');
+  const isYaml = ct.includes('yaml') || ct.includes('yml');
+  const isForm = ct.includes('x-www-form-urlencoded') || ct.includes('form-data');
+  const isGraphql = ct.includes('graphql') || (typeof body === 'string' && (body.trimStart().startsWith('query') || body.trimStart().startsWith('mutation')));
   const isJson =
     ct.includes('json') ||
     (String(body || '').trimStart().startsWith('{') && String(body || '').trimEnd().endsWith('}')) ||
     (String(body || '').trimStart().startsWith('[') && String(body || '').trimEnd().endsWith(']'));
-  const isXml = ct.includes('xml') || ct.includes('html');
-  const isForm = ct.includes('x-www-form-urlencoded');
 
+  // Detect appropriate media source URL (Base64 data URL fallback)
+  const mediaDataUrl = useMemo(() => {
+    if (!isImage && !isVideo && !isAudio && !isPdf) return '';
+    if (bodyBase64) {
+      return `data:${contentType || 'application/octet-stream'};base64,${bodyBase64}`;
+    }
+    if (body && (isImage || isPdf)) {
+      // If body is already base64 or raw
+      if (body.startsWith('data:') || body.length > 50) {
+        return body.startsWith('data:') ? body : `data:${contentType || 'image/png'};base64,${body}`;
+      }
+    }
+    return '';
+  }, [isImage, isVideo, isAudio, isPdf, bodyBase64, body, contentType]);
+
+  // Determine effective syntax language for Monaco editor
+  const detectedLanguage = useMemo(() => {
+    if (format !== 'auto') {
+      if (format === 'hex' || format === 'preview') return 'plaintext';
+      return format;
+    }
+    if (isJson) return 'json';
+    if (isGraphql) return 'graphql';
+    if (isXml) return 'xml';
+    if (isHtml) return 'html';
+    if (isCss) return 'css';
+    if (isJs) return 'javascript';
+    if (isYaml) return 'yaml';
+    return 'plaintext';
+  }, [format, isJson, isGraphql, isXml, isHtml, isCss, isJs, isYaml]);
+
+  // Formatted content for display / copy
   const formattedContent = useMemo(() => {
     if (!body) return '';
 
-    const effectiveFormat = format === 'auto'
-      ? (isJson ? 'json' : isXml ? 'xml' : isForm ? 'form' : 'text')
-      : format;
-
-    if (effectiveFormat === 'hex') {
+    if (format === 'hex') {
       return toHexDump(body);
     }
 
-    if (effectiveFormat === 'json') {
+    if (detectedLanguage === 'json') {
       try {
         return JSON.stringify(JSON.parse(body), null, 2);
       } catch (_) {
@@ -76,19 +142,19 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
       }
     }
 
-    if (effectiveFormat === 'form') {
+    if (detectedLanguage === 'form' || (format === 'auto' && isForm)) {
       try {
         const params = new URLSearchParams(body);
         const entries: string[] = [];
-        params.forEach((v, k) => entries.push(`${k} = ${decodeURIComponent(v)}`))
-        return entries.join('\n');
+        params.forEach((v, k) => entries.push(`${k} = ${decodeURIComponent(v)}`));
+        return entries.length > 0 ? entries.join('\n') : body;
       } catch (_) {
         return body;
       }
     }
 
     return body;
-  }, [body, format, isJson, isXml, isForm]);
+  }, [body, format, detectedLanguage, isForm]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(formattedContent);
@@ -101,56 +167,91 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
       toast.success(t.success, 'JSON formatted');
     } else if (isXml) {
       setFormat('xml');
+      toast.success(t.success, 'XML formatted');
     } else {
-      toast.info('Auto-detection: body is not JSON or XML');
+      toast.info('Auto-detection active');
     }
   }, [isJson, isXml, t]);
 
   const handleDownload = useCallback(() => {
-    const blob = new Blob([formattedContent], { type: contentType || 'text/plain' });
+    let blob: Blob;
+    let filename = `${title.toLowerCase().replace(/\s+/g, '_')}_body`;
+
+    if (isImage && bodyBase64) {
+      const byteChars = atob(bodyBase64);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteNums[i] = byteChars.charCodeAt(i);
+      }
+      const ext = ct.split('/')[1]?.split(';')[0] || 'png';
+      blob = new Blob([new Uint8Array(byteNums)], { type: contentType || 'image/png' });
+      filename += `.${ext}`;
+    } else {
+      const ext = isJson ? '.json' : isXml ? '.xml' : isHtml ? '.html' : isPdf ? '.pdf' : '.txt';
+      blob = new Blob([formattedContent], { type: contentType || 'text/plain' });
+      filename += ext;
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${title.toLowerCase().replace(/\\s+/g, '_')}_body`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-  }, [formattedContent, contentType, title]);
+    toast.success('Download started', filename);
+  }, [formattedContent, contentType, title, isImage, bodyBase64, ct, isJson, isXml, isHtml, isPdf]);
 
-  if (!body && !isImage) {
+  if (!body && !isImage && !isVideo && !isAudio && !isPdf && !bodyBase64) {
     return (
       <div
-        className="rounded-xl border p-6 text-center text-gray-400 text-xs italic"
+        className="rounded-2xl border p-6 text-center text-gray-400 text-xs italic bg-white dark:bg-gray-900"
         style={{ borderColor: 'var(--md-sys-color-divider)' }}
       >
-        No body content
+        No body payload
       </div>
     );
   }
 
-  // Auto-preview images
-  const effectiveFormat = (isImage && format === 'auto') ? 'preview' : format;
+  // Auto-switch to preview for rich media
+  const isMedia = isImage || isVideo || isAudio || isPdf;
+  const isPreviewMode = format === 'preview' || (format === 'auto' && isMedia);
 
   return (
     <div
-      className="rounded-xl border overflow-hidden shadow-2xs text-xs flex flex-col"
+      className="rounded-2xl border overflow-hidden shadow-xs text-xs flex flex-col bg-white dark:bg-gray-900 transition-all"
       style={{
-        backgroundColor: 'var(--md-dialog-bg)',
         borderColor: 'var(--md-sys-color-divider)',
       }}
     >
       {/* Top Controls Bar */}
       <div
-        className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800/40 border-b select-none"
+        className="flex items-center justify-between px-3.5 py-2 bg-gray-50/80 dark:bg-gray-800/40 border-b select-none shrink-0"
         style={{ borderColor: 'var(--md-sys-color-divider)' }}
       >
         <div className="flex items-center gap-2">
-          <span className="font-bold text-gray-700 dark:text-gray-300">{title} Body</span>
+          <span className="font-bold text-gray-800 dark:text-gray-200">{title} Payload</span>
           <span className="text-[10px] text-gray-400 font-mono">
             ({bodySize || body.length} bytes)
           </span>
+
           {isImage && (
-            <span className="text-[10px] text-blue-500 flex items-center gap-0.5">
-              <ImageIcon className="w-3 h-3" /> Image
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center gap-1">
+              <ImageIcon className="w-3 h-3" /> Image {imageDimensions && `(${imageDimensions.w}×${imageDimensions.h})`}
+            </span>
+          )}
+          {isVideo && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+              <Video className="w-3 h-3" /> Video Stream
+            </span>
+          )}
+          {isAudio && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+              <Music className="w-3 h-3" /> Audio Track
+            </span>
+          )}
+          {isPdf && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 flex items-center gap-1">
+              <FileText className="w-3 h-3" /> PDF Document
             </span>
           )}
         </div>
@@ -159,31 +260,66 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
           <select
             value={format}
             onChange={(e) => setFormat(e.target.value as BodyFormat)}
-            className="px-2 py-0.5 rounded-md border text-[11px] font-medium bg-transparent focus:outline-none cursor-pointer"
+            className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
             style={{ borderColor: 'var(--md-sys-color-divider)' }}
           >
-            <option value="auto">Auto</option>
+            <option value="auto">Auto ({detectedLanguage})</option>
             <option value="json">JSON</option>
-            <option value="text">Text</option>
-            <option value="form">Form URL</option>
-            <option value="xml">XML / HTML</option>
-            <option value="hex">Hex Dump</option>
-            {isImage && <option value="preview">Preview</option>}
+            <option value="graphql">GraphQL</option>
+            <option value="xml">XML</option>
+            <option value="html">HTML</option>
+            <option value="javascript">JavaScript</option>
+            <option value="css">CSS</option>
+            <option value="yaml">YAML</option>
+            <option value="form">Form URL-Encoded</option>
+            <option value="text">Raw Text</option>
+            <option value="hex">Hex Matrix</option>
+            {isMedia && <option value="preview">Visual Preview</option>}
           </select>
+
+          {isImage && isPreviewMode && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => setImageZoom((z) => Math.max(z - 0.25, 0.25))}
+                className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[10px] font-mono font-bold px-1">{Math.round(imageZoom * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => setImageZoom((z) => Math.min(z + 0.25, 4))}
+                className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageZoom(1)}
+                className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white cursor-pointer"
+                title="Reset Zoom"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            </div>
+          )}
 
           <button
             type="button"
             onClick={handleBeautify}
-            className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-white"
+            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-white"
             title="Auto-format / Beautify"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
           </button>
 
           <button
             type="button"
             onClick={() => setIsWrap(!isWrap)}
-            className={`p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer ${
+            className={`p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer ${
               isWrap ? 'text-blue-500' : 'text-gray-400'
             }`}
             title="Toggle Word Wrap"
@@ -194,7 +330,7 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
           <button
             type="button"
             onClick={handleCopy}
-            className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-white"
+            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-white"
             title="Copy Body"
           >
             <Copy className="w-3.5 h-3.5" />
@@ -203,38 +339,88 @@ export const HttpBodyViewer: React.FC<HttpBodyViewerProps> = ({
           <button
             type="button"
             onClick={handleDownload}
-            className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-white"
-            title="Download Body"
+            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-white"
+            title="Download Media / Body"
           >
             <Download className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Body Renderer */}
+      {/* Body / Media Renderer */}
       <div className="p-3">
-        {effectiveFormat === 'preview' && isImage ? (
-          <div className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-lg">
+        {isPreviewMode && isImage ? (
+          /* Image Preview with Zoom & Transparency Checkerboard */
+          <div className="flex flex-col items-center justify-center p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] overflow-auto max-h-[420px]">
             <img
-              src={`data:${contentType};base64,${body}`}
-              alt="Response Preview"
-              className="max-h-64 max-w-full object-contain rounded-md shadow-xs"
+              src={mediaDataUrl || `data:${contentType};base64,${body}`}
+              alt="Preview"
+              style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center' }}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                setImageDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+              }}
+              className="max-h-80 max-w-full object-contain rounded-lg shadow-md transition-transform duration-100"
             />
-            <span className="mt-2 text-[10px] text-gray-400">{contentType}</span>
+          </div>
+        ) : isPreviewMode && isVideo ? (
+          /* Video Player */
+          <div className="flex flex-col items-center justify-center p-4 bg-black rounded-xl overflow-hidden">
+            <video
+              controls
+              src={mediaDataUrl}
+              className="max-h-80 max-w-full rounded-lg"
+            >
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        ) : isPreviewMode && isAudio ? (
+          /* Audio Player */
+          <div className="p-6 bg-gray-50 dark:bg-gray-800/60 rounded-xl flex flex-col items-center gap-3">
+            <Music className="w-10 h-10 text-emerald-500" />
+            <audio controls src={mediaDataUrl} className="w-full max-w-md">
+              Your browser does not support the audio tag.
+            </audio>
+          </div>
+        ) : isPreviewMode && isPdf ? (
+          /* PDF Viewer */
+          <div className="h-96 rounded-xl border overflow-hidden">
+            <iframe src={mediaDataUrl} title="PDF Preview" className="w-full h-full" />
+          </div>
+        ) : format === 'hex' ? (
+          /* Hex Dump Matrix */
+          <pre className="font-mono text-[11px] bg-slate-900 text-emerald-400 p-3.5 rounded-xl overflow-x-auto max-h-96 leading-relaxed select-all">
+            {formattedContent}
+          </pre>
+        ) : format === 'html' && isHtml ? (
+          /* Sandboxed HTML Render Frame */
+          <div className="h-96 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white">
+            <iframe
+              sandbox="allow-same-origin"
+              srcDoc={body}
+              title="HTML Render Preview"
+              className="w-full h-full"
+            />
           </div>
         ) : (
-          <textarea
-            readOnly
-            value={formattedContent}
-            rows={Math.min(Math.max(String(formattedContent || '').split('\n').length + 1, 6), 28)}
-            wrap={isWrap ? 'soft' : 'off'}
-            className="w-full p-2.5 rounded-lg border font-mono text-[11px] bg-transparent focus:outline-none resize-y select-text leading-relaxed"
-            style={{
-              borderColor: 'var(--md-sys-color-divider)',
-              color: 'var(--md-sys-color-on-surface)',
-              fontFamily: format === 'hex' ? 'monospace' : undefined,
-            }}
-          />
+          /* Monaco Editor with Syntax Highlighting */
+          <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-2xs h-72">
+            <Editor
+              height="100%"
+              theme={monacoTheme}
+              language={detectedLanguage}
+              value={formattedContent}
+              options={{
+                readOnly: true,
+                fontSize: 11,
+                fontFamily: 'JetBrains Mono, monospace',
+                minimap: { enabled: false },
+                wordWrap: isWrap ? 'on' : 'off',
+                scrollBeyondLastLine: false,
+                lineNumbers: 'on',
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

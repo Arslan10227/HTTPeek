@@ -459,6 +459,20 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		}
 		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"har": har})
 
+	case (path == "/composer" || path == "/api/composer" || path == "/composer/send" || path == "/api/composer/send") && req.Method == http.MethodPost:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		bodyBytes, _ := io.ReadAll(req.Body)
+		resp, err := bridge.SendCustomRequest(string(bodyBytes))
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, resp)
+
 	case path == "/favorites" && req.Method == http.MethodGet:
 		bridge := m.server.MobileAPIBridge()
 		if bridge == nil {

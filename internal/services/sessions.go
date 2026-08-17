@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"httpeek/pkg/proxy"
@@ -32,17 +33,34 @@ func (s *SessionService) ExportHAR(requests []*proxy.HttpRequest) (string, error
 	return string(data), nil
 }
 
-// ImportHAR parses HAR JSON and creates a new session.
+// ExportRequestsAs serializes requests in the desired format (har, json, csv, curl).
+func (s *SessionService) ExportRequestsAs(requests []*proxy.HttpRequest, format string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json":
+		return storage.ExportToJSON(requests)
+	case "csv":
+		return storage.ExportToCSV(requests), nil
+	case "curl", "sh", "bash":
+		return storage.ExportToCurlScript(requests), nil
+	case "har":
+		fallthrough
+	default:
+		return s.ExportHAR(requests)
+	}
+}
+
+// ImportHAR parses HAR / JSON data and creates a new recorded session.
 func (s *SessionService) ImportHAR(harJSON, sessionName string) (*storage.Session, error) {
 	if s.repo == nil {
 		return nil, fmt.Errorf("storage not initialized")
 	}
 	if sessionName == "" {
-		sessionName = fmt.Sprintf("Imported HAR %s", time.Now().Format("15:04:05"))
+		sessionName = fmt.Sprintf("Imported Session %s", time.Now().Format("15:04:05"))
 	}
-	var har storage.HAR
-	if err := json.Unmarshal([]byte(harJSON), &har); err != nil {
-		return nil, fmt.Errorf("invalid HAR JSON: %w", err)
+
+	requests, err := storage.ImportHARBytes([]byte(harJSON))
+	if err != nil {
+		return nil, fmt.Errorf("import failed: %w", err)
 	}
 
 	sess, err := s.repo.CreateSession(sessionName)
@@ -50,8 +68,7 @@ func (s *SessionService) ImportHAR(harJSON, sessionName string) (*storage.Sessio
 		return nil, err
 	}
 
-	for _, entry := range har.Log.Entries {
-		req := storage.HAREntryToRequest(entry)
+	for _, req := range requests {
 		_ = s.repo.SaveRequest(sess.ID, req)
 		if req.Response != nil {
 			_ = s.repo.SaveResponse(req.Response)

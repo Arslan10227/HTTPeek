@@ -5,22 +5,30 @@ import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
-import { BreakpointRule } from '../../types';
+import { HttpRequest, BreakpointRule } from '../../types';
 import { HttpMethodPicker } from '../common/HttpMethodPicker';
 
 interface BreakpointDialogProps {
   onClose: () => void;
+  initialRequest?: HttpRequest | null;
 }
 
-export const BreakpointDialog: React.FC<BreakpointDialogProps> = ({ onClose }) => {
+export const BreakpointDialog: React.FC<BreakpointDialogProps> = ({ onClose, initialRequest }) => {
   const { t, language } = useTranslation();
   const { breakpointRules, setBreakpointRules } = useProxyStore();
   const { getActiveColorPreset } = useAppConfig();
   const activeColor = getActiveColorPreset();
 
   const [rules, setRules] = useState<BreakpointRule[]>(breakpointRules || []);
-  const [urlPattern, setUrlPattern] = useState('');
-  const [method, setMethod] = useState('');
+  const [urlPattern, setUrlPattern] = useState(() => {
+    if (initialRequest) {
+      const domain = initialRequest.hostPort?.host || '';
+      const path = initialRequest.path || '/*';
+      return domain ? `*://${domain}${path}` : initialRequest.url || '';
+    }
+    return '';
+  });
+  const [method, setMethod] = useState(() => initialRequest?.method || '');
   const [breakType, setBreakType] = useState<'both' | 'request' | 'response'>('both');
 
   const isZh = language.startsWith('zh');

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	goRuntime "runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"httpeek/pkg/cert"
 	"httpeek/pkg/interceptor"
 	"httpeek/pkg/logger"
+	"httpeek/pkg/platform"
 	"httpeek/pkg/proxy"
 	"httpeek/pkg/storage"
 	"httpeek/pkg/system"
@@ -186,23 +188,74 @@ func (a *App) shutdown(ctx context.Context) {
 
 // SendCustomRequest sends a custom HTTP request (Request Composer / Postman-style).
 func (a *App) SendCustomRequest(reqJSON string) (*proxy.HttpResponse, error) {
-	var payload struct {
-		Method  string              `json:"method"`
-		URL     string              `json:"url"`
-		Headers map[string][]string `json:"headers"`
-		Body    string              `json:"body"`
+	if strings.TrimSpace(reqJSON) == "" {
+		return nil, fmt.Errorf("empty request payload")
 	}
-	if err := json.Unmarshal([]byte(reqJSON), &payload); err != nil {
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(reqJSON), &raw); err != nil {
 		return nil, fmt.Errorf("invalid request json: %w", err)
+	}
+
+	method := "GET"
+	if m, ok := raw["method"].(string); ok && strings.TrimSpace(m) != "" {
+		method = strings.ToUpper(strings.TrimSpace(m))
+	}
+
+	rawURL := ""
+	if u, ok := raw["url"].(string); ok {
+		rawURL = strings.TrimSpace(u)
+	}
+	if rawURL == "" {
+		return nil, fmt.Errorf("request URL is required")
+	}
+	if !strings.HasPrefix(strings.ToLower(rawURL), "http://") && !strings.HasPrefix(strings.ToLower(rawURL), "https://") {
+		rawURL = "http://" + rawURL
+	}
+
+	headers := make(http.Header)
+	if hRaw, ok := raw["headers"]; ok && hRaw != nil {
+		switch hVal := hRaw.(type) {
+		case map[string]any:
+			for k, v := range hVal {
+				switch val := v.(type) {
+				case []any:
+					for _, item := range val {
+						headers.Add(k, fmt.Sprintf("%v", item))
+					}
+				case []string:
+					for _, item := range val {
+						headers.Add(k, item)
+					}
+				default:
+					headers.Set(k, fmt.Sprintf("%v", val))
+				}
+			}
+		case map[string][]string:
+			for k, vList := range hVal {
+				for _, v := range vList {
+					headers.Add(k, v)
+				}
+			}
+		}
+	}
+
+	bodyStr := ""
+	if b, ok := raw["body"].(string); ok {
+		bodyStr = b
+	} else if bObj, ok := raw["body"]; ok && bObj != nil {
+		if bBytes, err := json.Marshal(bObj); err == nil {
+			bodyStr = string(bBytes)
+		}
 	}
 
 	req := proxy.HttpRequest{
 		ID:         uuid.NewString(),
-		Method:     proxy.HttpMethod(payload.Method),
-		URL:        payload.URL,
-		Headers:    payload.Headers,
-		BodyString: payload.Body,
-		Body:       []byte(payload.Body),
+		Method:     proxy.HttpMethod(method),
+		URL:        rawURL,
+		Headers:    headers,
+		BodyString: bodyStr,
+		Body:       []byte(bodyStr),
 		StartTime:  time.Now(),
 	}
 	return a.ReplayRequest(req)
@@ -374,3 +427,32 @@ func (a *App) UninstallCertFromJava(javaPath string) error {
 	}
 	return a.javaMgr.UninstallCert(*inst)
 }
+
+// RegisterHARAssociation associates .har files with HTTPeek on the OS.
+func (a *App) RegisterHARAssociation() error {
+	return platform.RegisterHARAssociation()
+}
+
+// UnregisterHARAssociation removes the .har file association from the OS.
+func (a *App) UnregisterHARAssociation() error {
+	return platform.UnregisterHARAssociation()
+}
+
+// IsHARAssociated checks whether .har files are currently associated with HTTPeek.
+func (a *App) IsHARAssociated() bool {
+	return platform.IsHARAssociated()
+}
+
+// GetStartupFile returns any .har or JSON session file passed in CLI arguments on launch.
+func (a *App) GetStartupFile() string {
+	if len(os.Args) > 1 {
+		arg := os.Args[1]
+		if strings.HasSuffix(strings.ToLower(arg), ".har") || strings.HasSuffix(strings.ToLower(arg), ".json") {
+			if _, err := os.Stat(arg); err == nil {
+				return arg
+			}
+		}
+	}
+	return ""
+}
+
