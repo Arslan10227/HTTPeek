@@ -20,13 +20,14 @@ import com.httpeek.app.core.vpn.AppFilterMode
 import com.httpeek.app.model.HttpRequestModel
 import com.httpeek.app.model.HttpResponseModel
 import com.httpeek.app.security.DynamicCertAuthority
+import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Android VpnService for HTTPeek.
- * Intercepts network packets, routes through embedded MITM engine or forwarder,
- * and streams to UI and Desktop Companion Bridge.
+ * Sets direct local HTTP proxy routing, protects upstream outgoing sockets,
+ * intercepts and decrypts HTTPS traffic, and streams to UI and Desktop Companion Bridge.
  */
 class HttpeekVpnService : VpnService() {
 
@@ -49,6 +50,12 @@ class HttpeekVpnService : VpnService() {
         const val EXTRA_DESKTOP_PORT = "extra_desktop_port"
 
         var isVpnActive = false
+        private var currentInstance: HttpeekVpnService? = null
+
+        // Protects outgoing socket from VPN recursion
+        fun protectSocket(socket: Socket): Boolean {
+            return currentInstance?.protect(socket) ?: false
+        }
 
         // Listeners for UI updates
         var onRequestCaptured: ((HttpRequestModel) -> Unit)? = null
@@ -89,6 +96,7 @@ class HttpeekVpnService : VpnService() {
     private fun startVpnCapture(desktopHost: String?, desktopPort: Int) {
         if (isRunning.get()) return
 
+        currentInstance = this
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("HTTPeek Active • 0 requests"))
 
@@ -128,10 +136,7 @@ class HttpeekVpnService : VpnService() {
             val builder = Builder()
                 .setSession("HTTPeek Interceptor")
                 .setMtu(1500)
-                .addAddress("10.0.0.2", 24)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("8.8.8.8")
-                .addDnsServer("1.1.1.1")
+                .addAddress("10.0.0.2", 32)
                 .addDisallowedApplication(packageName) // Prevent proxy recursion
 
             // Apply Per-App Filter
@@ -154,7 +159,7 @@ class HttpeekVpnService : VpnService() {
                 Log.i(TAG, "Applied per-app blacklist: ${selectedApps.size} apps")
             }
 
-            // Set HTTP Proxy on VPN for direct local MITM routing (Android 10+)
+            // Direct local HTTP/HTTPS proxy routing (Android 10+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 9099))
             }
@@ -180,6 +185,7 @@ class HttpeekVpnService : VpnService() {
     private fun stopVpnCapture() {
         isRunning.set(false)
         isVpnActive = false
+        currentInstance = null
         onVpnStateChanged?.invoke(false)
 
         mitmServer?.stop()

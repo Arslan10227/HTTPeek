@@ -2,6 +2,7 @@ package com.httpeek.app.core.proxy
 
 import android.content.Context
 import android.util.Log
+import com.httpeek.app.HttpeekVpnService
 import com.httpeek.app.core.rules.RulesEngine
 import com.httpeek.app.model.HostPortModel
 import com.httpeek.app.model.HttpRequestModel
@@ -12,18 +13,59 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.*
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.SocketFactory
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 /**
+ * SocketFactory that ensures all outgoing sockets are protected by Android VpnService,
+ * bypassing VPN capture and routing directly to the real physical internet.
+ */
+class VpnProtectSocketFactory(
+    private val defaultFactory: SocketFactory = SocketFactory.getDefault()
+) : SocketFactory() {
+    override fun createSocket(): Socket {
+        val s = defaultFactory.createSocket()
+        HttpeekVpnService.protectSocket(s)
+        return s
+    }
+
+    override fun createSocket(host: String, port: Int): Socket {
+        val s = defaultFactory.createSocket(host, port)
+        HttpeekVpnService.protectSocket(s)
+        return s
+    }
+
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
+        val s = defaultFactory.createSocket(host, port, localHost, localPort)
+        HttpeekVpnService.protectSocket(s)
+        return s
+    }
+
+    override fun createSocket(host: InetAddress, port: Int): Socket {
+        val s = defaultFactory.createSocket(host, port)
+        HttpeekVpnService.protectSocket(s)
+        return s
+    }
+
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket {
+        val s = defaultFactory.createSocket(address, port, localAddress, localPort)
+        HttpeekVpnService.protectSocket(s)
+        return s
+    }
+}
+
+/**
  * Embedded High-Throughput MITM Proxy Engine for HTTPeek Android.
- * Handles HTTP/1.1 & HTTPS SSL/TLS decryption on-device.
+ * Handles HTTP/1.1 & HTTPS SSL/TLS decryption on-device with protected upstream routing.
  */
 class MitmProxyServer(
     private val context: Context,
@@ -40,7 +82,9 @@ class MitmProxyServer(
     private var serverSocket: ServerSocket? = null
     private val isRunning = AtomicBoolean(false)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private val okHttpClient = OkHttpClient.Builder()
+        .socketFactory(VpnProtectSocketFactory())
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -56,7 +100,7 @@ class MitmProxyServer(
             Log.i(TAG, "HTTPeek MITM Proxy Server started on port $port")
 
             scope.launch {
-                while (isRunning.get() && !serverSocket!!.isClosed) {
+                while (isRunning.get() && serverSocket?.isClosed == false) {
                     try {
                         val clientSocket = serverSocket!!.accept()
                         scope.launch { handleClientConnection(clientSocket) }
@@ -176,7 +220,9 @@ class MitmProxyServer(
                 reader = tlsReader
             )
         } catch (e: Exception) {
-            Log.w(TAG, "SSL MITM Handshake failed for $host: ${e.message}")
+            // If TLS handshake fails (client rejects self-signed cert), fallback to raw tunnel
+            Log.w(TAG, "TLS Interception failed for $host, passing through raw tunnel: ${e.message}")
+            forwardRawTunnel(rawSocket, host, port)
         }
     }
 
@@ -221,122 +267,115 @@ class MitmProxyServer(
         input: InputStream,
         output: OutputStream,
         reader: BufferedReader
-    ) = withContext(Dispatchers.IO) {
-        val requestId = "req_${System.currentTimeMillis()}_${(1000..9999).random()}"
-        val startTimeIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }.format(Date())
-
+    ) {
+        val requestId = UUID.randomUUID().toString()
         val headers = mutableMapOf<String, MutableList<String>>()
-        var contentLength = 0
-        var line: String?
+        var contentLength = 0L
+        var contentType: String? = null
 
-        while (reader.readLine().also { line = it } != null) {
-            if (line.isNullOrEmpty()) break
-            val colonIdx = line!!.indexOf(":")
-            if (colonIdx != -1) {
-                val k = line!!.substring(0, colonIdx).trim()
-                val v = line!!.substring(colonIdx + 1).trim()
+        // Parse HTTP Headers
+        var headerLine: String?
+        while (reader.readLine().also { headerLine = it } != null) {
+            if (headerLine.isNullOrEmpty()) break
+            val colonIdx = headerLine!!.indexOf(':')
+            if (colonIdx > 0) {
+                val k = headerLine!!.substring(0, colonIdx).trim()
+                val v = headerLine!!.substring(colonIdx + 1).trim()
                 headers.getOrPut(k) { mutableListOf() }.add(v)
-                if (k.equals("Content-Length", ignoreCase = true)) {
-                    contentLength = v.toIntOrNull() ?: 0
+
+                if (k.equals("content-length", ignoreCase = true)) {
+                    contentLength = v.toLongOrNull() ?: 0L
+                } else if (k.equals("content-type", ignoreCase = true)) {
+                    contentType = v
                 }
             }
         }
 
-        // Read request body if present
-        var bodyString: String? = null
-        if (contentLength > 0) {
-            val bodyChars = CharArray(contentLength)
+        // Read Request Body
+        var bodyBytes: ByteArray? = null
+        if (contentLength > 0 && contentLength < 10 * 1024 * 1024) {
+            val buf = ByteArray(contentLength.toInt())
             var read = 0
             while (read < contentLength) {
-                val r = reader.read(bodyChars, read, contentLength - read)
-                if (r == -1) break
+                val r = input.read(buf, read, (contentLength - read).toInt())
+                if (r < 0) break
                 read += r
             }
-            bodyString = String(bodyChars, 0, read)
+            bodyBytes = buf
         }
+
+        val bodyString = bodyBytes?.let { String(it, Charsets.UTF_8) }
+        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
 
         var reqModel = HttpRequestModel(
             id = requestId,
             method = method,
             url = url,
             path = path,
-            hostPort = HostPortModel(host = host, port = port, ssl = isSsl),
             headers = headers,
             bodyString = bodyString,
-            startTime = startTimeIso
+            startTime = now,
+            hostPort = HostPortModel(host = host, port = port, ssl = isSsl)
         )
 
         // 1. Evaluate Mock Rules
         val mockResp = rulesEngine.evaluateMockRule(reqModel)
         if (mockResp != null) {
+            reqModel.response = mockResp
             onRequest(reqModel)
+            onResponse(mockResp)
             writeResponseToClient(output, mockResp)
-            onResponse(mockResp.copy(id = "resp_$requestId"))
-            return@withContext
+            return
         }
 
-        // 2. Evaluate Rewrite Rules
+        // 2. Evaluate URL Rewrite Rules
         reqModel = rulesEngine.evaluateRewriteRequest(reqModel)
         onRequest(reqModel)
 
-        // 3. Forward to Upstream Server via OkHttp
+        // 3. Forward to Upstream Server via Protected OkHttp Client
         val startTimeMs = System.currentTimeMillis()
         try {
-            val okReqBuilder = Request.Builder().url(reqModel.url)
+            val forwardUrl = reqModel.url
+            val reqBuilder = Request.Builder().url(forwardUrl)
 
-            // Copy headers
             reqModel.headers?.forEach { (k, vals) ->
-                if (!k.equals("Host", ignoreCase = true) && !k.equals("Content-Length", ignoreCase = true)) {
-                    vals.forEach { okReqBuilder.addHeader(k, it) }
+                if (!k.equals("host", ignoreCase = true) && !k.equals("content-length", ignoreCase = true)) {
+                    vals.forEach { v -> reqBuilder.addHeader(k, v) }
                 }
             }
 
-            // Body
-            if (bodyString != null && method != "GET" && method != "HEAD") {
-                val cType = reqModel.headers?.get("Content-Type")?.firstOrNull()?.toMediaTypeOrNull()
-                okReqBuilder.method(method, bodyString.toRequestBody(cType))
-            } else {
-                okReqBuilder.method(method, null)
-            }
+            val requestBody = if (reqModel.method in listOf("POST", "PUT", "PATCH") && bodyBytes != null) {
+                bodyBytes.toRequestBody(contentType?.toMediaTypeOrNull())
+            } else if (reqModel.method in listOf("POST", "PUT", "PATCH")) {
+                ByteArray(0).toRequestBody(null)
+            } else null
 
-            val resp = okHttpClient.newCall(okReqBuilder.build()).execute()
+            reqBuilder.method(reqModel.method, requestBody)
+
+            val upstreamResp = okHttpClient.newCall(reqBuilder.build()).execute()
             val durationMs = System.currentTimeMillis() - startTimeMs
+            val respBodyBytes = upstreamResp.body?.bytes()
+            val respBodyStr = respBodyBytes?.let { String(it, Charsets.UTF_8) }
 
             val respHeaders = mutableMapOf<String, List<String>>()
-            resp.headers.names().forEach { name ->
-                respHeaders[name] = resp.headers.values(name)
+            upstreamResp.headers.names().forEach { name ->
+                respHeaders[name] = upstreamResp.headers.values(name)
             }
-
-            val respBytes = resp.body?.bytes() ?: ByteArray(0)
-            val respBodyStr = if (respBytes.size < 1024 * 1024) String(respBytes) else "[Binary ${respBytes.size} bytes]"
 
             val respModel = HttpResponseModel(
                 id = "resp_$requestId",
-                statusCode = resp.code,
-                statusText = resp.message.ifEmpty { "OK" },
+                statusCode = upstreamResp.code,
+                statusText = upstreamResp.message.ifEmpty { "OK" },
                 headers = respHeaders,
                 bodyString = respBodyStr,
-                bodySize = respBytes.size.toLong(),
-                contentType = resp.header("Content-Type") ?: "text/plain",
+                bodySize = respBodyBytes?.size?.toLong() ?: 0L,
+                contentType = upstreamResp.header("content-type") ?: "",
                 durationMs = durationMs
             )
 
-            // Write back to client
-            val statusLine = "HTTP/1.1 ${resp.code} ${resp.message.ifEmpty { "OK" }}\r\n"
-            output.write(statusLine.toByteArray())
-            respHeaders.forEach { (k, vals) ->
-                vals.forEach { v ->
-                    output.write("$k: $v\r\n".toByteArray())
-                }
-            }
-            output.write("\r\n".toByteArray())
-            if (respBytes.isNotEmpty()) {
-                output.write(respBytes)
-            }
-            output.flush()
-
+            writeResponseToClient(output, respModel)
             onResponse(respModel)
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startTimeMs
@@ -368,7 +407,10 @@ class MitmProxyServer(
 
     private fun forwardRawTunnel(clientSocket: Socket, host: String, port: Int) {
         try {
-            val serverSocket = Socket(host, port)
+            val serverSocket = Socket()
+            HttpeekVpnService.protectSocket(serverSocket)
+            serverSocket.connect(InetSocketAddress(host, port), 10000)
+
             val clientIn = clientSocket.getInputStream()
             val clientOut = clientSocket.getOutputStream()
             val serverIn = serverSocket.getInputStream()
