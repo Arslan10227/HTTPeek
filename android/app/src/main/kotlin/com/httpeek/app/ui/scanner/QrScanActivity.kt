@@ -151,10 +151,16 @@ class QrScanActivity : AppCompatActivity() {
                 val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
                 manager.defaultVibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
-                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                vibrator.vibrate(100)
+                @Suppress("DEPRECATION")
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(100)
+                }
             }
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     override fun onRequestPermissionsResult(
