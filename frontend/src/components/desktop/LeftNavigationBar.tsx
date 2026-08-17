@@ -6,6 +6,7 @@ import {
   Wrench,
   Settings as SettingsIcon,
   MessageSquare,
+  BookOpen,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { PreferenceDialog } from './PreferenceDialog';
@@ -17,12 +18,14 @@ interface LeftNavigationBarProps {
   activeTab: LeftNavTab;
   onTabChange: (tab: LeftNavTab) => void;
   requestCount?: number;
+  onOpenDocs?: () => void;
 }
 
 export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
   activeTab,
   onTabChange,
   requestCount = 0,
+  onOpenDocs,
 }) => {
   const { t, language } = useTranslation();
   const { getActiveColorPreset } = useAppConfig();
@@ -108,8 +111,18 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
           })}
         </div>
 
-        {/* Bottom Actions: Preferences & Feedback */}
-        <div className="flex flex-col items-center gap-2 pb-1 w-full">
+        {/* Bottom Actions: Docs, Preferences & Feedback */}
+        <div className="flex flex-col items-center gap-1.5 pb-1 w-full">
+          {onOpenDocs && (
+            <button
+              type="button"
+              onClick={onOpenDocs}
+              className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-blue-600 dark:text-blue-400 transition-colors"
+              title="Documentation & Guides (F1)"
+            >
+              <BookOpen className="w-5 h-5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setIsPreferenceOpen(true)}

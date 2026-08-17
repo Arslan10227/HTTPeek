@@ -131,9 +131,17 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={handleCreateSession}
+              className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 text-emerald-600 dark:text-emerald-400 cursor-pointer"
+              title="Save Current Traffic as New Session"
+            >
+              <HistoryIcon className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
               onClick={handleImportHAR}
               className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer"
-              title="Import HAR"
+              title="Import HAR File"
             >
               <Upload className="w-3.5 h-3.5" />
             </button>

@@ -19,6 +19,7 @@ import { BreakpointDialog } from '../rules/BreakpointDialog';
 import { WeakNetworkDialog } from '../rules/WeakNetworkDialog';
 import { ExternalProxyDialog } from '../rules/ExternalProxyDialog';
 import { AboutDialog } from './AboutDialog';
+import { DocumentationModal } from './DocumentationModal';
 import { PCCertDialog } from '../ssl/PCCertDialog';
 import { MobileCertDialog } from '../ssl/MobileCertDialog';
 import { EnvironmentModal } from '../environment/EnvironmentModal';
@@ -49,9 +50,22 @@ export const DesktopHome: React.FC = () => {
   const [isWeakNetworkOpen, setIsWeakNetworkOpen] = useState(false);
   const [isExternalProxyOpen, setIsExternalProxyOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isPcCertOpen, setIsPcCertOpen] = useState(false);
   const [mobileCertPlatform, setMobileCertPlatform] = useState<'ios' | 'android' | null>(null);
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
+
+  // Global F1 Shortcut for in-app documentation
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setIsDocsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Request Editor State
   const [editorRequest, setEditorRequest] = useState<HttpRequest | undefined>(undefined);
@@ -122,6 +136,7 @@ export const DesktopHome: React.FC = () => {
         onOpenWeakNetwork={() => setIsWeakNetworkOpen(true)}
         onOpenExternalProxy={() => setIsExternalProxyOpen(true)}
         onOpenAbout={() => setIsAboutOpen(true)}
+        onOpenDocs={() => setIsDocsOpen(true)}
       />
 
       {/* Main Body with Left Nav and Split View */}
@@ -130,6 +145,7 @@ export const DesktopHome: React.FC = () => {
           activeTab={activeNavTab}
           onTabChange={setActiveNavTab}
           requestCount={requests.length}
+          onOpenDocs={() => setIsDocsOpen(true)}
         />
 
         {activeNavTab === 'requests' ? (
@@ -166,6 +182,15 @@ export const DesktopHome: React.FC = () => {
       {isWeakNetworkOpen && <WeakNetworkDialog onClose={() => setIsWeakNetworkOpen(false)} />}
       {isExternalProxyOpen && <ExternalProxyDialog onClose={() => setIsExternalProxyOpen(false)} />}
       {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
+      {isDocsOpen && (
+        <DocumentationModal
+          isOpen={isDocsOpen}
+          onClose={() => setIsDocsOpen(false)}
+          onOpenRules={() => setIsRewriteOpen(true)}
+          onOpenToolbox={() => setActiveNavTab('toolbox')}
+          onOpenBreakpoints={() => setIsBreakpointOpen(true)}
+        />
+      )}
       {isPcCertOpen && <PCCertDialog onClose={() => setIsPcCertOpen(false)} />}
       {mobileCertPlatform && (
         <MobileCertDialog

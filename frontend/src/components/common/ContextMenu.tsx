@@ -15,6 +15,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { HttpRequest } from '../../types';
+import { toast } from '../../store/useToastStore';
 
 interface ContextMenuProps {
   x: number;
@@ -254,10 +255,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         </div>
       </button>
       <button
-        onClick={() => {
+        onClick={async () => {
           const domain = request.hostPort?.host;
-          if (domain && (window as any).go?.main?.App?.AddHostToWhitelist) {
-            (window as any).go.main.App.AddHostToWhitelist(domain);
+          if (domain) {
+            try {
+              if ((window as any).go?.main?.App?.AddHostToWhitelist) {
+                await (window as any).go.main.App.AddHostToWhitelist(domain);
+              }
+              toast.success('Added to Whitelist', domain);
+            } catch (e: any) {
+              toast.error('Whitelist Error', e?.message);
+            }
           }
           onClose();
         }}
@@ -269,10 +277,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         </div>
       </button>
       <button
-        onClick={() => {
+        onClick={async () => {
           const domain = request.hostPort?.host;
-          if (domain && (window as any).go?.main?.App?.AddHostToBlacklist) {
-            (window as any).go.main.App.AddHostToBlacklist(domain);
+          if (domain) {
+            try {
+              if ((window as any).go?.main?.App?.AddHostToBlacklist) {
+                await (window as any).go.main.App.AddHostToBlacklist(domain);
+              }
+              toast.warning('Added to Blacklist', domain);
+            } catch (e: any) {
+              toast.error('Blacklist Error', e?.message);
+            }
           }
           onClose();
         }}

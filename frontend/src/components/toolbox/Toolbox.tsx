@@ -60,22 +60,22 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
   const isZh = language.startsWith('zh');
 
   // JSON / XML
-  const [jsonInput, setJsonInput] = useState('{\n  "app": "ProxyPin",\n  "version": "1.3.1",\n  "status": "active"\n}');
-  const [xmlInput, setXmlInput] = useState('<request id="1">\n  <name>ProxyPin</name>\n  <protocol>HTTPS</protocol>\n</request>');
+  const [jsonInput, setJsonInput] = useState('{\n  "app": "HTTPeek",\n  "version": "1.0.0",\n  "status": "active"\n}');
+  const [xmlInput, setXmlInput] = useState('<request id="1">\n  <name>HTTPeek</name>\n  <protocol>HTTPS</protocol>\n</request>');
 
   // Diff
   const [diffTextA, setDiffTextA] = useState('{\n  "code": 200,\n  "status": "success"\n}');
   const [diffTextB, setDiffTextB] = useState('{\n  "code": 200,\n  "status": "updated",\n  "data": [1, 2, 3]\n}');
 
   // Text Editor
-  const [plainText, setPlainText] = useState('ProxyPin Traffic Interceptor & Analysis Tool');
+  const [plainText, setPlainText] = useState('HTTPeek Traffic Interceptor & Analysis Tool');
 
   // Encoders
-  const [encoderInput, setEncoderInput] = useState('Hello ProxyPin 世界 123');
+  const [encoderInput, setEncoderInput] = useState('Hello HTTPeek 世界 123');
   const [encoderOutput, setEncoderOutput] = useState('');
 
   // Hash & Checksum
-  const [hashInput, setHashInput] = useState('ProxyPin');
+  const [hashInput, setHashInput] = useState('HTTPeek');
   const [hashSha256, setHashSha256] = useState('');
   const [hashSha1, setHashSha1] = useState('');
   const [hashMd5, setHashMd5] = useState('');
@@ -88,7 +88,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
   const [aesOutput, setAesOutput] = useState('');
 
   // Cert Subject Hash
-  const [certSubject, setCertSubject] = useState('CN=ProxyPin CA, O=ProxyPin, C=CN');
+  const [certSubject, setCertSubject] = useState('CN=HTTPeek CA, O=HTTPeek, C=US');
   const [certHashResult, setCertHashResult] = useState('');
 
   // Timestamp
@@ -104,7 +104,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
   const [regexReplaceResult, setRegexReplaceResult] = useState('');
 
   // QR Code
-  const [qrText, setQrText] = useState('https://github.com/wanghongenpin/proxypin');
+  const [qrText, setQrText] = useState('https://github.com/Arslan10227/HTTPeek');
   const [qrSize, setQrSize] = useState(180);
 
   // WebSocket Client
@@ -112,10 +112,10 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
   const [wsConnected, setWsConnected] = useState(false);
   const [wsSocket, setWsSocket] = useState<WebSocket | null>(null);
   const [wsMessages, setWsMessages] = useState<Array<{ dir: 'in' | 'out'; text: string; time: string }>>([]);
-  const [wsInput, setWsInput] = useState('Hello WebSocket from ProxyPin');
+  const [wsInput, setWsInput] = useState('Hello WebSocket from HTTPeek');
 
   // JS Runner
-  const [jsCode, setJsCode] = useState('// ProxyPin JavaScript Test Sandbox\nconst req = { url: "https://api.test.com/data", status: 200 };\nconsole.log("Processing URL:", req.url);\nconsole.log("Status:", req.status);');
+  const [jsCode, setJsCode] = useState('// HTTPeek JavaScript Test Sandbox\nconst req = { url: "https://api.test.com/data", status: 200 };\nconsole.log("Processing URL:", req.url);\nconsole.log("Status:", req.status);');
   const [jsOutput, setJsOutput] = useState('');
 
   // --- Handlers ---
@@ -758,7 +758,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
                     type="text"
                     value={certSubject}
                     onChange={(e) => setCertSubject(e.target.value)}
-                    placeholder="Certificate Subject (e.g. CN=ProxyPin CA)"
+                    placeholder="Certificate Subject (e.g. CN=HTTPeek CA)"
                     className="px-3 py-2 rounded-lg border bg-transparent focus:outline-none"
                     style={{ borderColor: 'var(--md-sys-color-outline)' }}
                   />

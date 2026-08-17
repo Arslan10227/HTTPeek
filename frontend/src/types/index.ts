@@ -167,6 +167,8 @@ export interface RewriteRule {
   replaceBody?: string;
   replaceHeaders?: Record<string, string>;
   replaceStatus?: number;
+  statusCode?: number;
+  headers?: Record<string, string>;
   items?: RewriteItem[];
   enabled: boolean;
 }

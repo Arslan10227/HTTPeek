@@ -4,6 +4,7 @@ import {
   Square,
   Trash2,
   Smartphone,
+  BookOpen,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
@@ -21,6 +22,7 @@ interface ToolbarProps extends SettingDialogTriggers {
   onOpenPcCert: () => void;
   onOpenMobileCert: (platform: 'ios' | 'android') => void;
   onManageEnvironments: () => void;
+  onOpenDocs?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -28,6 +30,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenPcCert,
   onOpenMobileCert,
   onManageEnvironments,
+  onOpenDocs,
   ...settingTriggers
 }) => {
   const { t } = useTranslation();
@@ -138,6 +141,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           <Smartphone className="w-5 h-5" />
         </button>
+
+        {/* Documentation / In-App Guides Modal */}
+        {onOpenDocs && (
+          <button
+            type="button"
+            onClick={onOpenDocs}
+            className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-blue-600 dark:text-blue-400 transition-colors"
+            title="In-App Documentation & Guides (F1)"
+          >
+            <BookOpen className="w-5 h-5" />
+          </button>
+        )}
 
         {/* Environment Switcher */}
         <EnvironmentSwitcher onManageEnvironments={onManageEnvironments} />

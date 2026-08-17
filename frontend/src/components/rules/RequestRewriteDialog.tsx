@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Edit3, FileCode, ArrowRight } from 'lucide-react';
+import { X, Plus, Trash2, Edit3, FileCode, ArrowRight, Check, Save } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
 import { RewriteRule } from '../../types';
+import { StatusCodePicker } from '../common/StatusCodePicker';
+import { HeaderKeyCombobox, HeaderValueCombobox } from '../common/HeaderCombobox';
 
 interface RequestRewriteDialogProps {
   onClose: () => void;
@@ -52,20 +54,23 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs select-none font-sans">
       <div
-        className="w-[680px] max-h-[85vh] rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-xs"
+        className="w-[720px] max-h-[85vh] rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-xs"
         style={{
-          backgroundColor: 'var(--md-dialog-bg)',
-          borderColor: 'var(--md-sys-color-divider)',
-          color: 'var(--md-sys-color-on-surface)',
+          backgroundColor: 'var(--md-dialog-bg, #ffffff)',
+          borderColor: 'var(--md-sys-color-divider, rgba(128,128,128,0.2))',
+          color: 'var(--md-sys-color-on-surface, #1f2937)',
         }}
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center gap-2">
             <FileCode className="w-5 h-5" style={{ color: activeColor.hex }} />
-            <h2 className="text-sm font-semibold">{t.requestRewrite}</h2>
+            <div>
+              <h2 className="text-sm font-semibold">{t.requestRewrite}</h2>
+              <p className="text-[11px] text-gray-500">Visual HTTP Request &amp; Response mutation rules</p>
+            </div>
           </div>
           <button
             type="button"
@@ -87,6 +92,8 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
                 urlPattern: '*',
                 action: 'replace',
                 enabled: true,
+                statusCode: 200,
+                headers: {},
               })
             }
             className="flex items-center gap-1 px-4 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
@@ -104,7 +111,7 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
         >
           {rules.length === 0 ? (
             <div className="text-center text-gray-400 py-12 italic">
-              {isZh ? '暂无请求重写规则' : 'No rewrite rules defined'}
+              {isZh ? '暂无请求重写规则' : 'No rewrite rules defined. Click + Add to create one.'}
             </div>
           ) : (
             rules.map((rule, idx) => (
@@ -121,15 +128,15 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
                       next[idx].enabled = e.target.checked;
                       setRules(next);
                     }}
-                    className="rounded"
+                    className="rounded text-blue-600"
                   />
-                  <span className="font-semibold text-blue-600 dark:text-blue-400 w-36 truncate">
+                  <span className="font-semibold text-blue-600 dark:text-blue-400 w-40 truncate">
                     {rule.name || rule.urlPattern}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-600 uppercase text-[9px] font-bold">
+                  <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 uppercase text-[9px] font-bold">
                     {rule.action}
                   </span>
-                  <span className="text-gray-500 w-44 truncate">
+                  <span className="text-gray-500 w-48 truncate">
                     {rule.urlPattern}
                   </span>
                 </div>
@@ -168,10 +175,11 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
           <button
             type="button"
             onClick={handleSaveAll}
-            className="px-5 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
+            className="flex items-center gap-1.5 px-5 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
             style={{ backgroundColor: activeColor.hex }}
           >
-            {t.save}
+            <Save className="w-3.5 h-3.5" />
+            <span>{t.save}</span>
           </button>
         </div>
       </div>
@@ -180,56 +188,67 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
       {editingRule && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 select-none">
           <div
-            className="w-[560px] rounded-2xl shadow-2xl p-6 border flex flex-col gap-3.5 text-xs animate-in zoom-in-95 duration-100"
+            className="w-[620px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 text-xs animate-in zoom-in-95 duration-100"
             style={{
-              backgroundColor: 'var(--md-dialog-bg)',
+              backgroundColor: 'var(--md-dialog-bg, #ffffff)',
               borderColor: 'var(--md-sys-color-divider)',
               color: 'var(--md-sys-color-on-surface)',
             }}
           >
-            <h3 className="text-sm font-bold">{t.requestRewriteRule}</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-800">
+              <h3 className="text-sm font-bold">{t.requestRewriteRule}</h3>
+              <button
+                type="button"
+                onClick={() => setEditingRule(null)}
+                className="p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-medium">Rule Name:</label>
-              <input
-                type="text"
-                value={editingRule.name || ''}
-                onChange={(e) => setEditingRule({ ...editingRule, name: e.target.value })}
-                placeholder="My Rule"
-                className="px-3 py-1.5 rounded-lg border bg-transparent font-mono text-xs focus:outline-none"
-                style={{ borderColor: 'var(--md-sys-color-outline)' }}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-600 dark:text-gray-300">Rule Name:</label>
+                <input
+                  type="text"
+                  value={editingRule.name || ''}
+                  onChange={(e) => setEditingRule({ ...editingRule, name: e.target.value })}
+                  placeholder="e.g. Inject Bearer Auth"
+                  className="px-3 py-1.5 rounded-lg border bg-transparent font-mono text-xs focus:outline-none"
+                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-600 dark:text-gray-300">Action Type:</label>
+                <select
+                  value={editingRule.action}
+                  onChange={(e) => setEditingRule({ ...editingRule, action: e.target.value as any })}
+                  className="px-3 py-1.5 rounded-lg border font-medium text-xs bg-transparent focus:outline-none cursor-pointer"
+                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                >
+                  <option value="replace">Replace (Headers, Body, Status)</option>
+                  <option value="redirect">Redirect (URL Forward)</option>
+                  <option value="update">Update (Regex Search &amp; Replace)</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="font-medium">URL Match Pattern:</label>
+              <label className="font-semibold text-gray-600 dark:text-gray-300">URL Match Pattern:</label>
               <input
                 type="text"
                 value={editingRule.urlPattern}
                 onChange={(e) => setEditingRule({ ...editingRule, urlPattern: e.target.value })}
-                placeholder="api.example.com/v1/*"
+                placeholder="*://api.example.com/*"
                 className="px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
                 style={{ borderColor: 'var(--md-sys-color-outline)' }}
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-medium">Action Type:</label>
-              <select
-                value={editingRule.action}
-                onChange={(e) => setEditingRule({ ...editingRule, action: e.target.value as any })}
-                className="px-3 py-1.5 rounded-lg border font-medium text-xs bg-transparent focus:outline-none cursor-pointer"
-                style={{ borderColor: 'var(--md-sys-color-outline)' }}
-              >
-                <option value="replace">Replace (Headers, Body, Status)</option>
-                <option value="redirect">Redirect (URL Forward)</option>
-                <option value="update">Update (Regex Search & Replace)</option>
-              </select>
-            </div>
-
             {editingRule.action === 'redirect' ? (
               <div className="flex flex-col gap-1">
-                <label className="font-medium">Redirect Target URL:</label>
+                <label className="font-semibold text-gray-600 dark:text-gray-300">Redirect Target URL:</label>
                 <input
                   type="text"
                   value={editingRule.redirectUrl || ''}
@@ -240,20 +259,30 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
                 />
               </div>
             ) : (
-              <div className="flex flex-col gap-1">
-                <label className="font-medium">Replace Body (JSON/Text):</label>
-                <textarea
-                  value={editingRule.replaceBody || ''}
-                  onChange={(e) => setEditingRule({ ...editingRule, replaceBody: e.target.value })}
-                  rows={4}
-                  placeholder='{"code": 0, "msg": "success"}'
-                  className="w-full p-2.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none resize-none"
-                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
-                />
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1">
+                  <label className="font-semibold text-gray-600 dark:text-gray-300">Override Status Code:</label>
+                  <StatusCodePicker
+                    value={editingRule.statusCode || 200}
+                    onChange={(code) => setEditingRule({ ...editingRule, statusCode: code })}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="font-semibold text-gray-600 dark:text-gray-300">Replace Body (JSON / Text):</label>
+                  <textarea
+                    value={editingRule.replaceBody || ''}
+                    onChange={(e) => setEditingRule({ ...editingRule, replaceBody: e.target.value })}
+                    rows={4}
+                    placeholder='{"code": 0, "msg": "success"}'
+                    className="w-full p-2.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none resize-none"
+                    style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                  />
+                </div>
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
               <button
                 type="button"
                 onClick={() => setEditingRule(null)}
