@@ -28,7 +28,7 @@ interface SessionItem {
 }
 
 export const HistoryView: React.FC = () => {
-  const { setActiveTab, addRequest, clearRequests } = useProxyStore();
+  const { setActiveTab, setRequests, addRequest, clearRequests } = useProxyStore();
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -169,15 +169,14 @@ export const HistoryView: React.FC = () => {
     if (!sessionRequests || sessionRequests.length === 0) return;
     const ok = await confirm({
       title: 'Restore Session',
-      message: 'Restore this historical session into the live Capture workspace?',
+      message: `Restore ${sessionRequests.length} requests into the live traffic workspace?`,
       type: 'warning',
-      confirmText: 'Restore',
+      confirmText: 'Restore to Live',
     });
     if (ok) {
-      clearRequests();
-      sessionRequests.forEach((r) => addRequest(r));
-      setActiveTab('capture');
-      useUiStore.getState().setSidebarTab('view');
+      setRequests(sessionRequests);
+      setActiveTab('requests');
+      toast.success(`Restored ${sessionRequests.length} requests into live traffic`);
     }
   };
 

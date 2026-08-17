@@ -11,6 +11,7 @@ import { useLogStore } from './store/useLogStore';
 import { toast } from './store/useToastStore';
 import { api } from './store/apiAdapter';
 import { HttpRequest, HttpResponse, WsFrame, SSEEvent, BreakpointEvent } from './types';
+import { parseHarOrJsonContent } from './utils/exportHelper';
 
 export const App: React.FC = () => {
   const {
@@ -73,6 +74,42 @@ export const App: React.FC = () => {
       isDark ? activeColor.darkOnPrimaryContainer : activeColor.onPrimaryContainer
     );
   }, [themeMode, themeColor, useMaterial3, getActiveColorPreset, getEffectiveIsDark]);
+
+  // Core System-level Drag & Drop HAR / JSON file ingestion
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      if (file.name.endsWith('.har') || file.name.endsWith('.json')) {
+        try {
+          const text = await file.text();
+          const reqs = parseHarOrJsonContent(text);
+          if (reqs.length > 0) {
+            useProxyStore.getState().setRequests(reqs);
+            useProxyStore.getState().setActiveTab('requests');
+            toast.success(`Imported ${reqs.length} requests from dropped file`, file.name);
+          }
+        } catch (err: any) {
+          toast.error('Failed to import dropped file', err?.message || String(err));
+        }
+      }
+    };
+
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

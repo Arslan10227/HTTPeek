@@ -204,19 +204,29 @@ export const DomainTreeView: React.FC = () => {
     return (
       <div key={node.fullPath} className="text-xs select-none">
         <div
-          onClick={() => toggleNode(node.fullPath)}
+          onDoubleClick={() => toggleNode(node.fullPath)}
           onContextMenu={(e) => isDomainRoot ? handleDomainContextMenu(e, node) : undefined}
           style={{ paddingLeft: `${depth * 14 + 8}px` }}
           className={`group flex items-center gap-1.5 py-1.5 hover:bg-slate-100 dark:hover:bg-gray-800 cursor-pointer rounded-lg text-slate-700 dark:text-gray-200 transition-all ${
             isDomainRoot ? 'font-bold bg-slate-50/70 dark:bg-gray-800/30 my-0.5 border-y border-slate-100 dark:border-gray-800' : ''
           } ${isBlinking ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-400 text-amber-950 dark:text-amber-200 shadow-sm animate-pulse' : ''}`}
+          title="Double click or click arrow to expand/collapse"
         >
           {hasChildren ? (
-            isExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            )
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleNode(node.fullPath);
+              }}
+              className="p-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded cursor-pointer transition-colors"
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              )}
+            </button>
           ) : (
             <div className="w-3.5" />
           )}

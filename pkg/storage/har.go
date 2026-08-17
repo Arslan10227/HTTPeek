@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -319,6 +321,12 @@ func ImportHARBytes(data []byte) ([]*proxy.HttpRequest, error) {
 	if len(data) == 0 {
 		return []*proxy.HttpRequest{}, nil
 	}
+
+	// Sanitize common corruptions: strip UTF-8 BOM and trailing commas before } or ]
+	cleaned := bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	trailingCommaRe := regexp.MustCompile(`,(\s*[}\]])`)
+	cleaned = trailingCommaRe.ReplaceAll(cleaned, []byte("$1"))
+	data = cleaned
 
 	// Strategy 1: Standard HAR 1.2 object {"log": {"entries": [...]}}
 	var har HAR

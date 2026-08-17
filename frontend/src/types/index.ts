@@ -38,6 +38,7 @@ export interface SSEEvent {
 
 export interface HttpResponse {
   id?: string;
+  requestId?: string;
   statusCode: number;
   statusText?: string;
   protocol?: string;

@@ -45,16 +45,41 @@ export const formatSize = (bytes?: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export const formatTime = (isoString?: string): string => {
+export const formatTime = (isoString?: string | number): string => {
   if (!isoString) return '';
   try {
-    return new Date(isoString).toLocaleTimeString([], {
+    let d: Date;
+    if (typeof isoString === 'number') {
+      const ms = isoString < 10000000000 ? isoString * 1000 : isoString;
+      d = new Date(ms);
+    } else {
+      d = new Date(isoString);
+    }
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     });
   } catch {
     return '';
+  }
+};
+
+export const formatSafeDateTime = (val?: string | number): string => {
+  if (!val) return '';
+  try {
+    let d: Date;
+    if (typeof val === 'number') {
+      const ms = val < 10000000000 ? val * 1000 : val;
+      d = new Date(ms);
+    } else {
+      d = new Date(val);
+    }
+    if (isNaN(d.getTime())) return String(val);
+    return d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return String(val);
   }
 };
 

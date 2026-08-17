@@ -8,6 +8,8 @@ import { History as HistoryIcon, Download, Upload, Trash2, Calendar, Search } fr
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
 
+import { formatSafeDateTime } from '../../lib/httpFormat';
+
 interface HistorySession {
   id: string;
   name: string;
@@ -171,7 +173,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                   <div className="flex flex-col min-w-0 flex-1">
                     <span className="truncate font-sans font-medium text-xs">{sess.name}</span>
                     <span className="text-[10px] text-gray-400">
-                      {new Date(sess.timestamp).toLocaleDateString()}  •  {sess.count} requests
+                      {formatSafeDateTime(sess.timestamp)}  •  {sess.count} requests
                     </span>
                   </div>
 

@@ -79,21 +79,25 @@ export function generateHarJson(requests: HttpRequest[]): string {
         version: '1.0.0',
       },
       entries: requests.map((r) => {
-        let headersList: { name: string; value: string }[] = [];
+        const headersList: { name: string; value: string }[] = [];
         if (r.headers) {
           Object.entries(r.headers).forEach(([k, v]) => {
             headersList.push({ name: k, value: Array.isArray(v) ? v.join(', ') : String(v) });
           });
         }
-        let respHeadersList: { name: string; value: string }[] = [];
+        const respHeadersList: { name: string; value: string }[] = [];
         if (r.response?.headers) {
           Object.entries(r.response.headers).forEach(([k, v]) => {
             respHeadersList.push({ name: k, value: Array.isArray(v) ? v.join(', ') : String(v) });
           });
         }
 
+        const validStartTime = r.startTime && !isNaN(new Date(r.startTime).getTime())
+          ? new Date(r.startTime).toISOString()
+          : new Date().toISOString();
+
         return {
-          startedDateTime: r.startTime || new Date().toISOString(),
+          startedDateTime: validStartTime,
           time: r.durationMs || r.duration || 0,
           request: {
             method: r.method || 'GET',
@@ -137,7 +141,277 @@ export function generateHarJson(requests: HttpRequest[]): string {
   return JSON.stringify(har, null, 2);
 }
 
-export function importHarOrJsonFile(): Promise<boolean> {
+/**
+ * Resilient HAR / JSON string parser with multi-strategy fallback for missing fields or minor syntax errors.
+ */
+export function parseHarOrJsonContent(rawText: string): HttpRequest[] {
+  if (!rawText || !rawText.trim()) return [];
+
+  let text = rawText.trim();
+
+  // Attempt to sanitize common syntax defects (trailing commas, BOM, unescaped characters)
+  text = text.replace(/^\uFEFF/, ''); // Strip BOM
+  text = text.replace(/,\s*([\]}])/g, '$1'); // Strip trailing commas before ] or }
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e1) {
+    try {
+      // Strategy: Relaxed single quote repair
+      const relaxed = text.replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":').replace(/'/g, '"');
+      parsed = JSON.parse(relaxed);
+    } catch (e2) {
+      // Strategy: Extract JSON array or object substring
+      const startIdx = text.indexOf('{');
+      const startArrIdx = text.indexOf('[');
+      if (startIdx !== -1 || startArrIdx !== -1) {
+        const start = startIdx !== -1 && (startArrIdx === -1 || startIdx < startArrIdx) ? startIdx : startArrIdx;
+        const end = text.lastIndexOf(start === startIdx ? '}' : ']');
+        if (end > start) {
+          try {
+            parsed = JSON.parse(text.slice(start, end + 1));
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  if (!parsed) {
+    throw new Error('Unable to parse HAR or JSON content. Please check file format.');
+  }
+
+  const results: HttpRequest[] = [];
+  const baseTime = Date.now();
+
+  // Case 1: Standard HAR log object {"log": {"entries": [...]}}
+  if (parsed.log && Array.isArray(parsed.log.entries)) {
+    parsed.log.entries.forEach((entry: any, idx: number) => {
+      const r = convertHarEntryToRequest(entry, idx, baseTime);
+      if (r) results.push(r);
+    });
+    return results;
+  }
+
+  // Case 2: Array of HAR entries [{"request": {...}, "response": {...}}]
+  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.request) {
+    parsed.forEach((entry: any, idx: number) => {
+      const r = convertHarEntryToRequest(entry, idx, baseTime);
+      if (r) results.push(r);
+    });
+    return results;
+  }
+
+  // Case 3: Array of HttpRequest models [{"id": "...", "url": "..."}]
+  if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0]?.url || parsed[0]?.method)) {
+    parsed.forEach((item: any, idx: number) => {
+      const r = normalizeRawRequest(item, idx, baseTime);
+      if (r) results.push(r);
+    });
+    return results;
+  }
+
+  // Case 4: Postman Collection format {"item": [...]}
+  if (Array.isArray(parsed.item)) {
+    parsed.item.forEach((item: any, idx: number) => {
+      const r = convertPostmanItemToRequest(item, idx, baseTime);
+      if (r) results.push(r);
+    });
+    return results;
+  }
+
+  // Case 5: Single entry or request object
+  if (parsed.request || parsed.url) {
+    const r = parsed.request ? convertHarEntryToRequest(parsed, 0, baseTime) : normalizeRawRequest(parsed, 0, baseTime);
+    if (r) results.push(r);
+    return results;
+  }
+
+  return results;
+}
+
+function convertHarEntryToRequest(entry: any, idx: number, baseTime: number): HttpRequest | null {
+  if (!entry) return null;
+  const req = entry.request || {};
+  const res = entry.response || {};
+
+  const rawUrl = req.url || entry.url || '';
+  if (!rawUrl) return null;
+
+  let host = 'unknown';
+  let path = '/';
+  let isTLS = false;
+
+  try {
+    const u = new URL(rawUrl);
+    host = u.hostname;
+    path = u.pathname + u.search;
+    isTLS = u.protocol.startsWith('https');
+  } catch (_) {
+    host = rawUrl.split('/')[2] || 'imported';
+    path = '/' + (rawUrl.split('/').slice(3).join('/') || '');
+  }
+
+  // Headers extraction
+  const headersObj: Record<string, string> = {};
+  if (Array.isArray(req.headers)) {
+    req.headers.forEach((h: any) => {
+      if (h && h.name) headersObj[h.name] = h.value || '';
+    });
+  } else if (req.headers && typeof req.headers === 'object') {
+    Object.assign(headersObj, req.headers);
+  }
+
+  const respHeadersObj: Record<string, string> = {};
+  if (Array.isArray(res.headers)) {
+    res.headers.forEach((h: any) => {
+      if (h && h.name) respHeadersObj[h.name] = h.value || '';
+    });
+  } else if (res.headers && typeof res.headers === 'object') {
+    Object.assign(respHeadersObj, res.headers);
+  }
+
+  // Guaranteed safe ISO timestamp
+  let validDate = new Date(baseTime + idx * 100).toISOString();
+  if (entry.startedDateTime) {
+    const parsedD = new Date(entry.startedDateTime);
+    if (!isNaN(parsedD.getTime())) {
+      validDate = parsedD.toISOString();
+    }
+  }
+
+  // Response content & body decoding
+  let respBodyString = res.content?.text || res.bodyString || res.body || '';
+  if (res.content?.encoding === 'base64' && respBodyString) {
+    try {
+      respBodyString = atob(respBodyString);
+    } catch (_) {}
+  }
+
+  const reqBodyString = req.postData?.text || req.bodyString || req.body || '';
+
+  const id = req.id || `imp_${Date.now()}_${idx}`;
+  const duration = entry.time || res.durationMs || 0;
+
+  const responseObj: HttpResponse = {
+    id: `resp_${id}`,
+    requestId: id,
+    statusCode: Number(res.status || res.statusCode || 200),
+    statusText: String(res.statusText || 'OK'),
+    headers: respHeadersObj,
+    body: respBodyString,
+    bodyString: respBodyString,
+    bodySize: Number(res.content?.size || res.bodySize || (respBodyString ? respBodyString.length : 0)),
+    contentType: String(res.content?.mimeType || res.contentType || respHeadersObj['content-type'] || 'text/plain'),
+    startTime: validDate,
+    durationMs: duration,
+    protocol: res.httpVersion || 'HTTP/1.1',
+  };
+
+  return {
+    id,
+    method: (req.method || 'GET').toUpperCase() as any,
+    url: rawUrl,
+    path,
+    protocol: req.httpVersion || (isTLS ? 'HTTP/2.0' : 'HTTP/1.1'),
+    hostPort: {
+      host,
+      port: isTLS ? 443 : 80,
+      ssl: isTLS,
+    },
+    headers: headersObj,
+    body: reqBodyString,
+    bodyString: reqBodyString,
+    startTime: validDate,
+    durationMs: duration,
+    response: responseObj,
+  };
+}
+
+function normalizeRawRequest(item: any, idx: number, baseTime: number): HttpRequest | null {
+  if (!item) return null;
+  const rawUrl = item.url || '';
+  if (!rawUrl) return null;
+
+  let host = item.hostPort?.host || 'unknown';
+  let path = item.path || '/';
+  let isTLS = item.hostPort?.ssl ?? false;
+
+  try {
+    const u = new URL(rawUrl);
+    host = u.hostname;
+    path = u.pathname + u.search;
+    isTLS = u.protocol.startsWith('https');
+  } catch (_) {}
+
+  let validDate = new Date(baseTime + idx * 100).toISOString();
+  if (item.startTime) {
+    const parsedD = new Date(item.startTime);
+    if (!isNaN(parsedD.getTime())) {
+      validDate = parsedD.toISOString();
+    }
+  }
+
+  const id = item.id || `imp_${Date.now()}_${idx}`;
+
+  let resp: HttpResponse | undefined = undefined;
+  if (item.response) {
+    resp = {
+      id: item.response.id || `resp_${id}`,
+      requestId: id,
+      statusCode: Number(item.response.statusCode || item.response.status || 200),
+      statusText: String(item.response.statusText || 'OK'),
+      headers: item.response.headers || {},
+      body: item.response.bodyString || item.response.body || '',
+      bodyString: item.response.bodyString || item.response.body || '',
+      bodySize: Number(item.response.bodySize || (item.response.body ? String(item.response.body).length : 0)),
+      contentType: String(item.response.contentType || item.response.headers?.['content-type'] || 'text/plain'),
+      startTime: validDate,
+      durationMs: item.response.durationMs || item.durationMs || 0,
+      protocol: item.response.protocol || 'HTTP/1.1',
+    };
+  }
+
+  return {
+    id,
+    method: (item.method || 'GET').toUpperCase() as any,
+    url: rawUrl,
+    path,
+    protocol: item.protocol || (isTLS ? 'HTTP/2.0' : 'HTTP/1.1'),
+    hostPort: {
+      host,
+      port: item.hostPort?.port || (isTLS ? 443 : 80),
+      ssl: isTLS,
+    },
+    headers: item.headers || {},
+    body: item.bodyString || item.body || '',
+    bodyString: item.bodyString || item.body || '',
+    startTime: validDate,
+    durationMs: item.durationMs || 0,
+    response: resp,
+  };
+}
+
+function convertPostmanItemToRequest(item: any, idx: number, baseTime: number): HttpRequest | null {
+  if (!item || !item.request) return null;
+  const pReq = item.request;
+  const rawUrl = typeof pReq.url === 'string' ? pReq.url : pReq.url?.raw || '';
+  if (!rawUrl) return null;
+
+  return normalizeRawRequest({
+    method: pReq.method || 'GET',
+    url: rawUrl,
+    headers: Array.isArray(pReq.header) ? Object.fromEntries(pReq.header.map((h: any) => [h.key, h.value])) : pReq.header,
+    bodyString: pReq.body?.raw || '',
+    startTime: new Date(baseTime + idx * 100).toISOString(),
+  }, idx, baseTime);
+}
+
+/**
+ * Primary Core HAR / JSON file importer.
+ * Ingests data directly into active live proxy store and backs up into session history.
+ */
+export async function importHarOrJsonFile(): Promise<boolean> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -151,74 +425,29 @@ export function importHarOrJsonFile(): Promise<boolean> {
 
       try {
         const text = await file.text();
-        
-        // If Wails backend ImportHAR bridge exists
-        if ((window as any).go?.main?.App?.ImportHAR) {
-          const sessionName = file.name.replace(/\.(har|json)$/i, '');
-          await (window as any).go.main.App.ImportHAR(text, sessionName);
-          toast.success('Imported HAR/JSON Session', file.name);
-          resolve(true);
+        const importedReqs = parseHarOrJsonContent(text);
+
+        if (importedReqs.length === 0) {
+          toast.warning('No valid requests found in selected file');
+          resolve(false);
           return;
         }
 
-        // Fallback Client-side Parser
-        const parsed = JSON.parse(text);
-        if (parsed.log && Array.isArray(parsed.log.entries)) {
-          const importedReqs: HttpRequest[] = parsed.log.entries.map((entry: any, idx: number) => {
-            const req = entry.request || {};
-            const res = entry.response || {};
-            const headersObj: Record<string, string> = {};
-            (req.headers || []).forEach((h: any) => {
-              if (h.name) headersObj[h.name] = h.value || '';
-            });
-            const respHeadersObj: Record<string, string> = {};
-            (res.headers || []).forEach((h: any) => {
-              if (h.name) respHeadersObj[h.name] = h.value || '';
-            });
+        // 1. Instantly populate active live proxy store
+        useProxyStore.getState().setRequests(importedReqs);
+        useProxyStore.getState().setActiveTab('requests');
 
-            let host = '';
-            let path = '';
-            try {
-              const u = new URL(req.url);
-              host = u.hostname;
-              path = u.pathname + u.search;
-            } catch (_) {
-              host = 'imported';
-              path = req.url || '/';
-            }
-
-            return {
-              id: `imp_${Date.now()}_${idx}`,
-              method: req.method || 'GET',
-              url: req.url || '',
-              path,
-              hostPort: { host, port: 443 },
-              headers: headersObj,
-              bodyString: req.postData?.text || '',
-              startTime: entry.startedDateTime,
-              durationMs: entry.time || 0,
-              response: {
-                statusCode: res.status || 200,
-                statusText: res.statusText || 'OK',
-                headers: respHeadersObj,
-                bodyString: res.content?.text || '',
-                bodySize: res.content?.size || (res.content?.text ? res.content.text.length : 0),
-                contentType: res.content?.mimeType || 'text/plain',
-              },
-            };
-          });
-
-          useProxyStore.getState().setRequests(importedReqs);
-          toast.success(`Imported ${importedReqs.length} requests from HAR`, file.name);
-          resolve(true);
-        } else if (Array.isArray(parsed)) {
-          useProxyStore.getState().setRequests(parsed);
-          toast.success(`Imported ${parsed.length} requests from JSON`, file.name);
-          resolve(true);
-        } else {
-          toast.warning('Unrecognized file structure', 'Please select a valid .HAR or exported .JSON file');
-          resolve(false);
+        // 2. Asynchronously backup to Go backend session database if available
+        if ((window as any).go?.main?.App?.ImportHAR) {
+          const sessionName = file.name.replace(/\.(har|json)$/i, '');
+          (window as any).go.main.App.ImportHAR(text, sessionName).catch(() => {});
         }
+
+        toast.success(
+          `Imported ${importedReqs.length} requests into active traffic`,
+          file.name
+        );
+        resolve(true);
       } catch (err: any) {
         toast.error('Import Failed', err?.message || String(err));
         resolve(false);
