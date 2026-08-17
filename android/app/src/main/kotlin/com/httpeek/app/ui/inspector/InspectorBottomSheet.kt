@@ -73,7 +73,7 @@ class InspectorBottomSheet(
             InspectorCardItem(
                 id = "req-body",
                 title = "Request Body",
-                body = req.bodyString?.ifBlank { "No request payload" } ?: "No request payload",
+                body = formatBody(req.bodyString),
                 expanded = false
             )
         )
@@ -91,13 +91,27 @@ class InspectorBottomSheet(
                 InspectorCardItem(
                     id = "resp-body",
                     title = "Response Body",
-                    body = resp.bodyString?.ifBlank { "No response body" } ?: "No response body",
+                    body = formatBody(resp.bodyString),
                     expanded = true
                 )
             )
         }
 
         return cards
+    }
+
+    private fun formatBody(body: String?): String {
+        if (body.isNullOrBlank()) return "No payload"
+        val trimmed = body.trim()
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+            return try {
+                val jsonEl = com.google.gson.JsonParser.parseString(trimmed)
+                com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(jsonEl)
+            } catch (e: Exception) {
+                trimmed
+            }
+        }
+        return trimmed
     }
 
     private fun formatHeaders(headers: Map<String, List<String>>?): String {
