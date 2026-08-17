@@ -101,6 +101,7 @@ interface ProxyStore {
   setSearchQuery: (query: string) => void;
   setShowFavoritesOnly: (v: boolean) => void;
   setCapturePaused: (v: boolean) => void;
+  setRequests: (requests: HttpRequest[]) => void;
   clearRequests: () => void;
   deleteRequest: (id: string) => void;
   removeRequest: (id: string) => void;
@@ -307,6 +308,12 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setShowFavoritesOnly: (showFavoritesOnly) => set({ showFavoritesOnly }),
   setCapturePaused: (capturePaused) => set({ capturePaused }),
+  setRequests: (requests) => {
+    const newMap = new Map<string, HttpRequest>();
+    requests.forEach((r) => newMap.set(r.id, r));
+    get().favorites.forEach((r) => newMap.set(r.id, r));
+    set({ requests, requestMap: newMap, selectedRequestId: requests[0]?.id || null, selectedRequest: requests[0] || null });
+  },
 
   clearRequests: () => {
     const newMap = new Map<string, HttpRequest>();

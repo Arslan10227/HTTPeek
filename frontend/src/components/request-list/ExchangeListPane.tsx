@@ -14,7 +14,7 @@ import { HttpRequest } from '../../types';
 import { toast } from '../../store/useToastStore';
 import { spacing } from '../../design/tokens';
 import { PaneHeader } from '../ui/PaneHeader';
-import { exportRequests, ExportFormat } from '../../utils/exportHelper';
+import { exportRequests, importHarOrJsonFile, ExportFormat } from '../../utils/exportHelper';
 import { ExportModal } from '../common/ExportModal';
 
 export const ExchangeListPane: React.FC = () => {
@@ -100,6 +100,17 @@ export const ExchangeListPane: React.FC = () => {
           className={`htk-chip ${showFavoritesOnly ? 'htk-chip-active' : ''}`}
         >
           <Star className="w-3 h-3" /> Favorites
+        </button>
+
+        {/* Import HAR / JSON */}
+        <button
+          type="button"
+          onClick={() => importHarOrJsonFile()}
+          className="htk-chip hover:border-emerald-400 cursor-pointer flex items-center gap-1"
+          title="Import .HAR or .JSON session"
+        >
+          <Upload className="w-3 h-3 text-emerald-500" />
+          <span>Import</span>
         </button>
 
         {/* Export Dropdown */}

@@ -6,6 +6,7 @@ import {
   Folder,
   FileCode,
   Download,
+  Upload,
   Copy,
   Trash2,
   ExternalLink,
@@ -18,7 +19,7 @@ import {
 import { useProxyStore } from '../../store/useProxyStore';
 import { LottiePlayer } from '../common/LottiePlayer';
 import { HttpRequest } from '../../types';
-import { exportRequests, ExportFormat } from '../../utils/exportHelper';
+import { exportRequests, importHarOrJsonFile, ExportFormat } from '../../utils/exportHelper';
 import { toast } from '../../store/useToastStore';
 import { ExportModal } from '../common/ExportModal';
 
@@ -360,22 +361,32 @@ export const DomainTreeView: React.FC = () => {
             onClick={expandAll}
             className="px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 cursor-pointer"
           >
-            Expand All
+            Expand
           </button>
           <button
             type="button"
             onClick={collapseAll}
             className="px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 cursor-pointer"
           >
-            Collapse All
+            Collapse
+          </button>
+          <button
+            type="button"
+            onClick={() => importHarOrJsonFile()}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold cursor-pointer shadow-2xs"
+            title="Import .HAR or .JSON file"
+          >
+            <Upload className="w-3 h-3" />
+            <span>Import HAR</span>
           </button>
           <button
             type="button"
             onClick={() => setExportModalState({ isOpen: true })}
             className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer shadow-2xs"
+            title="Export Domain Traffic"
           >
             <Download className="w-3 h-3" />
-            <span>Export...</span>
+            <span>Export HAR</span>
           </button>
         </div>
       </div>
