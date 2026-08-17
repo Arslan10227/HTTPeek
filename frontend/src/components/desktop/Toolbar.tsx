@@ -10,6 +10,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { api } from '../../store/apiAdapter';
 import { toast } from '../../store/useToastStore';
+import { confirm } from '../../store/useConfirmDialog';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { SslWidget } from './SslWidget';
 import { SettingMenu, SettingDialogTriggers } from './SettingMenu';
@@ -59,9 +60,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
-  const handleClearClick = () => {
+  const handleClearClick = async () => {
     if (clearConfirm) {
-      if (window.confirm(`${t.clearConfirm}?\n${t.clearConfirmSubtitle}`)) {
+      const ok = await confirm({
+        title: `${t.clearConfirm}?`,
+        message: t.clearConfirmSubtitle || 'All captured traffic in this session will be cleared.',
+        type: 'warning',
+        confirmText: t.clear || 'Clear All',
+      });
+      if (ok) {
         clearRequests();
         onClear();
       }

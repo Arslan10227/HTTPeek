@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { api } from '../../store/apiAdapter';
 import { toast } from '../../store/useToastStore';
+import { confirm } from '../../store/useConfirmDialog';
 import { useAppConfig } from '../../theme/useAppConfig';
 
 interface SslWidgetProps {
@@ -96,36 +97,48 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
   };
 
   const handleGenerateCa = async () => {
-    if (window.confirm(`${t.generateCA}?\n${t.generateCADescribe}`)) {
-      try {
-        if ((window as any).go?.main?.App?.GenerateNewCA) {
-          await (window as any).go.main.App.GenerateNewCA();
-          toast.success(t.success, 'New Root CA generated');
-          await refreshCaStatus();
-        } else {
-          toast.info('Root CA generated');
-        }
-      } catch (e: any) {
-        toast.error(t.fail, e?.message);
+    setIsOpen(false);
+    const ok = await confirm({
+      title: `${t.generateCA}?`,
+      message: t.generateCADescribe || 'This will create a new Root CA keypair and invalidate existing device trust certificates.',
+      type: 'warning',
+      confirmText: 'Generate New CA',
+    });
+    if (!ok) return;
+
+    try {
+      if ((window as any).go?.main?.App?.GenerateNewCA) {
+        await (window as any).go.main.App.GenerateNewCA();
+        toast.success(t.success, 'New Root CA generated');
+        await refreshCaStatus();
+      } else {
+        toast.info('Root CA generated');
       }
-      setIsOpen(false);
+    } catch (e: any) {
+      toast.error(t.fail, e?.message);
     }
   };
 
   const handleResetDefaultCa = async () => {
-    if (window.confirm(`${t.resetDefaultCA}?\n${t.resetDefaultCADescribe}`)) {
-      try {
-        if ((window as any).go?.main?.App?.ResetDefaultCA) {
-          await (window as any).go.main.App.ResetDefaultCA();
-          toast.success(t.success, 'Reset to default Root CA');
-          await refreshCaStatus();
-        } else {
-          toast.info('Default Root CA reset');
-        }
-      } catch (e: any) {
-        toast.error(t.fail, e?.message);
+    setIsOpen(false);
+    const ok = await confirm({
+      title: `${t.resetDefaultCA}?`,
+      message: t.resetDefaultCADescribe || 'This will reset the Root Certificate Authority to default bundled keys.',
+      type: 'danger',
+      confirmText: 'Reset to Default',
+    });
+    if (!ok) return;
+
+    try {
+      if ((window as any).go?.main?.App?.ResetDefaultCA) {
+        await (window as any).go.main.App.ResetDefaultCA();
+        toast.success(t.success, 'Reset to default Root CA');
+        await refreshCaStatus();
+      } else {
+        toast.info('Default Root CA reset');
       }
-      setIsOpen(false);
+    } catch (e: any) {
+      toast.error(t.fail, e?.message);
     }
   };
 

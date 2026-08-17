@@ -76,6 +76,29 @@ export namespace cert {
 		    return a;
 		}
 	}
+	
+	export class JavaInstallation {
+	    path: string;
+	    version: string;
+	    vendor: string;
+	    keytoolPath: string;
+	    cacertsPath: string;
+	    isInstalled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new JavaInstallation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.vendor = source["vendor"];
+	        this.keytoolPath = source["keytoolPath"];
+	        this.cacertsPath = source["cacertsPath"];
+	        this.isInstalled = source["isInstalled"];
+	    }
+	}
 
 }
 

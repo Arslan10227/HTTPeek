@@ -20,6 +20,7 @@ import { WeakNetworkDialog } from '../rules/WeakNetworkDialog';
 import { ExternalProxyDialog } from '../rules/ExternalProxyDialog';
 import { AboutDialog } from './AboutDialog';
 import { DocumentationModal } from './DocumentationModal';
+import { ConfirmModal } from '../common/ConfirmModal';
 import { PCCertDialog } from '../ssl/PCCertDialog';
 import { MobileCertDialog } from '../ssl/MobileCertDialog';
 import { EnvironmentModal } from '../environment/EnvironmentModal';
@@ -205,6 +206,7 @@ export const DesktopHome: React.FC = () => {
           onClose={() => setIsEditorOpen(false)}
         />
       )}
+      <ConfirmModal />
     </div>
   );
 };

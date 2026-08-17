@@ -17,6 +17,7 @@ import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
+import { parseCurlCommand } from '../../utils/curlParser';
 
 export type RequestEditorSource = 'editor' | 'breakpointRequest' | 'breakpointResponse';
 
@@ -88,31 +89,46 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
 
   const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
-  // Handle cURL parse
+  // Handle cURL parse using robust parseCurlCommand utility
   const handleParseCurl = (text: string) => {
-    if (!text.trim().startsWith('curl')) return;
     try {
-      const urlMatch = text.match(/curl\s+(?:-X\s+[A-Z]+\s+)?['"]([^'"]+)['"]/);
-      if (urlMatch) setUrl(urlMatch[1]);
+      const parsed = parseCurlCommand(text);
+      setUrl(parsed.url);
+      setMethod(parsed.method);
 
-      const methodMatch = text.match(/-X\s+([A-Z]+)/);
-      if (methodMatch) setMethod(methodMatch[1]);
-
-      const headerMatches = text.matchAll(/-H\s+['"]([^'"]+):\s*([^'"]+)['"]/g);
-      const parsedHeaders: ParamEntry[] = [];
-      for (const m of headerMatches) {
-        parsedHeaders.push({ key: m[1], value: m[2], enabled: true });
-      }
+      const parsedHeaders: ParamEntry[] = Object.entries(parsed.headers).map(([k, v]) => ({
+        key: k,
+        value: v,
+        enabled: true,
+      }));
       if (parsedHeaders.length > 0) setHeaders(parsedHeaders);
 
-      const dataMatch = text.match(/(?:--data|--data-raw|-d)\s+['"]([\s\S]*?)['"](?:\s|$)/);
-      if (dataMatch) {
-        setBodyType('raw');
-        setBodyContent(dataMatch[1]);
+      if (parsed.body) {
+        setBodyType(parsed.bodyType === 'json' ? 'json' : parsed.bodyType === 'form-urlencoded' ? 'form' : 'raw');
+        setBodyContent(parsed.body);
       }
       toast.success(t.success, 'Parsed cURL command');
     } catch (e: any) {
-      toast.error(t.fail, 'Failed to parse cURL');
+      toast.error(t.fail, 'Failed to parse cURL: ' + e?.message);
+    }
+  };
+
+  const handlePasteCurlFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.trim().startsWith('curl')) {
+        handleParseCurl(text);
+      } else {
+        const manual = prompt('Paste your cURL command here:');
+        if (manual && manual.trim().startsWith('curl')) {
+          handleParseCurl(manual);
+        }
+      }
+    } catch (_) {
+      const manual = prompt('Paste your cURL command here:');
+      if (manual && manual.trim().startsWith('curl')) {
+        handleParseCurl(manual);
+      }
     }
   };
 
@@ -247,6 +263,17 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
             className="flex-1 px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
             style={{ borderColor: 'var(--md-sys-color-outline)' }}
           />
+
+          <button
+            type="button"
+            onClick={handlePasteCurlFromClipboard}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border font-semibold text-xs hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300 transition-colors"
+            style={{ borderColor: 'var(--md-sys-color-outline)' }}
+            title="Paste and parse cURL command"
+          >
+            <Terminal className="w-3.5 h-3.5 text-blue-500" />
+            <span>Paste cURL</span>
+          </button>
 
           <button
             type="button"

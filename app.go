@@ -32,6 +32,7 @@ type App struct {
 	server      *proxy.Server
 	certMgr     *cert.CertificateManager
 	trust       *cert.TrustInstaller
+	javaMgr     *cert.JavaManager
 	chain       *interceptor.Chain
 	db          *storage.DB
 	sessionRepo *storage.SessionRepo
@@ -104,6 +105,7 @@ func (a *App) startup(ctx context.Context) {
 		} else {
 			a.certMgr = certMgr
 			a.trust = cert.NewTrustInstaller(ca)
+			a.javaMgr = cert.NewJavaManager(ca)
 		}
 	}
 
@@ -301,4 +303,74 @@ func (a *App) OpenLogFolder() {
 	default:
 		_ = exec.Command("xdg-open", dir).Start()
 	}
+}
+
+// DetectJavaInstallations returns all discovered Java JDK/JRE environments on the machine.
+func (a *App) DetectJavaInstallations() []cert.JavaInstallation {
+	if a.javaMgr == nil {
+		if a.certMgr != nil && a.certMgr.CA() != nil {
+			a.javaMgr = cert.NewJavaManager(a.certMgr.CA())
+		} else {
+			return nil
+		}
+	}
+	return a.javaMgr.DetectInstallations()
+}
+
+// SelectJavaFolder opens a directory picker, inspects the selected Java home, and returns installation details.
+func (a *App) SelectJavaFolder() (*cert.JavaInstallation, error) {
+	if a.ctx == nil {
+		return nil, fmt.Errorf("app context not ready")
+	}
+	if a.javaMgr == nil {
+		if a.certMgr != nil && a.certMgr.CA() != nil {
+			a.javaMgr = cert.NewJavaManager(a.certMgr.CA())
+		} else {
+			return nil, fmt.Errorf("CA certificate not initialized")
+		}
+	}
+
+	selectedDir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Java Home Directory (e.g. jdk-17, jdk-21 or jre)",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if selectedDir == "" {
+		return nil, fmt.Errorf("selection cancelled")
+	}
+
+	return a.javaMgr.InspectFolder(selectedDir)
+}
+
+// InstallCertToJava installs the Root CA certificate into the target Java keystore.
+func (a *App) InstallCertToJava(javaPath string) error {
+	if a.javaMgr == nil {
+		if a.certMgr != nil && a.certMgr.CA() != nil {
+			a.javaMgr = cert.NewJavaManager(a.certMgr.CA())
+		} else {
+			return fmt.Errorf("CA certificate not initialized")
+		}
+	}
+	inst, err := a.javaMgr.InspectFolder(javaPath)
+	if err != nil {
+		return err
+	}
+	return a.javaMgr.InstallCert(*inst)
+}
+
+// UninstallCertFromJava removes the Root CA certificate from the target Java keystore.
+func (a *App) UninstallCertFromJava(javaPath string) error {
+	if a.javaMgr == nil {
+		if a.certMgr != nil && a.certMgr.CA() != nil {
+			a.javaMgr = cert.NewJavaManager(a.certMgr.CA())
+		} else {
+			return fmt.Errorf("CA certificate not initialized")
+		}
+	}
+	inst, err := a.javaMgr.InspectFolder(javaPath)
+	if err != nil {
+		return err
+	}
+	return a.javaMgr.UninstallCert(*inst)
 }

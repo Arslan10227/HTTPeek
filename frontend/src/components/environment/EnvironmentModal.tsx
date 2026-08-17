@@ -12,6 +12,7 @@ import {
   Info
 } from 'lucide-react';
 import { useProxyStore, Environment, EnvVariable } from '../../store/useProxyStore';
+import { confirm } from '../../store/useConfirmDialog';
 
 export const EnvironmentModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
@@ -26,6 +27,16 @@ export const EnvironmentModal: React.FC<{ isOpen: boolean; onClose: () => void }
 
   if (!isOpen) return null;
 
+  const handleCreateEnv = () => {
+    const newEnv: Environment = {
+      id: `env-${Date.now()}`,
+      name: 'New Environment',
+      variables: [],
+    };
+    setEnvironments([...environments, newEnv]);
+    setSelectedEnvId(newEnv.id);
+  };
+
   const handleAddEnv = () => {
     const name = prompt('Enter Environment Name (e.g. Production, Testing):');
     if (!name) return;
@@ -38,10 +49,16 @@ export const EnvironmentModal: React.FC<{ isOpen: boolean; onClose: () => void }
     setSelectedEnvId(newEnv.id);
   };
 
-  const handleDeleteEnv = (id: string, e: React.MouseEvent) => {
+  const handleDeleteEnv = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (id === 'global') return;
-    if (!confirm('Are you sure you want to delete this environment?')) return;
+    const ok = await confirm({
+      title: 'Delete Environment',
+      message: 'Are you sure you want to delete this environment?',
+      type: 'danger',
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     const updated = environments.filter((e) => e.id !== id);
     setEnvironments(updated);
     if (selectedEnvId === id) {

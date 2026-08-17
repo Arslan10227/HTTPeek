@@ -156,19 +156,49 @@ export interface RewriteItem {
   isRegex?: boolean;
 }
 
+export type RuleActionType = 'replace' | 'redirect' | 'update' | 'modify_headers' | 'drop' | 'delay';
+export type UrlMatchType = 'wildcard' | 'regex' | 'exact' | 'contains' | 'prefix';
+export type HttpBodyType = 'json' | 'form-urlencoded' | 'raw' | 'xml' | 'html' | 'base64' | 'graphql';
+
+export interface HeaderModifier {
+  action: 'set' | 'remove';
+  key: string;
+  value: string;
+  stage?: 'request' | 'response';
+}
+
+export interface QueryModifier {
+  action: 'set' | 'remove';
+  key: string;
+  value: string;
+}
+
+export interface FormDataEntry {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
+
 export interface RewriteRule {
   id: string;
   name?: string;
   urlPattern: string;
+  matchType?: UrlMatchType;
   method?: string;
-  action?: 'replace' | 'redirect' | 'update';
+  action?: RuleActionType;
+  stage?: 'request' | 'response' | 'both';
   type?: string;
   redirectUrl?: string;
   replaceBody?: string;
+  bodyType?: HttpBodyType;
+  formData?: FormDataEntry[];
   replaceHeaders?: Record<string, string>;
   replaceStatus?: number;
   statusCode?: number;
   headers?: Record<string, string>;
+  headerModifiers?: HeaderModifier[];
+  queryModifiers?: QueryModifier[];
+  delayMs?: number;
   items?: RewriteItem[];
   enabled: boolean;
 }

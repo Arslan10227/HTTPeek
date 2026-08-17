@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useUiStore } from '../../store/useUiStore';
+import { confirm } from '../../store/useConfirmDialog';
+import { toast } from '../../store/useToastStore';
 import { HttpRequest } from '../../types';
 import { LottiePlayer } from '../common/LottiePlayer';
 import { InspectorPanel } from '../inspector/InspectorPanel';
@@ -76,7 +78,13 @@ export const HistoryView: React.FC = () => {
 
   const handleDeleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this recorded session?')) return;
+    const ok = await confirm({
+      title: 'Delete Session',
+      message: 'Are you sure you want to delete this recorded session?',
+      type: 'danger',
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     try {
       if ((window as any).go?.main?.App?.DeleteSession) {
         await (window as any).go.main.App.DeleteSession(id);
@@ -130,7 +138,7 @@ export const HistoryView: React.FC = () => {
           }
         }
       } catch (err: any) {
-        alert('Failed to import HAR file: ' + (err.message || err));
+        toast.error('Failed to import HAR', err?.message || String(err));
       }
     };
     input.click();
@@ -151,15 +159,21 @@ export const HistoryView: React.FC = () => {
         URL.revokeObjectURL(url);
       }
     } catch (err: any) {
-      alert('Failed to export HAR: ' + (err.message || err));
+      toast.error('Failed to export HAR', err?.message || String(err));
     } finally {
       setExportingHar(false);
     }
   };
 
-  const handleRestoreToLive = () => {
+  const handleRestoreToLive = async () => {
     if (!sessionRequests || sessionRequests.length === 0) return;
-    if (confirm('Restore this historical session into the live Capture workspace?')) {
+    const ok = await confirm({
+      title: 'Restore Session',
+      message: 'Restore this historical session into the live Capture workspace?',
+      type: 'warning',
+      confirmText: 'Restore',
+    });
+    if (ok) {
       clearRequests();
       sessionRequests.forEach((r) => addRequest(r));
       setActiveTab('capture');

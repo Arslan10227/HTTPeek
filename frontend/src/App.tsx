@@ -3,6 +3,8 @@ import { DesktopHome } from './components/desktop/DesktopHome';
 import { MobileHome } from './components/mobile/MobileHome';
 import { RequestEditor } from './components/editor/RequestEditor';
 import { ToastContainer } from './components/common/ToastContainer';
+import { ConfirmModal } from './components/common/ConfirmModal';
+import { confirm } from './store/useConfirmDialog';
 import { useProxyStore } from './store/useProxyStore';
 import { useAppConfig } from './theme/useAppConfig';
 import { useLogStore } from './store/useLogStore';
@@ -77,9 +79,14 @@ export const App: React.FC = () => {
         case 'l': // Ctrl/Cmd+L - clear requests
           if (e.shiftKey) {
             e.preventDefault();
-            if (confirm('Clear all captured requests?')) {
-              useProxyStore.getState().clearRequests();
-            }
+            confirm({
+              title: 'Clear Requests',
+              message: 'Clear all captured requests in current session?',
+              type: 'warning',
+              confirmText: 'Clear',
+            }).then((ok) => {
+              if (ok) useProxyStore.getState().clearRequests();
+            });
           }
           break;
         case 'ArrowDown': // Ctrl/Cmd+Down - select next
@@ -222,6 +229,7 @@ export const App: React.FC = () => {
       )}
 
       <ToastContainer />
+      <ConfirmModal />
     </>
   );
 };

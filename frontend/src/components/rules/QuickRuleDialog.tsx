@@ -14,10 +14,14 @@ import {
   ArrowRight,
   Sparkles,
   Play,
-  Copy
+  Copy,
+  Clock,
+  Ban,
+  AlignLeft,
+  Braces
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
-import { HttpRequest } from '../../types';
+import { HttpRequest, RuleActionType, UrlMatchType, HttpBodyType, FormDataEntry } from '../../types';
 import { StatusCodePicker } from '../common/StatusCodePicker';
 import { HeaderKeyCombobox, HeaderValueCombobox } from '../common/HeaderCombobox';
 import { HttpMethodPicker } from '../common/HttpMethodPicker';
@@ -43,20 +47,27 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
   const [ruleType, setRuleType] = useState<'rewrite' | 'mock' | 'breakpoint' | 'script'>(initialType);
   const [ruleName, setRuleName] = useState('');
   const [urlPattern, setUrlPattern] = useState('');
+  const [matchType, setMatchType] = useState<UrlMatchType>('wildcard');
   const [enabled, setEnabled] = useState(true);
 
-  // Rewrite Rule State
-  const [rewriteType, setRewriteType] = useState<'requestReplace' | 'requestUpdate' | 'responseReplace' | 'responseUpdate' | 'redirect'>('responseUpdate');
+  // Advanced Action & Stage
+  const [actionType, setActionType] = useState<RuleActionType>('replace');
+  const [targetStage, setTargetStage] = useState<'request' | 'response' | 'both'>('response');
+  const [delayMs, setDelayMs] = useState<number>(500);
+
+  // Rewrite / Mock Rule Payload
   const [redirectUrl, setRedirectUrl] = useState('');
   const [statusCode, setStatusCode] = useState(200);
-  const [headers, setHeaders] = useState<{ key: string; value: string; action: string }[]>([]);
-  const [bodyReplacement, setBodyReplacement] = useState('');
+  const [headers, setHeaders] = useState<{ key: string; value: string; action: 'set' | 'remove' }[]>([]);
+  
+  // Body Types: json, form-urlencoded, raw, xml, html, base64, graphql
+  const [bodyType, setBodyType] = useState<HttpBodyType>('json');
+  const [bodyContent, setBodyContent] = useState('{\n  "code": 0,\n  "message": "success",\n  "data": {}\n}');
+  const [formEntries, setFormEntries] = useState<FormDataEntry[]>([
+    { key: 'username', value: 'admin', enabled: true },
+    { key: 'token', value: 'sample_token_xyz', enabled: true }
+  ]);
   const [bodySearch, setBodySearch] = useState('');
-
-  // Mock Rule State
-  const [mockStatusCode, setMockStatusCode] = useState(200);
-  const [mockContentType, setMockContentType] = useState('application/json; charset=utf-8');
-  const [mockBody, setMockBody] = useState('{\n  "code": 0,\n  "message": "success",\n  "data": {}\n}');
 
   // Breakpoint Rule State
   const [breakpointMethod, setBreakpointMethod] = useState('');
@@ -85,21 +96,25 @@ export const QuickRuleDialog: React.FC<QuickRuleDialogProps> = ({
       setSimMethod(request.method || 'GET');
       setRuleName(`${initialType.toUpperCase()} - ${domain || 'Rule'}`);
 
-      // Pre-fill Rewrite
+      // Pre-fill Rewrite / Mock
       setStatusCode(request.response?.statusCode || 200);
       const reqHeaders = Object.entries(request.headers || {}).slice(0, 3).map(([k, v]) => ({
         key: k,
         value: Array.isArray(v) ? v[0] : String(v),
-        action: 'set',
+        action: 'set' as const,
       }));
       setHeaders(reqHeaders);
-      setBodyReplacement(request.response?.bodyString || request.response?.body || '');
-      setBodySearch('');
 
-      // Pre-fill Mock
-      setMockStatusCode(request.response?.statusCode || 200);
-      setMockContentType(request.response?.contentType || 'application/json; charset=utf-8');
-      setMockBody(request.response?.bodyString || request.response?.body || '{\n  "code": 0,\n  "message": "success",\n  "data": {}\n}');
+      const respBody = request.response?.bodyString || request.response?.body || '';
+      if (respBody) {
+        setBodyContent(respBody);
+        try {
+          JSON.parse(respBody);
+          setBodyType('json');
+        } catch (_) {
+          setBodyType('raw');
+        }
+      }
 
       // Pre-fill Breakpoint
       setBreakpointMethod(request.method || '');
@@ -127,23 +142,79 @@ function onResponse(context, request, response) {
   if (!isOpen) return null;
 
   const handleApplyTemplate = (tmpl: any) => {
-    setMockStatusCode(tmpl.statusCode);
-    setMockContentType(tmpl.contentType);
-    setMockBody(tmpl.body);
+    setStatusCode(tmpl.statusCode);
+    setBodyContent(tmpl.body);
+    setBodyType('json');
     toast.info(`Applied template: ${tmpl.name}`);
+  };
+
+  const handleFormatJson = () => {
+    try {
+      const parsed = JSON.parse(bodyContent);
+      setBodyContent(JSON.stringify(parsed, null, 2));
+      toast.success('Formatted JSON');
+    } catch (_) {
+      toast.error('Invalid JSON syntax');
+    }
+  };
+
+  const handleMinifyJson = () => {
+    try {
+      const parsed = JSON.parse(bodyContent);
+      setBodyContent(JSON.stringify(parsed));
+      toast.info('Minified JSON');
+    } catch (_) {
+      toast.error('Invalid JSON syntax');
+    }
+  };
+
+  const handleFormEntriesChange = (entries: FormDataEntry[]) => {
+    setFormEntries(entries);
+    // Generate serialized URL-encoded string
+    const params = new URLSearchParams();
+    entries.forEach((e) => {
+      if (e.enabled && e.key.trim()) {
+        params.append(e.key.trim(), e.value);
+      }
+    });
+    setBodyContent(params.toString());
   };
 
   const handleSimulate = () => {
     let matched = false;
     const testPattern = urlPattern.trim();
+    const targetUrl = simUrl.trim();
+
     if (!testPattern) {
       matched = true;
-    } else if (testPattern.includes('*')) {
-      const escaped = testPattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-      const re = new RegExp(`^${escaped}$`, 'i');
-      matched = re.test(simUrl);
     } else {
-      matched = simUrl.toLowerCase().includes(testPattern.toLowerCase());
+      switch (matchType) {
+        case 'wildcard':
+          if (testPattern.includes('*')) {
+            const escaped = testPattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+            matched = new RegExp(`^${escaped}$`, 'i').test(targetUrl);
+          } else {
+            matched = targetUrl.toLowerCase().includes(testPattern.toLowerCase());
+          }
+          break;
+        case 'regex':
+          try {
+            matched = new RegExp(testPattern, 'i').test(targetUrl);
+          } catch (_) {
+            matched = false;
+          }
+          break;
+        case 'exact':
+          matched = targetUrl === testPattern;
+          break;
+        case 'prefix':
+          matched = targetUrl.toLowerCase().startsWith(testPattern.toLowerCase());
+          break;
+        case 'contains':
+        default:
+          matched = targetUrl.toLowerCase().includes(testPattern.toLowerCase());
+          break;
+      }
     }
 
     if (ruleType === 'breakpoint' && breakpointMethod && breakpointMethod !== 'ALL') {
@@ -154,14 +225,16 @@ function onResponse(context, request, response) {
 
     let output = '';
     if (matched) {
-      if (ruleType === 'mock') {
-        output = `Status: ${mockStatusCode}\nContent-Type: ${mockContentType}\n\n${mockBody}`;
-      } else if (ruleType === 'rewrite') {
-        output = `Status: ${statusCode}\nModified Headers: ${headers.length}\nBody: ${bodyReplacement || '(Pass-through)'}`;
-      } else if (ruleType === 'breakpoint') {
-        output = `Intercept Triggered: ${interceptRequest ? '[Request]' : ''} ${interceptResponse ? '[Response]' : ''}\nTraffic paused for inspection.`;
+      if (actionType === 'drop') {
+        output = '⚡ Connection Aborted & Dropped Silently (Simulated 0ms TCP RST)';
+      } else if (actionType === 'delay') {
+        output = `⏱ Injected Artificial Latency: +${delayMs}ms delay before forward`;
+      } else if (actionType === 'redirect') {
+        output = `🔀 Redirect URL Target: ${redirectUrl || 'https://mock.example.com/$1'}`;
+      } else if (ruleType === 'mock' || actionType === 'replace') {
+        output = `HTTP/1.1 ${statusCode}\nContent-Type: ${bodyType === 'json' ? 'application/json' : bodyType === 'form-urlencoded' ? 'application/x-www-form-urlencoded' : 'text/plain'}\n\n${bodyContent}`;
       } else {
-        output = `Script Evaluated: onResponse / onRequest pipeline executed.`;
+        output = `Matched rule: ${ruleName}\nStage: ${targetStage}\nAction: ${actionType}`;
       }
     }
 
@@ -169,439 +242,484 @@ function onResponse(context, request, response) {
   };
 
   const handleSave = () => {
-    const payload = {
+    if (!urlPattern.trim()) {
+      toast.warning('Please specify a URL match pattern');
+      return;
+    }
+
+    const ruleData = {
+      id: `rule-${Date.now()}`,
+      name: ruleName || `Rule ${urlPattern}`,
+      urlPattern: urlPattern.trim(),
+      matchType,
       type: ruleType,
-      name: ruleName,
-      urlPattern,
+      action: actionType,
+      stage: targetStage,
       enabled,
-      rewrite: ruleType === 'rewrite' ? {
-        rewriteType,
-        redirectUrl,
-        statusCode,
-        headers,
-        bodySearch,
-        bodyReplacement,
-      } : undefined,
-      mock: ruleType === 'mock' ? {
-        statusCode: mockStatusCode,
-        contentType: mockContentType,
-        body: mockBody,
-      } : undefined,
-      breakpoint: ruleType === 'breakpoint' ? {
-        method: breakpointMethod,
-        interceptRequest,
-        interceptResponse,
-      } : undefined,
-      script: ruleType === 'script' ? {
-        code: scriptCode,
-      } : undefined,
+      statusCode,
+      bodyType,
+      replaceBody: bodyContent,
+      redirectUrl,
+      delayMs,
+      headers: headers.reduce((acc, h) => {
+        if (h.key.trim()) acc[h.key.trim()] = h.value;
+        return acc;
+      }, {} as Record<string, string>),
+      breakpointMethod: breakpointMethod || undefined,
+      scriptCode: ruleType === 'script' ? scriptCode : undefined,
     };
 
     if (onSaveRule) {
-      onSaveRule(payload);
+      onSaveRule(ruleData);
     }
-    toast.success('Rule saved successfully');
+    toast.success('Rule Created Successfully', ruleName || urlPattern);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs select-none font-sans">
-      <div className="bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-        {/* Header */}
-        <div className="h-14 border-b border-slate-200 dark:border-gray-800 px-5 flex items-center justify-between bg-slate-50 dark:bg-gray-800/50 shrink-0">
-          <div className="flex items-center gap-2.5">
-            {ruleType === 'rewrite' && <Sliders className="w-5 h-5 text-emerald-600" />}
-            {ruleType === 'mock' && <Globe className="w-5 h-5 text-sky-600" />}
-            {ruleType === 'breakpoint' && <PauseCircle className="w-5 h-5 text-amber-500" />}
-            {ruleType === 'script' && <Code2 className="w-5 h-5 text-purple-600" />}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none font-sans">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-4xl h-[720px] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Top Header */}
+        <div className="h-16 px-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
+              <Sliders className="w-5 h-5" />
+            </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                {ruleType === 'rewrite' && 'GUI Request / Response Rewrite Rule'}
-                {ruleType === 'mock' && 'GUI Mock & Response Generator'}
-                {ruleType === 'breakpoint' && 'GUI Breakpoint Rule'}
-                {ruleType === 'script' && 'JavaScript Sandbox Rule'}
+              <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                Visual GUI Rule Builder &amp; Interceptor
               </h2>
-              <p className="text-[11px] text-slate-400">Interactive visual rule builder with prefilled templates</p>
+              <p className="text-xs text-gray-500">Create smart URL rewrite, mock response, delay, and breakpoint rules</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
+        {/* Tab & Rule Type Selector */}
+        <div className="px-6 py-2 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-900 shrink-0 text-xs">
           <div className="flex items-center gap-2">
-            <div className="flex bg-gray-200 dark:bg-gray-700 p-0.5 rounded-lg text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setActiveTab('editor')}
-                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                  activeTab === 'editor' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs' : 'text-gray-600 dark:text-gray-300'
-                }`}
-              >
-                Rule Editor
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('simulator');
-                  handleSimulate();
-                }}
-                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                  activeTab === 'simulator' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs' : 'text-gray-600 dark:text-gray-300'
-                }`}
-              >
-                Live Simulator
-              </button>
-            </div>
-
             <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
+              type="button"
+              onClick={() => setActiveTab('editor')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                activeTab === 'editor'
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
             >
-              <X className="w-4 h-4" />
+              1. Rule Configuration
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('simulator');
+                handleSimulate();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                activeTab === 'simulator'
+                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>2. Live Rule Simulator</span>
+            </button>
+          </div>
+
+          {/* Preset Templates Pill */}
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">Presets:</span>
+            {MOCK_RESPONSE_TEMPLATES.map((tmpl) => (
+              <button
+                key={tmpl.name}
+                type="button"
+                onClick={() => handleApplyTemplate(tmpl)}
+                className="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[11px] font-medium hover:border-blue-500 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
+              >
+                {tmpl.name}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Scrollable Form Body */}
-        <div className="flex-1 p-5 overflow-y-auto space-y-4 text-xs">
-          {activeTab === 'simulator' ? (
-            <div className="flex flex-col gap-4">
-              <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-950/20">
-                <span className="font-bold text-blue-900 dark:text-blue-300">Rule Simulator &amp; Tester</span>
-                <p className="text-gray-500 text-[11px] mt-0.5">
-                  Verify whether your URL and method criteria match before saving.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="font-bold text-gray-700 dark:text-gray-300">Test Request Method &amp; URL</label>
-                <div className="flex items-center gap-2">
-                  <HttpMethodPicker value={simMethod} onChange={setSimMethod} allowAll={false} />
-                  <input
-                    type="text"
-                    value={simUrl}
-                    onChange={(e) => setSimUrl(e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-lg font-mono text-xs bg-white dark:bg-gray-800"
-                    placeholder="https://api.example.com/v1/user/123"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSimulate}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Test</span>
-                  </button>
-                </div>
-              </div>
-
-              {simResult && (
-                <div className={`p-4 rounded-xl border ${
-                  simResult.matched
-                    ? 'border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-300'
-                    : 'border-rose-300 bg-rose-50/50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-300'
-                }`}>
-                  <div className="flex items-center gap-2 font-bold mb-2">
-                    {simResult.matched ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-rose-600" />}
-                    <span>{simResult.matched ? 'MATCH SUCCESS: Rule applies to this request' : 'NO MATCH: URL does not satisfy match condition'}</span>
-                  </div>
-                  {simResult.matched && simResult.output && (
-                    <pre className="p-3 bg-gray-900 text-gray-100 font-mono text-[11px] rounded-lg overflow-x-auto mt-2">
-                      {simResult.output}
-                    </pre>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
+        {/* Content Body */}
+        <div className="flex-1 p-6 overflow-y-auto min-h-0 flex flex-col gap-4 text-xs">
+          {activeTab === 'editor' ? (
             <>
-              {/* General Properties */}
+              {/* Row 1: Rule Name & Action Type & Match Mode */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Rule Name</label>
+                <div className="flex flex-col gap-1">
+                  <label className="font-bold text-gray-700 dark:text-gray-300">Rule Name:</label>
                   <input
                     type="text"
                     value={ruleName}
                     onChange={(e) => setRuleName(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 font-medium bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                    placeholder="e.g. Mock Auth & Inject Headers"
+                    placeholder="e.g. Mock User Profile 200"
+                    className="w-full px-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Status</label>
-                  <button
-                    type="button"
-                    onClick={() => setEnabled(!enabled)}
-                    className={`w-full py-1.5 px-3 rounded-lg border font-bold text-center cursor-pointer transition-colors ${
-                      enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-gray-800 dark:text-gray-400'
-                    }`}
+
+                <div className="flex flex-col gap-1">
+                  <label className="font-bold text-gray-700 dark:text-gray-300">Action Type:</label>
+                  <select
+                    value={actionType}
+                    onChange={(e) => setActionType(e.target.value as any)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-bold text-xs bg-white dark:bg-gray-800 focus:outline-none cursor-pointer"
                   >
-                    {enabled ? 'Active (Enabled)' : 'Disabled'}
-                  </button>
+                    <option value="replace">Replace (Status, Headers, Body)</option>
+                    <option value="redirect">Redirect (URL Forward / Rewrite)</option>
+                    <option value="update">Update (Regex Search &amp; Replace)</option>
+                    <option value="modify_headers">Modify Headers Only</option>
+                    <option value="drop">Drop Connection (Abort / TCP RST)</option>
+                    <option value="delay">Inject Latency / Delay (Lag)</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="font-bold text-gray-700 dark:text-gray-300">URL Match Mode:</label>
+                  <select
+                    value={matchType}
+                    onChange={(e) => setMatchType(e.target.value as any)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 font-bold text-xs bg-white dark:bg-gray-800 focus:outline-none cursor-pointer"
+                  >
+                    <option value="wildcard">Wildcard Pattern (*://*.com/*)</option>
+                    <option value="regex">Regular Expression (^https://...$)</option>
+                    <option value="exact">Exact Full URL Match</option>
+                    <option value="contains">Contains / Substring</option>
+                    <option value="prefix">URL Prefix / Starts With</option>
+                  </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">URL Match Criteria (Supports Wildcard * and Regex)</label>
+              {/* Row 2: Target URL Match Pattern */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-gray-700 dark:text-gray-300">URL Pattern to Match:</label>
+                  <span className="text-[11px] text-gray-400 font-mono">
+                    Example: *://api.github.com/users/*
+                  </span>
+                </div>
                 <input
                   type="text"
                   value={urlPattern}
                   onChange={(e) => setUrlPattern(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-slate-200 dark:border-gray-700 rounded-lg font-mono text-xs focus:outline-none focus:border-blue-500 font-medium text-slate-800 dark:text-slate-200 bg-white dark:bg-gray-800"
-                  placeholder="*://api.example.com/*"
+                  placeholder="*://api.example.com/v1/*"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
-              {/* TAB 1: REWRITE SPECIFIC */}
-              {ruleType === 'rewrite' && (
-                <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-gray-800">
+              {/* Action Specific Fields */}
+              {actionType === 'redirect' && (
+                <div className="flex flex-col gap-1 p-3.5 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800">
+                  <label className="font-bold text-blue-900 dark:text-blue-200">Redirect Target URL:</label>
+                  <input
+                    type="text"
+                    value={redirectUrl}
+                    onChange={(e) => setRedirectUrl(e.target.value)}
+                    placeholder="https://staging.example.com/v1/$1"
+                    className="w-full px-3 py-2 rounded-xl border border-blue-300 dark:border-blue-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {actionType === 'delay' && (
+                <div className="flex items-center gap-4 p-3.5 bg-amber-50/50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800">
+                  <Clock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                  <div className="flex-1">
+                    <div className="flex justify-between font-bold text-amber-900 dark:text-amber-200">
+                      <span>Simulated Latency Lag:</span>
+                      <span>{delayMs} ms</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50"
+                      max="5000"
+                      step="50"
+                      value={delayMs}
+                      onChange={(e) => setDelayMs(Number(e.target.value))}
+                      className="w-full accent-amber-600 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {actionType === 'drop' && (
+                <div className="flex items-center gap-3 p-3.5 bg-rose-50/50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
+                  <Ban className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1.5">Rewrite Action Type</label>
-                    <div className="grid grid-cols-5 gap-1.5 bg-slate-100 dark:bg-gray-800 p-1 rounded-lg text-center font-medium">
-                      {[
-                        { id: 'responseUpdate', label: 'Update Resp' },
-                        { id: 'responseReplace', label: 'Replace Resp' },
-                        { id: 'requestUpdate', label: 'Update Req' },
-                        { id: 'requestReplace', label: 'Replace Req' },
-                        { id: 'redirect', label: 'Redirect' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => setRewriteType(t.id as any)}
-                          className={`py-1 rounded-md text-[11px] cursor-pointer transition-all ${
-                            rewriteType === t.id ? 'bg-white dark:bg-gray-700 shadow-xs text-emerald-700 dark:text-emerald-400 font-bold' : 'text-slate-600 dark:text-gray-400'
-                          }`}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
+                    <span className="font-bold">Silent Connection Dropper:</span>
+                    <p className="text-[11px] opacity-80 mt-0.5">Matching requests will be immediately aborted with connection reset simulation.</p>
+                  </div>
+                </div>
+              )}
+
+              {(actionType === 'replace' || actionType === 'update') && (
+                <>
+                  {/* Status Code & Target Stage */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="font-bold text-gray-700 dark:text-gray-300">Status Code Override:</label>
+                      <StatusCodePicker value={statusCode} onChange={setStatusCode} />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-bold text-gray-700 dark:text-gray-300">Target Stage:</label>
+                      <div className="flex items-center gap-2 pt-1">
+                        {(['response', 'request', 'both'] as const).map((stage) => (
+                          <button
+                            key={stage}
+                            type="button"
+                            onClick={() => setTargetStage(stage)}
+                            className={`px-3 py-1.5 rounded-xl font-bold capitalize transition-all cursor-pointer ${
+                              targetStage === stage
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                            }`}
+                          >
+                            {stage}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
-                  {rewriteType === 'redirect' ? (
-                    <div>
-                      <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Target Redirect URL</label>
-                      <input
-                        type="text"
-                        value={redirectUrl}
-                        onChange={(e) => setRedirectUrl(e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 dark:border-gray-700 rounded-lg font-mono focus:outline-none focus:border-emerald-500 bg-white dark:bg-gray-800"
-                        placeholder="https://127.0.0.1:8080/*"
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      {/* Status Code with Picker */}
-                      <div>
-                        <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Override Status Code</label>
-                        <StatusCodePicker value={statusCode} onChange={setStatusCode} />
+                  {/* Body Type Bar & Payload Editor */}
+                  <div className="flex flex-col gap-2 flex-1 min-h-[220px]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">Body Type:</span>
+                        {(['json', 'form-urlencoded', 'raw', 'xml', 'html', 'graphql'] as const).map((bt) => (
+                          <button
+                            key={bt}
+                            type="button"
+                            onClick={() => setBodyType(bt)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer ${
+                              bodyType === bt
+                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                            }`}
+                          >
+                            {bt}
+                          </button>
+                        ))}
                       </div>
 
-                      {/* Header Modifiers */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-slate-500 dark:text-slate-400 font-semibold">Header Mutations</label>
+                      {bodyType === 'json' && (
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setHeaders([...headers, { key: '', value: '', action: 'set' }])}
-                            className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                            onClick={handleFormatJson}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[11px] font-semibold cursor-pointer"
                           >
-                            <Plus className="w-3 h-3" />
-                            <span>Add Header</span>
+                            <Braces className="w-3 h-3 text-blue-500" />
+                            <span>Prettify</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleMinifyJson}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-[11px] font-semibold cursor-pointer"
+                          >
+                            <AlignLeft className="w-3 h-3 text-gray-500" />
+                            <span>Minify</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {bodyType === 'form-urlencoded' ? (
+                      /* Form Key-Value Table */
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-2xl p-3 bg-gray-50/50 dark:bg-gray-900/50 flex flex-col gap-2 max-h-[220px] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800">
+                          <span className="font-bold text-gray-600 dark:text-gray-300">Form URL-Encoded Key/Values:</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleFormEntriesChange([
+                                ...formEntries,
+                                { key: '', value: '', enabled: true },
+                              ])
+                            }
+                            className="flex items-center gap-1 text-emerald-600 font-bold hover:underline cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Field</span>
                           </button>
                         </div>
 
-                        {headers.map((h, idx) => (
+                        {formEntries.map((fe, idx) => (
                           <div key={idx} className="flex items-center gap-2">
-                            <div className="w-1/3">
-                              <HeaderKeyCombobox
-                                value={h.key}
-                                onChange={(k) => {
-                                  const next = [...headers];
-                                  next[idx].key = k;
-                                  setHeaders(next);
-                                }}
-                              />
-                            </div>
-                            <div className="flex-1">
-                              <HeaderValueCombobox
-                                headerKey={h.key}
-                                value={h.value}
-                                onChange={(v) => {
-                                  const next = [...headers];
-                                  next[idx].value = v;
-                                  setHeaders(next);
-                                }}
-                              />
-                            </div>
+                            <input
+                              type="checkbox"
+                              checked={fe.enabled}
+                              onChange={(e) => {
+                                const next = [...formEntries];
+                                next[idx].enabled = e.target.checked;
+                                handleFormEntriesChange(next);
+                              }}
+                              className="rounded text-blue-600 cursor-pointer"
+                            />
+                            <input
+                              type="text"
+                              value={fe.key}
+                              onChange={(e) => {
+                                const next = [...formEntries];
+                                next[idx].key = e.target.value;
+                                handleFormEntriesChange(next);
+                              }}
+                              placeholder="Parameter Name"
+                              className="w-1/3 px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={fe.value}
+                              onChange={(e) => {
+                                const next = [...formEntries];
+                                next[idx].value = e.target.value;
+                                handleFormEntriesChange(next);
+                              }}
+                              placeholder="Value"
+                              className="flex-1 px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none"
+                            />
                             <button
                               type="button"
-                              onClick={() => setHeaders(headers.filter((_, i) => i !== idx))}
+                              onClick={() =>
+                                handleFormEntriesChange(formEntries.filter((_, i) => i !== idx))
+                              }
                               className="p-1 text-gray-400 hover:text-rose-500 cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         ))}
-                      </div>
 
-                      {/* Body Replacements */}
-                      <div>
-                        <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Body Mutation / Replacement</label>
-                        <div className="h-44 border border-slate-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                          <Editor
-                            height="100%"
-                            theme="vs"
-                            language="json"
-                            value={bodyReplacement}
-                            onChange={(v) => setBodyReplacement(v || '')}
-                            options={{
-                              fontSize: 12,
-                              fontFamily: 'JetBrains Mono, monospace',
-                              minimap: { enabled: false },
-                              wordWrap: 'on',
-                            }}
-                          />
+                        <div className="text-[11px] font-mono text-gray-500 pt-1 border-t border-gray-200 dark:border-gray-800 truncate">
+                          Preview: {bodyContent || '(empty)'}
                         </div>
                       </div>
-                    </>
+                    ) : (
+                      /* Monaco Code Editor for JSON/Raw/XML/HTML/GraphQL */
+                      <div className="flex-1 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-xs">
+                        <Editor
+                          height="180px"
+                          theme="vs-dark"
+                          defaultLanguage={bodyType === 'xml' || bodyType === 'html' ? 'xml' : bodyType === 'json' ? 'json' : 'plaintext'}
+                          language={bodyType === 'xml' || bodyType === 'html' ? 'xml' : bodyType === 'json' ? 'json' : 'plaintext'}
+                          value={bodyContent}
+                          onChange={(val) => setBodyContent(val || '')}
+                          options={{
+                            fontSize: 12,
+                            fontFamily: 'JetBrains Mono, monospace',
+                            minimap: { enabled: false },
+                            wordWrap: 'on',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            /* Tab 2: Live Simulator */
+            <div className="flex-1 flex flex-col gap-4">
+              <div className="p-4 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/60 rounded-2xl flex flex-col gap-3">
+                <div className="flex items-center gap-2 font-bold text-purple-900 dark:text-purple-200">
+                  <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span>Real-Time Rule Match &amp; Execution Simulator</span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400 text-xs">
+                  Enter a test URL to evaluate if your pattern matches and view the exact mutated payload returned to the client.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={simUrl}
+                    onChange={(e) => setSimUrl(e.target.value)}
+                    placeholder="https://api.example.com/v1/users/123"
+                    className="flex-1 px-3 py-2 rounded-xl border border-purple-200 dark:border-purple-700 font-mono text-xs bg-white dark:bg-gray-800 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSimulate}
+                    className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer transition-colors shadow-sm"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Run Simulation</span>
+                  </button>
+                </div>
+              </div>
+
+              {simResult && (
+                <div
+                  className={`flex-1 p-4 rounded-2xl border flex flex-col gap-2 overflow-hidden ${
+                    simResult.matched
+                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60'
+                      : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {simResult.matched ? (
+                      <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 font-bold" />
+                    ) : (
+                      <X className="w-5 h-5 text-rose-600 dark:text-rose-400 font-bold" />
+                    )}
+                    <span className="font-bold text-sm">
+                      {simResult.matched
+                        ? `Rule Matched Successfully via ${matchType.toUpperCase()} mode!`
+                        : 'No Match: The provided URL does not satisfy this rule pattern.'}
+                    </span>
+                  </div>
+
+                  {simResult.matched && simResult.output && (
+                    <div className="flex-1 bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-3 font-mono text-xs overflow-y-auto whitespace-pre-wrap">
+                      {simResult.output}
+                    </div>
                   )}
                 </div>
               )}
-
-              {/* TAB 2: MOCK SPECIFIC */}
-              {ruleType === 'mock' && (
-                <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-gray-800">
-                  {/* Preset Templates */}
-                  <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Quick Response Templates</label>
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                      {MOCK_RESPONSE_TEMPLATES.map((tmpl) => (
-                        <button
-                          key={tmpl.name}
-                          type="button"
-                          onClick={() => handleApplyTemplate(tmpl)}
-                          className="px-2.5 py-1 rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 font-medium text-[11px] whitespace-nowrap hover:bg-sky-100 cursor-pointer transition-colors"
-                        >
-                          {tmpl.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">HTTP Status Code</label>
-                      <StatusCodePicker value={mockStatusCode} onChange={setMockStatusCode} />
-                    </div>
-                    <div>
-                      <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Content-Type</label>
-                      <HeaderValueCombobox
-                        headerKey="Content-Type"
-                        value={mockContentType}
-                        onChange={setMockContentType}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Mock Body Content</label>
-                    <div className="h-44 border border-slate-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                      <Editor
-                        height="100%"
-                        theme="vs"
-                        language="json"
-                        value={mockBody}
-                        onChange={(v) => setMockBody(v || '')}
-                        options={{
-                          fontSize: 12,
-                          fontFamily: 'JetBrains Mono, monospace',
-                          minimap: { enabled: false },
-                          wordWrap: 'on',
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: BREAKPOINT SPECIFIC */}
-              {ruleType === 'breakpoint' && (
-                <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-gray-800">
-                  <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-semibold mb-1">Filter by HTTP Method</label>
-                    <HttpMethodPicker value={breakpointMethod} onChange={setBreakpointMethod} />
-                  </div>
-
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-xl space-y-2">
-                    <span className="font-bold text-amber-800 dark:text-amber-300">Interception Phases</span>
-                    <div className="flex items-center gap-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={interceptRequest}
-                          onChange={(e) => setInterceptRequest(e.target.checked)}
-                          className="rounded text-amber-600"
-                        />
-                        <span className="font-medium text-slate-700 dark:text-slate-300">Pause Request (Before Sending)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={interceptResponse}
-                          onChange={(e) => setInterceptResponse(e.target.checked)}
-                          className="rounded text-amber-600"
-                        />
-                        <span className="font-medium text-slate-700 dark:text-slate-300">Pause Response (Before Returning)</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 4: SCRIPT SPECIFIC */}
-              {ruleType === 'script' && (
-                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-gray-800">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-slate-500 dark:text-slate-400 font-semibold">ECMAScript Execution Sandbox</label>
-                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono">Goja VM runtime</span>
-                  </div>
-                  <div className="h-60 border border-slate-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                    <Editor
-                      height="100%"
-                      theme="vs"
-                      language="javascript"
-                      value={scriptCode}
-                      onChange={(v) => setScriptCode(v || '')}
-                      options={{
-                        fontSize: 12,
-                        fontFamily: 'JetBrains Mono, monospace',
-                        minimap: { enabled: false },
-                        wordWrap: 'on',
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
+            </div>
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="h-14 border-t border-slate-200 dark:border-gray-800 px-5 flex items-center justify-between bg-slate-50 dark:bg-gray-800/50 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 border border-slate-200 dark:border-gray-700 text-slate-600 dark:text-slate-300 font-semibold rounded-lg hover:bg-slate-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="flex items-center gap-1.5 px-5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm transition-all cursor-pointer"
-          >
-            <Save className="w-3.5 h-3.5" />
-            <span>Save &amp; Apply Rule</span>
-          </button>
+        {/* Footer */}
+        <div className="h-16 px-6 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50 shrink-0 text-xs">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="enableRule"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="rounded text-blue-600 cursor-pointer"
+            />
+            <label htmlFor="enableRule" className="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">
+              Enable Rule Immediately
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex items-center gap-1.5 px-6 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md cursor-pointer transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              <span>Save &amp; Activate Rule</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -34,6 +34,10 @@ export function DeleteSession(arg1) {
   return window['go']['main']['App']['DeleteSession'](arg1);
 }
 
+export function DetectJavaInstallations() {
+  return window['go']['main']['App']['DetectJavaInstallations']();
+}
+
 export function ExportHAR(arg1) {
   return window['go']['main']['App']['ExportHAR'](arg1);
 }
@@ -134,6 +138,10 @@ export function InstallAndroidRootCA(arg1) {
   return window['go']['main']['App']['InstallAndroidRootCA'](arg1);
 }
 
+export function InstallCertToJava(arg1) {
+  return window['go']['main']['App']['InstallCertToJava'](arg1);
+}
+
 export function InstallRootCA() {
   return window['go']['main']['App']['InstallRootCA']();
 }
@@ -168,6 +176,10 @@ export function ReplayRequest(arg1) {
 
 export function ResumeBreakpoint(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResumeBreakpoint'](arg1, arg2, arg3);
+}
+
+export function SelectJavaFolder() {
+  return window['go']['main']['App']['SelectJavaFolder']();
 }
 
 export function SendCustomRequest(arg1) {
@@ -276,6 +288,10 @@ export function ToolboxRSA(arg1, arg2, arg3, arg4) {
 
 export function ToolboxRunJS(arg1, arg2) {
   return window['go']['main']['App']['ToolboxRunJS'](arg1, arg2);
+}
+
+export function UninstallCertFromJava(arg1) {
+  return window['go']['main']['App']['UninstallCertFromJava'](arg1);
 }
 
 export function UninstallRootCA() {

@@ -17,6 +17,8 @@ import {
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
+import { confirm } from '../../store/useConfirmDialog';
+import { toast } from '../../store/useToastStore';
 import { RequestList } from '../request/RequestList';
 import { HistoryPage } from '../left_menus/HistoryPage';
 import { Toolbox } from '../toolbox/Toolbox';
@@ -28,7 +30,6 @@ import { PCCertDialog } from '../ssl/PCCertDialog';
 import { MobileCertDialog } from '../ssl/MobileCertDialog';
 import { HttpRequest } from '../../types';
 import { api } from '../../store/apiAdapter';
-import { toast } from '../../store/useToastStore';
 
 export const MobileHome: React.FC = () => {
   const { t } = useTranslation();
@@ -64,9 +65,15 @@ export const MobileHome: React.FC = () => {
     }
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (clearConfirm) {
-      if (window.confirm(`${t.clearConfirm}?\n${t.clearConfirmSubtitle}`)) {
+      const ok = await confirm({
+        title: `${t.clearConfirm}?`,
+        message: t.clearConfirmSubtitle || 'All captured traffic in this session will be cleared.',
+        type: 'warning',
+        confirmText: t.clear || 'Clear All',
+      });
+      if (ok) {
         clearRequests();
       }
     } else {
