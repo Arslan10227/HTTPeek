@@ -1,0 +1,35 @@
+# Binaries & Bundles
+build/bin/
+node_modules/
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/package.json.md5
+logs/
+*.log
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+*.apk
+*.aab
+
+# Go
+*.exe
+*.test
+coverage.out
+
+# Database / runtime
+*.db
+*.db-wal
+*.db-shm
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#059669</color>
+    <color name="primary_dark">#047857</color>
+    <color name="primary_light">#D1FAE5</color>
+    <color name="accent">#10B981</color>
+    <color name="background">#F8FAFC</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_variant">#F1F5F9</color>
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#64748B</color>
+    <color name="text_muted">#94A3B8</color>
+    <color name="divider">#E2E8F0</color>
+
+    <!-- HTTP Method Colors -->
+    <color name="method_get_bg">#E0F2FE</color>
+    <color name="method_get_text">#0369A1</color>
+    <color name="method_post_bg">#DCFCE7</color>
+    <color name="method_post_text">#15803D</color>
+    <color name="method_put_bg">#FEF3C7</color>
+    <color name="method_put_text">#B45309</color>
+    <color name="method_delete_bg">#FFE4E6</color>
+    <color name="method_delete_text">#BE123C</color>
+    <color name="method_patch_bg">#EDE9FE</color>
+    <color name="method_patch_text">#6D28D9</color>
+    <color name="method_default_bg">#F1F5F9</color>
+    <color name="method_default_text">#475569</color>
+
+    <!-- Connection status -->
+    <color name="status_connected">#10B981</color>
+    <color name="status_disconnected">#94A3B8</color>
+    <color name="status_vpn_active">#059669</color>
+    <color name="status_2xx">#10B981</color>
+    <color name="status_3xx">#0EA5E9</color>
+    <color name="status_4xx">#F59E0B</color>
+    <color name="status_5xx">#EF4444</color>
+</resources>

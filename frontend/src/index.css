@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--md-sys-color-surface, #ffffff);
+    color: var(--md-sys-color-on-surface, #1c1b1f);
+    font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+  }
+
+  #root {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+}
+
+:root {
+  --md-primary: #E91E63;
+  --md-primary-container: #FFD9E2;
+  --md-on-primary-container: #3B071D;
+  --md-sys-color-surface: #ffffff;
+  --md-sys-color-surface-container: #f7f9fc;
+  --md-sys-color-surface-variant: #f0f2f5;
+  --md-sys-color-on-surface: #1c1b1f;
+  --md-sys-color-on-surface-variant: #49454f;
+  --md-sys-color-outline: #79747e;
+  --md-sys-color-divider: rgba(0, 0, 0, 0.12);
+  --md-dialog-bg: #ffffff;
+}
+
+.dark {
+  --md-sys-color-surface: #1e1e24;
+  --md-sys-color-surface-container: #26272e;
+  --md-sys-color-surface-variant: #2e2f38;
+  --md-sys-color-on-surface: #e6e1e5;
+  --md-sys-color-on-surface-variant: #cac4d0;
+  --md-sys-color-outline: #938f99;
+  --md-sys-color-divider: rgba(255, 255, 255, 0.12);
+  --md-dialog-bg: #2a2b34;
+}
+
+/* Material 3 Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.35);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.55);
+}
+
+/* Material 3 Tab Indicator */
+.md3-tab-active {
+  color: var(--md-primary) !important;
+  border-bottom: 2px solid var(--md-primary);
+  font-weight: 600;
+}
+
+/* Custom Splitter Handle */
+.split-divider {
+  width: 4px;
+  cursor: col-resize;
+  background-color: var(--md-sys-color-divider);
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.split-divider:hover,
+.split-divider:active {
+  background-color: var(--md-primary);
+}
+
+/* Focus outline */
+*:focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 1px;
+}
