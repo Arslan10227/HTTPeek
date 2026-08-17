@@ -66,6 +66,7 @@ export const DesktopHome: React.FC = () => {
     isOpen: boolean;
     type: 'rewrite' | 'mock' | 'breakpoint' | 'script';
     request: HttpRequest | null;
+    prefill?: any;
   }>({
     isOpen: false,
     type: 'rewrite',
@@ -112,6 +113,7 @@ export const DesktopHome: React.FC = () => {
       isOpen: true,
       type,
       request: req,
+      prefill,
     });
   };
 
@@ -236,9 +238,10 @@ export const DesktopHome: React.FC = () => {
       {quickRuleState.isOpen && (
         <QuickRuleDialog
           isOpen={quickRuleState.isOpen}
-          onClose={() => setQuickRuleState({ ...quickRuleState, isOpen: false })}
+          onClose={() => setQuickRuleState((prev) => ({ ...prev, isOpen: false }))}
           type={quickRuleState.type}
           request={quickRuleState.request}
+          prefill={quickRuleState.prefill}
         />
       )}
       {isWeakNetworkOpen && <WeakNetworkDialog onClose={() => setIsWeakNetworkOpen(false)} />}

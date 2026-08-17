@@ -101,46 +101,46 @@ export const SuggestedRulesCard: React.FC<SuggestedRulesCardProps> = ({
       }}
     >
       <div
-        className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-blue-50/80 to-purple-50/80 dark:from-blue-950/30 dark:to-purple-950/30 border-b select-none shrink-0"
+        className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-blue-50/80 to-purple-50/80 dark:from-blue-950/30 dark:to-purple-950/30 border-b select-none shrink-0"
         style={{ borderColor: 'var(--md-sys-color-divider)' }}
       >
-        <div className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-200">
-          <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <div className="flex items-center gap-1.5 font-bold text-gray-800 dark:text-gray-200">
+          <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
           <span>Suggested Interceptor Rules</span>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold">
-            1-Click Setup
+          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-black uppercase">
+            1-Click
           </span>
         </div>
-        <span className="text-[11px] text-gray-500 font-mono truncate max-w-xs">
+        <span className="text-[10px] text-gray-500 font-mono truncate max-w-xs">
           {domain}{pathname}
         </span>
       </div>
 
-      <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+      <div className="p-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
         {suggestions.map((s) => {
           const Icon = s.icon;
           return (
             <div
               key={s.id}
               onClick={s.onClick}
-              className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-500/60 bg-gray-50/40 dark:bg-gray-800/30 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 cursor-pointer transition-all flex flex-col justify-between group shadow-2xs"
+              className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-500/60 bg-gray-50/40 dark:bg-gray-800/30 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 cursor-pointer transition-all flex flex-col justify-between group shadow-2xs"
             >
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start justify-between gap-1.5">
                 <div
-                  className="p-2 rounded-lg text-white shrink-0 shadow-2xs group-hover:scale-105 transition-transform"
+                  className="p-1.5 rounded-lg text-white shrink-0 shadow-2xs group-hover:scale-105 transition-transform"
                   style={{ backgroundColor: s.color }}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3 h-3" />
                 </div>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-300">
+                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-300">
                   {s.badge}
                 </span>
               </div>
-              <div className="mt-2.5">
-                <div className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 text-xs transition-colors">
+              <div className="mt-1.5">
+                <div className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 text-[11px] transition-colors">
                   {s.title}
                 </div>
-                <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5 leading-snug">
+                <p className="text-[10px] text-gray-500 line-clamp-2 mt-0.5 leading-tight">
                   {s.description}
                 </p>
               </div>

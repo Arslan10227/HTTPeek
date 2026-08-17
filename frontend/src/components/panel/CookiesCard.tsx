@@ -115,18 +115,18 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
       {/* Header Bar */}
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between px-3.5 py-2.5 bg-gray-50/80 dark:bg-gray-800/40 cursor-pointer select-none border-b shrink-0"
+        className="flex items-center justify-between px-3 py-1.5 bg-gray-50/80 dark:bg-gray-800/40 cursor-pointer select-none border-b shrink-0"
         style={{ borderColor: 'var(--md-sys-color-divider)' }}
       >
         <div className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-200">
           {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-gray-400" />
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
           ) : (
-            <ChevronRight className="w-4 h-4 text-gray-400" />
+            <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
           )}
-          <CookieIcon className="w-4 h-4 text-amber-500" />
+          <CookieIcon className="w-3.5 h-3.5 text-amber-500" />
           <span>{type === 'request' ? 'Request Cookies' : 'Response Cookies (Set-Cookie)'}</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold">
             {cookies.length}
           </span>
         </div>
@@ -136,7 +136,7 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+              className={`px-2 py-0.2 rounded text-[10px] font-bold cursor-pointer transition-colors ${
                 viewMode === 'table' ? 'bg-amber-600 text-white shadow-2xs' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
@@ -145,7 +145,7 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
             <button
               type="button"
               onClick={() => setViewMode('json')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+              className={`px-2 py-0.2 rounded text-[10px] font-bold cursor-pointer transition-colors ${
                 viewMode === 'json' ? 'bg-amber-600 text-white shadow-2xs' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
@@ -154,7 +154,7 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
             <button
               type="button"
               onClick={() => setViewMode('raw')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+              className={`px-2 py-0.2 rounded text-[10px] font-bold cursor-pointer transition-colors ${
                 viewMode === 'raw' ? 'bg-amber-600 text-white shadow-2xs' : 'text-gray-500 hover:text-gray-900'
               }`}
             >
@@ -165,7 +165,7 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
           <button
             type="button"
             onClick={() => handleCopy(viewMode === 'json' ? jsonText : rawText, 'Cookies Copied')}
-            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer"
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer"
             title="Copy cookies"
           >
             <Copy className="w-3.5 h-3.5" />
@@ -175,18 +175,18 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
 
       {/* Content */}
       {isExpanded && (
-        <div className="p-3">
+        <div className="p-2">
           {viewMode === 'table' && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               {cookies.length > 3 && (
                 <div className="relative">
-                  <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-2 pointer-events-none" />
+                  <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1.5 pointer-events-none" />
                   <input
                     type="text"
                     value={filterQuery}
                     onChange={(e) => setFilterQuery(e.target.value)}
                     placeholder="Filter cookies..."
-                    className="w-full pl-8 pr-2.5 py-1 text-[11px] font-mono rounded-lg border bg-gray-50/50 dark:bg-gray-800/50 focus:outline-none"
+                    className="w-full pl-8 pr-2 py-0.5 text-[11px] font-mono rounded-lg border bg-gray-50/50 dark:bg-gray-800/50 focus:outline-none"
                     style={{ borderColor: 'var(--md-sys-color-divider)' }}
                   />
                 </div>
@@ -196,36 +196,36 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
                 {filtered.map((c, idx) => (
                   <div
                     key={`${c.name}-${idx}`}
-                    className={`group flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-colors ${
+                    className={`group flex items-center justify-between px-2.5 py-1 border-b border-gray-100 dark:border-gray-800/60 last:border-b-0 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-colors ${
                       idx % 2 === 0 ? 'bg-transparent' : 'bg-black/[0.015] dark:bg-white/[0.015]'
                     }`}
                   >
                     <div className="flex flex-col min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <span className="font-bold text-amber-700 dark:text-amber-400 select-text">
                           {c.name}
                         </span>
                         {c.httpOnly && (
-                          <span className="px-1 py-0.2 rounded text-[9px] bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-bold flex items-center gap-0.5">
+                          <span className="px-1 py-0.1 rounded text-[8px] bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-bold flex items-center gap-0.5">
                             <Lock className="w-2.5 h-2.5" /> HttpOnly
                           </span>
                         )}
                         {c.secure && (
-                          <span className="px-1 py-0.2 rounded text-[9px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold flex items-center gap-0.5">
+                          <span className="px-1 py-0.1 rounded text-[8px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold flex items-center gap-0.5">
                             <Shield className="w-2.5 h-2.5" /> Secure
                           </span>
                         )}
                         {c.sameSite && (
-                          <span className="px-1 py-0.2 rounded text-[9px] bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold">
+                          <span className="px-1 py-0.1 rounded text-[8px] bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold">
                             SameSite={c.sameSite}
                           </span>
                         )}
                       </div>
-                      <span className="select-text text-gray-800 dark:text-gray-200 break-all mt-0.5 text-xs">
+                      <span className="select-text text-gray-800 dark:text-gray-200 break-all text-[11px]">
                         {c.value}
                       </span>
                       {(c.domain || c.path || c.expires) && (
-                        <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-1">
+                        <div className="flex items-center gap-2.5 text-[9px] text-gray-400 mt-0.5">
                           {c.domain && <span>Domain: {c.domain}</span>}
                           {c.path && <span>Path: {c.path}</span>}
                           {c.expires && <span>Expires: {c.expires}</span>}
@@ -236,7 +236,7 @@ export const CookiesCard: React.FC<CookiesCardProps> = ({ type, cookieHeader }) 
                     <button
                       type="button"
                       onClick={() => handleCopyRow(c.value, c.name)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-amber-600 rounded cursor-pointer transition-opacity shrink-0 ml-2"
+                      className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-amber-600 rounded cursor-pointer transition-opacity shrink-0 ml-1.5"
                       title="Copy cookie value"
                     >
                       {copiedName === c.name ? (

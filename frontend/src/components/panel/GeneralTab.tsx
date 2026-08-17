@@ -22,8 +22,8 @@ const RowWidget: React.FC<{ name: string; value?: string | number | null; mono?:
   };
 
   return (
-    <div className="flex items-start py-2 border-b border-gray-100 dark:border-gray-800 text-xs group">
-      <div className="w-44 font-semibold text-orange-600 dark:text-orange-400 shrink-0 select-text pr-2">
+    <div className="flex items-center py-1 border-b border-gray-100 dark:border-gray-800/60 text-[11px] group hover:bg-black/[0.015] dark:hover:bg-white/[0.015] px-1 rounded transition-colors">
+      <div className="w-40 font-bold text-orange-600 dark:text-orange-400 shrink-0 select-text pr-2">
         {name}
       </div>
       <div className={`flex-1 break-all select-text text-gray-800 dark:text-gray-200 ${mono ? 'font-mono' : ''}`}>
@@ -32,7 +32,7 @@ const RowWidget: React.FC<{ name: string; value?: string | number | null; mono?:
       <button
         type="button"
         onClick={handleCopy}
-        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white cursor-pointer transition-opacity shrink-0"
+        className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-white cursor-pointer transition-opacity shrink-0"
         title="Copy value"
       >
         <Copy className="w-3 h-3" />
@@ -167,16 +167,16 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ request }) => {
     null;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 select-none space-y-4">
+    <div className="flex-1 overflow-y-auto p-3 select-none space-y-2.5">
       {/* Main Info Card */}
       <div
-        className="rounded-xl border p-4 shadow-2xs"
+        className="rounded-2xl border p-3 shadow-xs"
         style={{
           backgroundColor: 'var(--md-dialog-bg)',
           borderColor: 'var(--md-sys-color-divider)',
         }}
       >
-        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
+        <h3 className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5 px-1">
           General Information
         </h3>
 
@@ -215,13 +215,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ request }) => {
       {/* Timing Breakdown */}
       {timings && (
         <div
-          className="rounded-xl border p-4 shadow-2xs"
+          className="rounded-2xl border p-3 shadow-xs"
           style={{
             backgroundColor: 'var(--md-dialog-bg)',
             borderColor: 'var(--md-sys-color-divider)',
           }}
         >
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Timing</h3>
+          <h3 className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5 px-1">Timing</h3>
           {timings.dns !== undefined && <RowWidget name="DNS Lookup" value={`${timings.dns} ms`} />}
           {timings.connect !== undefined && <RowWidget name="TCP Connect" value={`${timings.connect} ms`} />}
           {timings.tls !== undefined && <RowWidget name="TLS Handshake" value={`${timings.tls} ms`} />}
@@ -233,7 +233,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ request }) => {
       {/* JWT Decoder */}
       {jwtToken && (
         <div
-          className="rounded-xl border p-4 shadow-2xs"
+          className="rounded-2xl border p-3 shadow-xs"
           style={{
             backgroundColor: 'var(--md-dialog-bg)',
             borderColor: 'var(--md-sys-color-divider)',

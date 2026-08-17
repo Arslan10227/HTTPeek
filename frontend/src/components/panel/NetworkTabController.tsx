@@ -112,17 +112,17 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
     >
       {/* Tab Header & Action Bar */}
       <div
-        className="flex items-center justify-between px-3 h-[42px] border-b shrink-0 select-none bg-white dark:bg-gray-900"
+        className="flex items-center justify-between px-2.5 h-[38px] border-b shrink-0 select-none bg-white dark:bg-gray-900 overflow-hidden"
         style={{ borderColor: 'var(--md-sys-color-divider)' }}
       >
-        {/* Tabs */}
-        <div className="flex items-center gap-1 text-xs font-bold">
+        {/* Tabs (Scrollable) */}
+        <div className="flex items-center gap-1 text-xs font-bold overflow-x-auto no-scrollbar py-0.5 flex-1 min-w-0 pr-2">
           <button
             type="button"
             onClick={() => setActiveTab('general')}
-            className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
+            className={`px-3 py-1 rounded-lg cursor-pointer transition-all shrink-0 whitespace-nowrap text-[11px] ${
               activeTab === 'general'
-                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs'
+                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs font-black'
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
@@ -131,9 +131,9 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('request')}
-            className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
+            className={`px-3 py-1 rounded-lg cursor-pointer transition-all shrink-0 whitespace-nowrap text-[11px] ${
               activeTab === 'request'
-                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs'
+                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs font-black'
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
@@ -142,9 +142,9 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('response')}
-            className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
+            className={`px-3 py-1 rounded-lg cursor-pointer transition-all shrink-0 whitespace-nowrap text-[11px] ${
               activeTab === 'response'
-                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs'
+                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shadow-2xs font-black'
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
@@ -155,9 +155,9 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('graphql')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
+              className={`flex items-center gap-1 px-3 py-1 rounded-lg cursor-pointer transition-all shrink-0 whitespace-nowrap text-[11px] ${
                 activeTab === 'graphql'
-                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 shadow-2xs'
+                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 shadow-2xs font-black'
                   : 'text-purple-500 hover:text-purple-800 dark:hover:text-purple-300 font-bold'
               }`}
             >
@@ -170,9 +170,9 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('websocket')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
+              className={`px-3 py-1 rounded-lg cursor-pointer transition-all shrink-0 whitespace-nowrap text-[11px] ${
                 activeTab === 'websocket'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-2xs'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-2xs font-black'
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
               }`}
             >
@@ -184,9 +184,9 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('sse')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
+              className={`px-3 py-1 rounded-lg cursor-pointer transition-all shrink-0 whitespace-nowrap text-[11px] ${
                 activeTab === 'sse'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shadow-2xs'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shadow-2xs font-black'
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
               }`}
             >
