@@ -12,13 +12,30 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.httpeek.app.core.bridge.DesktopBridgeClient
+import com.httpeek.app.core.proxy.MitmProxyServer
+import com.httpeek.app.core.rules.RulesEngine
+import com.httpeek.app.core.vpn.AppFilterManager
+import com.httpeek.app.core.vpn.AppFilterMode
+import com.httpeek.app.model.HttpRequestModel
+import com.httpeek.app.model.HttpResponseModel
+import com.httpeek.app.security.DynamicCertAuthority
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Android VpnService for HTTPeek.
+ * Intercepts network packets, routes through embedded MITM engine or forwarder,
+ * and streams to UI and Desktop Companion Bridge.
+ */
 class HttpeekVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var vpnThread: Thread? = null
     private val isRunning = AtomicBoolean(false)
+    private val capturedCount = AtomicInteger(0)
+
+    private var mitmServer: MitmProxyServer? = null
+    private var desktopBridge: DesktopBridgeClient? = null
 
     companion object {
         const val TAG = "HttpeekVpnService"
@@ -28,18 +45,21 @@ class HttpeekVpnService : VpnService() {
         const val ACTION_START = "com.httpeek.app.START_VPN"
         const val ACTION_STOP = "com.httpeek.app.STOP_VPN"
 
-        const val EXTRA_PROXY_HOST = "extra_proxy_host"
-        const val EXTRA_PROXY_PORT = "extra_proxy_port"
-        const val EXTRA_ENABLE_SSL = "extra_enable_ssl"
+        const val EXTRA_DESKTOP_HOST = "extra_desktop_host"
+        const val EXTRA_DESKTOP_PORT = "extra_desktop_port"
 
         var isVpnActive = false
 
-        fun startIntent(context: Context, host: String = "127.0.0.1", port: Int = 9099, enableSSL: Boolean = true): Intent {
+        // Listeners for UI updates
+        var onRequestCaptured: ((HttpRequestModel) -> Unit)? = null
+        var onResponseCaptured: ((HttpResponseModel) -> Unit)? = null
+        var onVpnStateChanged: ((Boolean) -> Unit)? = null
+
+        fun startIntent(context: Context, desktopHost: String? = null, desktopPort: Int = 9099): Intent {
             return Intent(context, HttpeekVpnService::class.java).apply {
                 action = ACTION_START
-                putExtra(EXTRA_PROXY_HOST, host)
-                putExtra(EXTRA_PROXY_PORT, port)
-                putExtra(EXTRA_ENABLE_SSL, enableSSL)
+                putExtra(EXTRA_DESKTOP_HOST, desktopHost)
+                putExtra(EXTRA_DESKTOP_PORT, desktopPort)
             }
         }
 
@@ -55,40 +75,88 @@ class HttpeekVpnService : VpnService() {
 
         when (intent.action) {
             ACTION_START -> {
-                val host = intent.getStringExtra(EXTRA_PROXY_HOST) ?: "127.0.0.1"
-                val port = intent.getIntExtra(EXTRA_PROXY_PORT, 9099)
-                startVpn(host, port)
+                val desktopHost = intent.getStringExtra(EXTRA_DESKTOP_HOST)
+                val desktopPort = intent.getIntExtra(EXTRA_DESKTOP_PORT, 9099)
+                startVpnCapture(desktopHost, desktopPort)
             }
             ACTION_STOP -> {
-                stopVpn()
+                stopVpnCapture()
             }
         }
         return START_STICKY
     }
 
-    private fun startVpn(proxyHost: String, proxyPort: Int) {
+    private fun startVpnCapture(desktopHost: String?, desktopPort: Int) {
         if (isRunning.get()) return
 
         createNotificationChannel()
-        val notification = buildNotification("Proxy Active at $proxyHost:$proxyPort")
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(NOTIFICATION_ID, buildNotification("HTTPeek Active • 0 requests"))
 
         try {
+            val ca = DynamicCertAuthority(applicationContext)
+            val rulesEngine = RulesEngine(applicationContext)
+            val appFilterManager = AppFilterManager(applicationContext)
+
+            // Setup Desktop Companion Bridge if host provided
+            if (!desktopHost.isNullOrEmpty()) {
+                desktopBridge = DesktopBridgeClient(desktopHost, desktopPort)
+                desktopBridge?.connect()
+            }
+
+            // Setup Embedded Local MITM Engine
+            mitmServer = MitmProxyServer(
+                context = applicationContext,
+                port = 9099,
+                ca = ca,
+                rulesEngine = rulesEngine,
+                onRequest = { req ->
+                    val count = capturedCount.incrementAndGet()
+                    onRequestCaptured?.invoke(req)
+                    desktopBridge?.sendRequest(req)
+                    if (count % 5 == 0) {
+                        updateNotification("HTTPeek Active • $count requests captured")
+                    }
+                },
+                onResponse = { resp ->
+                    onResponseCaptured?.invoke(resp)
+                    desktopBridge?.sendResponse(resp)
+                }
+            )
+            mitmServer?.start()
+
+            // Build VPN Tunnel
             val builder = Builder()
-                .setSession("HTTPeek")
+                .setSession("HTTPeek Interceptor")
                 .setMtu(1500)
                 .addAddress("10.0.0.2", 24)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer("8.8.8.8")
                 .addDnsServer("1.1.1.1")
-                .addDisallowedApplication(packageName)
+                .addDisallowedApplication(packageName) // Prevent proxy recursion
 
-            // Route device HTTP traffic through the local/remote proxy (API 29+)
+            // Apply Per-App Filter
+            val mode = appFilterManager.getFilterMode()
+            val selectedApps = appFilterManager.getSelectedPackages()
+
+            if (mode == AppFilterMode.ONLY_SELECTED && selectedApps.isNotEmpty()) {
+                for (pkg in selectedApps) {
+                    try {
+                        builder.addAllowedApplication(pkg)
+                    } catch (e: Exception) {}
+                }
+                Log.i(TAG, "Applied per-app whitelist: ${selectedApps.size} apps")
+            } else if (mode == AppFilterMode.EXCLUDE_SELECTED && selectedApps.isNotEmpty()) {
+                for (pkg in selectedApps) {
+                    try {
+                        builder.addDisallowedApplication(pkg)
+                    } catch (e: Exception) {}
+                }
+                Log.i(TAG, "Applied per-app blacklist: ${selectedApps.size} apps")
+            }
+
+            // Set HTTP Proxy on VPN for direct local MITM routing (Android 10+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort))
-                Log.i(TAG, "HTTP proxy configured via VPN: $proxyHost:$proxyPort")
-            } else {
-                Log.w(TAG, "System HTTP proxy via VPN requires Android 10 (API 29)+. Configure proxy manually.")
+                builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 9099))
             }
 
             vpnInterface = builder.establish()
@@ -100,65 +168,80 @@ class HttpeekVpnService : VpnService() {
 
             isRunning.set(true)
             isVpnActive = true
+            onVpnStateChanged?.invoke(true)
 
-            Log.i(TAG, "HTTPeek VPN tunnel established successfully")
+            Log.i(TAG, "HTTPeek VPN capture started successfully on 127.0.0.1:9099")
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting VPN service: ${e.message}", e)
+            Log.e(TAG, "Error starting VPN service", e)
             stopSelf()
         }
     }
 
-    private fun stopVpn() {
+    private fun stopVpnCapture() {
         isRunning.set(false)
         isVpnActive = false
+        onVpnStateChanged?.invoke(false)
 
-        vpnThread?.interrupt()
-        vpnThread = null
+        mitmServer?.stop()
+        mitmServer = null
+
+        desktopBridge?.disconnect()
+        desktopBridge = null
 
         try {
             vpnInterface?.close()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error closing VPN interface", e)
-        }
+        } catch (e: Exception) {}
         vpnInterface = null
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-        Log.i(TAG, "HTTPeek VPN tunnel stopped")
+        Log.i(TAG, "HTTPeek VPN capture stopped")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        stopVpn()
+        stopVpnCapture()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "HTTPeek Go Proxy Capture",
+                "HTTPeek Proxy Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows real-time HTTPeek proxy capture status"
+                description = "Active network capture and TLS inspection"
+                setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.createNotificationChannel(channel)
         }
     }
 
-    private fun buildNotification(text: String): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+    private fun buildNotification(statusText: String): Notification {
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pOpen = PendingIntent.getActivity(this, 0, openIntent, PendingIntent.FLAG_IMMUTABLE)
+
+        val stopIntent = Intent(this, HttpeekVpnService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val pStop = PendingIntent.getService(this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE)
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("HTTPeek Go")
-            .setContentText(text)
+            .setContentTitle("HTTPeek Traffic Interceptor")
+            .setContentText(statusText)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setContentIntent(pOpen)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Capture", pStop)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
+
+    private fun updateNotification(statusText: String) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        nm?.notify(NOTIFICATION_ID, buildNotification(statusText))
     }
 }

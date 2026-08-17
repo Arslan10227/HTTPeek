@@ -3,17 +3,21 @@
     <item
         android:id="@+id/nav_capture"
         android:icon="@android:drawable/ic_menu_search"
-        android:title="Capture" />
+        android:title="Traffic" />
     <item
-        android:id="@+id/nav_favorites"
-        android:icon="@android:drawable/btn_star_big_on"
-        android:title="Favorites" />
+        android:id="@+id/nav_apps"
+        android:icon="@android:drawable/ic_menu_manage"
+        android:title="Apps" />
     <item
-        android:id="@+id/nav_scan"
-        android:icon="@android:drawable/ic_menu_camera"
-        android:title="Scan QR" />
+        android:id="@+id/nav_rules"
+        android:icon="@android:drawable/ic_menu_edit"
+        android:title="Rules" />
     <item
         android:id="@+id/nav_ca"
         android:icon="@android:drawable/ic_lock_lock"
-        android:title="Root CA" />
+        android:title="SSL CA" />
+    <item
+        android:id="@+id/nav_toolbox"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="Toolbox" />
 </menu>

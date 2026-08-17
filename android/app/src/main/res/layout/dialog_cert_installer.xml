@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="HTTP &amp; HTTPS TLS Decryption requires trusting the HTTPeek Root CA certificate."
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/tvCertHash"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="monospace"
+        android:text="Subject Hash: 8c0ea220.0"
+        android:textColor="@color/primary"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvCertStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/status_chip_bg"
+        android:padding="8dp"
+        android:text="Select an installation method below:"
+        android:textColor="@color/text_primary"
+        android:textSize="11sp" />
+
+    <!-- 5 Fallback Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/btnInstallKeyChain"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1. Install via User KeyChain (Tier 1)"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnInstallMagiskRoot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="2. Install via Root / Magisk Module (Tier 2)"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnSaveDownloads"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="3. Save .CRT to Downloads Folder (Tier 3)"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnOpenSecuritySettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="4. Open Android Security Settings (Tier 4)"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnCopyAdbScript"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="5. Copy One-Line ADB Script Command (Tier 5)"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+</LinearLayout>

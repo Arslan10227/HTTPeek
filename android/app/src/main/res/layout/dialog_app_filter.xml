@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Mode Selection -->
+    <RadioGroup
+        android:id="@+id/radioGroupAppMode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/radioAllApps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Capture All Applications"
+            android:textSize="13sp" />
+
+        <RadioButton
+            android:id="@+id/radioOnlySelected"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Only Selected Apps (Whitelist)"
+            android:textSize="13sp" />
+
+        <RadioButton
+            android:id="@+id/radioExcludeSelected"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Exclude Selected Apps (Blacklist)"
+            android:textSize="13sp" />
+    </RadioGroup>
+
+    <!-- Search Bar -->
+    <EditText
+        android:id="@+id/etAppSearch"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/search_bg"
+        android:hint="Search installed apps..."
+        android:paddingHorizontal="12dp"
+        android:textSize="13sp" />
+
+    <!-- Actions Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnSelectAllApps"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Select All"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnDeselectAllApps"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Deselect All"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progressBarApps"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_margin="16dp"
+        android:visibility="gone" />
+
+    <!-- Apps RecyclerView -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerApps"
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
+        android:layout_marginTop="8dp" />
+
+</LinearLayout>
