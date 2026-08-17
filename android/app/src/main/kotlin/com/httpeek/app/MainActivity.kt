@@ -9,6 +9,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -44,8 +45,25 @@ class MainActivity : AppCompatActivity() {
     private var proxyHost = "127.0.0.1"
     private var proxyPort = 9099
 
-    private val VPN_REQUEST_CODE = 2001
-    private val QR_SCAN_REQUEST_CODE = 3002
+    private val vpnLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            startService(HttpeekVpnService.startIntent(this, proxyHost, proxyPort, true))
+            isVpnRunning = true
+            updateUIState()
+            Toast.makeText(this, "Proxy VPN Active ($proxyHost:$proxyPort)", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "VPN permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private val qrScanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val qrResult = result.data?.getStringExtra(QrScanActivity.EXTRA_QR_RESULT)
+            if (!qrResult.isNullOrEmpty()) {
+                handleQrScanResult(qrResult)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,7 +159,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startQrScanner() {
         val intent = Intent(this, QrScanActivity::class.java)
-        startActivityForResult(intent, QR_SCAN_REQUEST_CODE)
+        qrScanLauncher.launch(intent)
     }
 
     private fun setupWebSocketClient() {
@@ -235,9 +253,12 @@ class MainActivity : AppCompatActivity() {
     private fun startVpn() {
         val prepareIntent = VpnService.prepare(this)
         if (prepareIntent != null) {
-            startActivityForResult(prepareIntent, VPN_REQUEST_CODE)
+            vpnLauncher.launch(prepareIntent)
         } else {
-            onActivityResult(VPN_REQUEST_CODE, Activity.RESULT_OK, null)
+            startService(HttpeekVpnService.startIntent(this, proxyHost, proxyPort, true))
+            isVpnRunning = true
+            updateUIState()
+            Toast.makeText(this, "Proxy VPN Active ($proxyHost:$proxyPort)", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -309,25 +330,6 @@ class MainActivity : AppCompatActivity() {
                 ContextCompat.getColorStateList(this, R.color.primary)
         }
         updateConnectionStatus()
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == VPN_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK) {
-                startService(HttpeekVpnService.startIntent(this, proxyPort, true))
-                isVpnRunning = true
-                updateUIState()
-                Toast.makeText(this, "Proxy VPN Active ($proxyHost:$proxyPort)", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "VPN permission denied", Toast.LENGTH_SHORT).show()
-            }
-        } else if (requestCode == QR_SCAN_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val qrResult = data?.getStringExtra(QrScanActivity.EXTRA_QR_RESULT)
-            if (!qrResult.isNullOrEmpty()) {
-                handleQrScanResult(qrResult)
-            }
-        }
     }
 
     override fun onDestroy() {

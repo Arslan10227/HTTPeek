@@ -28,14 +28,16 @@ class HttpeekVpnService : VpnService() {
         const val ACTION_START = "com.httpeek.app.START_VPN"
         const val ACTION_STOP = "com.httpeek.app.STOP_VPN"
 
+        const val EXTRA_PROXY_HOST = "extra_proxy_host"
         const val EXTRA_PROXY_PORT = "extra_proxy_port"
         const val EXTRA_ENABLE_SSL = "extra_enable_ssl"
 
         var isVpnActive = false
 
-        fun startIntent(context: Context, port: Int = 9099, enableSSL: Boolean = true): Intent {
+        fun startIntent(context: Context, host: String = "127.0.0.1", port: Int = 9099, enableSSL: Boolean = true): Intent {
             return Intent(context, HttpeekVpnService::class.java).apply {
                 action = ACTION_START
+                putExtra(EXTRA_PROXY_HOST, host)
                 putExtra(EXTRA_PROXY_PORT, port)
                 putExtra(EXTRA_ENABLE_SSL, enableSSL)
             }
@@ -53,8 +55,9 @@ class HttpeekVpnService : VpnService() {
 
         when (intent.action) {
             ACTION_START -> {
+                val host = intent.getStringExtra(EXTRA_PROXY_HOST) ?: "127.0.0.1"
                 val port = intent.getIntExtra(EXTRA_PROXY_PORT, 9099)
-                startVpn(port)
+                startVpn(host, port)
             }
             ACTION_STOP -> {
                 stopVpn()
@@ -63,16 +66,16 @@ class HttpeekVpnService : VpnService() {
         return START_STICKY
     }
 
-    private fun startVpn(proxyPort: Int) {
+    private fun startVpn(proxyHost: String, proxyPort: Int) {
         if (isRunning.get()) return
 
         createNotificationChannel()
-        val notification = buildNotification("Proxy Active on port $proxyPort")
+        val notification = buildNotification("Proxy Active at $proxyHost:$proxyPort")
         startForeground(NOTIFICATION_ID, notification)
 
         try {
             val builder = Builder()
-                .setSession("HTTPeek Go")
+                .setSession("HTTPeek")
                 .setMtu(1500)
                 .addAddress("10.0.0.2", 24)
                 .addRoute("0.0.0.0", 0)
@@ -80,10 +83,10 @@ class HttpeekVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addDisallowedApplication(packageName)
 
-            // Route device HTTP traffic through the local desktop proxy (API 29+)
+            // Route device HTTP traffic through the local/remote proxy (API 29+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", proxyPort))
-                Log.i(TAG, "HTTP proxy configured via VPN: 127.0.0.1:$proxyPort")
+                builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort))
+                Log.i(TAG, "HTTP proxy configured via VPN: $proxyHost:$proxyPort")
             } else {
                 Log.w(TAG, "System HTTP proxy via VPN requires Android 10 (API 29)+. Configure proxy manually.")
             }
