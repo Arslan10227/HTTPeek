@@ -733,20 +733,99 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 		"enableSsl": m.server.Config().EnableSSL,
 	})
 
-	// Keep-alive read loop for close frames / pings
+	// Read loop with RFC 6455 frame decoding
 	go func() {
-		buf := make([]byte, 512)
+		defer func() {
+			m.mu.Lock()
+			delete(m.wsConns, connID)
+			m.mu.Unlock()
+			_ = clientConn.Close()
+		}()
+
+		reader := io.Reader(clientConn)
 		for {
-			_, err := clientConn.Read(buf)
-			if err != nil {
+			header := make([]byte, 2)
+			if _, err := io.ReadFull(reader, header); err != nil {
 				break
 			}
+
+			opcode := header[0] & 0x0F
+			if opcode == 0x08 { // Close frame
+				break
+			}
+
+			isMasked := (header[1] & 0x80) != 0
+			payloadLen := int(header[1] & 0x7F)
+
+			if payloadLen == 126 {
+				extLen := make([]byte, 2)
+				if _, err := io.ReadFull(reader, extLen); err != nil {
+					break
+				}
+				payloadLen = int(extLen[0])<<8 | int(extLen[1])
+			} else if payloadLen == 127 {
+				extLen := make([]byte, 8)
+				if _, err := io.ReadFull(reader, extLen); err != nil {
+					break
+				}
+				payloadLen = int(extLen[4])<<24 | int(extLen[5])<<16 | int(extLen[6])<<8 | int(extLen[7])
+			}
+
+			var maskKey []byte
+			if isMasked {
+				maskKey = make([]byte, 4)
+				if _, err := io.ReadFull(reader, maskKey); err != nil {
+					break
+				}
+			}
+
+			payload := make([]byte, payloadLen)
+			if _, err := io.ReadFull(reader, payload); err != nil {
+				break
+			}
+
+			if isMasked {
+				for i := 0; i < payloadLen; i++ {
+					payload[i] ^= maskKey[i%4]
+				}
+			}
+
+			// Handle Text / Ping frames
+			if opcode == 0x09 { // Ping -> send Pong
+				pong := []byte{0x8A, 0x00}
+				_, _ = clientConn.Write(pong)
+			} else if opcode == 0x01 { // Text frame
+				m.handleIncomingClientMessage(payload)
+			}
 		}
-		m.mu.Lock()
-		delete(m.wsConns, connID)
-		m.mu.Unlock()
-		_ = clientConn.Close()
 	}()
+}
+
+func (m *MobileAPIManager) handleIncomingClientMessage(data []byte) {
+	var msg struct {
+		Event string          `json:"event"`
+		Data  json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return
+	}
+
+	switch msg.Event {
+	case "proxy:request":
+		var req HttpRequest
+		if err := json.Unmarshal(msg.Data, &req); err == nil {
+			if m.server != nil {
+				m.server.BroadcastRequest(&req)
+			}
+		}
+	case "proxy:response":
+		var resp HttpResponse
+		if err := json.Unmarshal(msg.Data, &resp); err == nil {
+			if m.server != nil {
+				m.server.BroadcastResponse(&resp)
+			}
+		}
+	}
 }
 
 func encodeWSTextFrame(payload []byte) []byte {

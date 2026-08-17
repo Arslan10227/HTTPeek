@@ -178,6 +178,16 @@ func (s *Server) RemoveListener(l EventListener) {
 	}
 }
 
+// BroadcastRequest dispatches an incoming request to all server listeners.
+func (s *Server) BroadcastRequest(req *HttpRequest) {
+	s.DispatchRequest(nil, req)
+}
+
+// BroadcastResponse dispatches an incoming response to all server listeners.
+func (s *Server) BroadcastResponse(resp *HttpResponse) {
+	s.DispatchResponse(nil, resp)
+}
+
 // DispatchRequest broadcasts an onRequest event.
 func (s *Server) DispatchRequest(ctx *Context, req *HttpRequest) {
 	s.listenersMu.RLock()

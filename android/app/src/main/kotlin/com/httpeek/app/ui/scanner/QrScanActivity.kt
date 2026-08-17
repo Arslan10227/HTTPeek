@@ -117,7 +117,7 @@ class QrScanActivity : AppCompatActivity() {
                 .addOnSuccessListener { barcodes ->
                     for (barcode in barcodes) {
                         val rawValue = barcode.rawValue
-                        if (!rawValue.isNullOrEmpty() && rawValue.contains("httpeek") && isScanned.compareAndSet(false, true)) {
+                        if (!rawValue.isNullOrEmpty() && isScanned.compareAndSet(false, true)) {
                             triggerHaptic()
                             val resultIntent = Intent().apply {
                                 putExtra(EXTRA_QR_RESULT, rawValue)

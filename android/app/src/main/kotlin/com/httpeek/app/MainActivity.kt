@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.httpeek.app.core.bridge.DesktopPairingManager
 import com.httpeek.app.databinding.ActivityMainBinding
 import com.httpeek.app.model.HttpRequestModel
@@ -223,15 +225,30 @@ class MainActivity : AppCompatActivity() {
             desktopHost = info.host
             desktopPort = info.port
             binding.tvConnectionTarget.text = "Desktop: ${info.host}:${info.port}"
-            binding.chipDesktopStatus.text = "Desktop: Paired (${info.host})"
+            binding.chipDesktopStatus.text = "Desktop: Testing connection..."
+            binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(this, R.color.status_disconnected))
 
-            Toast.makeText(this, "Paired with ${info.host}:${info.port}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Pairing with ${info.host}:${info.port}...", Toast.LENGTH_SHORT).show()
 
-            if (!isVpnRunning) {
-                startVpn()
+            // Run asynchronous ping check
+            lifecycleScope.launch {
+                val (ok, latency) = DesktopPairingManager.testConnection(info.host, info.port)
+                if (ok) {
+                    binding.chipDesktopStatus.text = "Desktop: Connected (${latency}ms)"
+                    binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_connected))
+                    Toast.makeText(this@MainActivity, "Connected to Desktop HTTPeek (${latency}ms)", Toast.LENGTH_SHORT).show()
+                } else {
+                    binding.chipDesktopStatus.text = "Desktop: Paired (No Ping)"
+                    binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_vpn_active))
+                }
             }
+
+            if (isVpnRunning) {
+                stopVpn()
+            }
+            startVpn()
         } else {
-            Toast.makeText(this, "Invalid IP or QR format", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Could not parse IP or QR Code: $raw", Toast.LENGTH_LONG).show()
         }
     }
 
