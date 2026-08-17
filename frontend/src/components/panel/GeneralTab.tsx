@@ -167,7 +167,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({ request }) => {
     null;
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 select-none space-y-2.5">
+    <div className="p-3 select-none space-y-2.5">
       {/* Main Info Card */}
       <div
         className="rounded-2xl border p-3 shadow-xs"

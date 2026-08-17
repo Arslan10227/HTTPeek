@@ -23,7 +23,7 @@ export const App: React.FC = () => {
     setFavorites,
   } = useProxyStore();
 
-  const { themeMode, themeColor, autoStartup, getActiveColorPreset, getEffectiveIsDark } = useAppConfig();
+  const { themeMode, themeColor, useMaterial3, autoStartup, getActiveColorPreset, getEffectiveIsDark } = useAppConfig();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768 || api.isMobile());
   const [activeBreakpoint, setActiveBreakpoint] = useState<BreakpointEvent | null>(null);
 
@@ -54,6 +54,15 @@ export const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
 
+    // Material 3 / Classic UI toggle
+    if (useMaterial3) {
+      document.documentElement.classList.add('m3-theme');
+      document.documentElement.setAttribute('data-theme-style', 'm3');
+    } else {
+      document.documentElement.classList.remove('m3-theme');
+      document.documentElement.setAttribute('data-theme-style', 'classic');
+    }
+
     document.documentElement.style.setProperty('--md-primary', activeColor.hex);
     document.documentElement.style.setProperty(
       '--md-primary-container',
@@ -63,7 +72,7 @@ export const App: React.FC = () => {
       '--md-on-primary-container',
       isDark ? activeColor.darkOnPrimaryContainer : activeColor.onPrimaryContainer
     );
-  }, [themeMode, themeColor, getActiveColorPreset, getEffectiveIsDark]);
+  }, [themeMode, themeColor, useMaterial3, getActiveColorPreset, getEffectiveIsDark]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

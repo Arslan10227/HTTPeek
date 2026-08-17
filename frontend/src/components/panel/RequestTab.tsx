@@ -4,9 +4,10 @@ import { HeadersViewer } from './HeadersViewer';
 import { HttpBodyViewer } from './HttpBodyViewer';
 import { CookiesCard } from './CookiesCard';
 import { SuggestedRulesCard } from './SuggestedRulesCard';
-import { ChevronDown, ChevronRight, Copy, Check, Table, Code, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Check, Table, Code, Search, Share2 } from 'lucide-react';
 import { toast } from '../../store/useToastStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { exportRequests } from '../../utils/exportHelper';
 
 interface RequestTabProps {
   request: HttpRequest;
@@ -20,6 +21,7 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
   const [paramsViewMode, setParamsViewMode] = useState<'table' | 'json' | 'raw'>('table');
   const [paramsFilter, setParamsFilter] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   // Extract query parameters
   const queryParams: [string, string][] = [];
@@ -34,11 +36,13 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
       v.toLowerCase().includes(paramsFilter.toLowerCase())
   );
 
-  let pathname = request.url;
-  try {
-    const urlObj = new URL(request.url);
-    pathname = urlObj.pathname;
-  } catch (_) {}
+  const pathname = request.path || (() => {
+    try {
+      return new URL(request.url).pathname;
+    } catch (_) {
+      return request.url;
+    }
+  })();
 
   const handleCopy = (text: string, label = 'Copied') => {
     navigator.clipboard.writeText(text);
@@ -60,8 +64,8 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
     : String(request.headers?.['content-type'] || request.headers?.['Content-Type'] || '');
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 select-none flex flex-col gap-2 font-sans text-xs">
-      {/* 1. URL Path Card with Copy */}
+    <div className="p-3 select-none flex flex-col gap-2.5 font-sans text-xs">
+      {/* 1. URL Path Card with Copy & Export */}
       <div
         className="flex items-center justify-between px-3 py-1.5 rounded-2xl border text-xs font-mono shadow-2xs bg-white dark:bg-gray-900 transition-all shrink-0"
         style={{
@@ -76,14 +80,65 @@ export const RequestTab: React.FC<RequestTabProps> = ({ request, response, onOpe
             {pathname}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => handleCopy(request.url, 'Full URL Copied')}
-          className="p-1 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer shrink-0 transition-colors"
-          title="Copy full URL"
-        >
-          <Copy className="w-3.5 h-3.5" />
-        </button>
+
+        <div className="flex items-center gap-1">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsShareOpen(!isShareOpen)}
+              className="p-1 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer shrink-0 transition-colors"
+              title="Share & Export"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            {isShareOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 w-44 rounded-2xl shadow-xl p-1.5 border z-50 text-xs flex flex-col gap-0.5 bg-white dark:bg-gray-900"
+                style={{ borderColor: 'var(--md-sys-color-divider)' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'har', `request_${request.id}`);
+                    setIsShareOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Export as .HAR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'json', `request_${request.id}`);
+                    setIsShareOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Export as .JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'csv', `request_${request.id}`);
+                    setIsShareOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Export as .CSV
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleCopy(request.url, 'Full URL Copied')}
+            className="p-1 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer shrink-0 transition-colors"
+            title="Copy full URL"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* 2. Query Params Card (Only shown if populated) */}

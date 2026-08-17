@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { HttpRequest, HttpResponse } from '../../types';
 import { HeadersViewer } from './HeadersViewer';
 import { HttpBodyViewer } from './HttpBodyViewer';
 import { CookiesCard } from './CookiesCard';
 import { SuggestedRulesCard } from './SuggestedRulesCard';
-import { Copy, Check, Activity, Clock, FileCode } from 'lucide-react';
+import { Copy, Check, Activity, Clock, FileCode, Share2 } from 'lucide-react';
 import { toast } from '../../store/useToastStore';
+import { exportRequests } from '../../utils/exportHelper';
 
 interface ResponseTabProps {
   request: HttpRequest;
@@ -21,6 +22,7 @@ const getStatusColor = (status?: number): string => {
 };
 
 export const ResponseTab: React.FC<ResponseTabProps> = ({ request, onOpenRule }) => {
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const response = request.response;
   const statusColor = getStatusColor(response?.statusCode);
 
@@ -62,8 +64,8 @@ export const ResponseTab: React.FC<ResponseTabProps> = ({ request, onOpenRule })
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 select-none flex flex-col gap-2 font-sans text-xs">
-      {/* 1. Status Code Summary Card */}
+    <div className="p-3 select-none flex flex-col gap-2.5 font-sans text-xs">
+      {/* 1. Status Code Summary Card with Share / Export */}
       <div
         className="flex items-center justify-between px-3 py-1.5 rounded-2xl border text-xs font-mono shadow-2xs bg-white dark:bg-gray-900 transition-all shrink-0"
         style={{
@@ -85,13 +87,63 @@ export const ResponseTab: React.FC<ResponseTabProps> = ({ request, onOpenRule })
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {(response.durationMs !== undefined || response.duration !== undefined) && (
             <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px] font-mono">
               <Clock className="w-3 h-3 text-gray-400" />
               <span>{response.durationMs || response.duration} ms</span>
             </div>
           )}
+
+          {/* Share / Export */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsShareOpen(!isShareOpen)}
+              className="p-1 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer shrink-0 transition-colors"
+              title="Share & Export Response"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            {isShareOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 w-44 rounded-2xl shadow-xl p-1.5 border z-50 text-xs flex flex-col gap-0.5 bg-white dark:bg-gray-900 font-sans"
+                style={{ borderColor: 'var(--md-sys-color-divider)' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'har', `response_${request.id}`);
+                    setIsShareOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Export as .HAR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'json', `response_${request.id}`);
+                    setIsShareOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Export as .JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'csv', `response_${request.id}`);
+                    setIsShareOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Export as .CSV
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={handleCopyStatus}

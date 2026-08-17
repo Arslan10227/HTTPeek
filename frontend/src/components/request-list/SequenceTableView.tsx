@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Star, Zap, Trash2, Sliders, Play, RotateCw, Edit3, Bookmark } from 'lucide-react';
+import { Star, Zap, Trash2, Sliders, Play, RotateCw, Edit3, Bookmark, Layers, FileJson, FileSpreadsheet, Terminal } from 'lucide-react';
 import { useProxyStore } from '../../store/useProxyStore';
 import { HttpRequest } from '../../types';
 import { ContextMenu } from '../common/ContextMenu';
@@ -9,6 +9,7 @@ import { RequestComposerModal } from '../composer/RequestComposerModal';
 import { QuickRuleDialog } from '../rules/QuickRuleDialog';
 import { LottiePlayer } from '../common/LottiePlayer';
 import { MobileRequestCard } from './MobileRequestCard';
+import { exportRequests } from '../../utils/exportHelper';
 
 export const SequenceTableView: React.FC = () => {
   const { 
@@ -137,6 +138,26 @@ export const SequenceTableView: React.FC = () => {
   };
 
   const menuItems = contextMenu ? [
+    {
+      label: 'Export as .HAR',
+      icon: <Layers className="w-3.5 h-3.5 text-blue-500" />,
+      onClick: () => exportRequests([contextMenu.request], 'har', `request_${contextMenu.request.id}`),
+    },
+    {
+      label: 'Export as .JSON',
+      icon: <FileJson className="w-3.5 h-3.5 text-amber-500" />,
+      onClick: () => exportRequests([contextMenu.request], 'json', `request_${contextMenu.request.id}`),
+    },
+    {
+      label: 'Export as .CSV',
+      icon: <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />,
+      onClick: () => exportRequests([contextMenu.request], 'csv', `request_${contextMenu.request.id}`),
+    },
+    {
+      label: 'Export as .SH Script',
+      icon: <Terminal className="w-3.5 h-3.5 text-purple-500" />,
+      onClick: () => exportRequests([contextMenu.request], 'sh', `request_${contextMenu.request.id}`),
+    },
     {
       label: 'Copy URL',
       icon: <Bookmark className="w-3.5 h-3.5" />,

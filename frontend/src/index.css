@@ -42,6 +42,7 @@
   --md-sys-color-outline: #79747e;
   --md-sys-color-divider: rgba(0, 0, 0, 0.12);
   --md-dialog-bg: #ffffff;
+  --card-radius: 8px;
 }
 
 .dark {
@@ -53,6 +54,41 @@
   --md-sys-color-outline: #938f99;
   --md-sys-color-divider: rgba(255, 255, 255, 0.12);
   --md-dialog-bg: #2a2b34;
+}
+
+/* Material 3 Mode */
+.m3-theme {
+  --card-radius: 20px;
+}
+
+.m3-theme .rounded-2xl {
+  border-radius: 1.25rem !important;
+}
+
+.m3-theme .rounded-3xl {
+  border-radius: 1.75rem !important;
+}
+
+/* Classic ProxyPin Mode (Flat & Dense) */
+html:not(.m3-theme) {
+  --card-radius: 6px;
+}
+
+html:not(.m3-theme) .rounded-2xl,
+html:not(.m3-theme) .rounded-3xl {
+  border-radius: 6px !important;
+}
+
+html:not(.m3-theme) .rounded-xl {
+  border-radius: 4px !important;
+}
+
+html:not(.m3-theme) .shadow-2xs,
+html:not(.m3-theme) .shadow-xs,
+html:not(.m3-theme) .shadow-md,
+html:not(.m3-theme) .shadow-lg,
+html:not(.m3-theme) .shadow-2xl {
+  box-shadow: none !important;
 }
 
 /* Material 3 Scrollbars */

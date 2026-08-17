@@ -12,6 +12,7 @@ import { useProxyStore } from '../../store/useProxyStore';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
 import { useAppConfig } from '../../theme/useAppConfig';
+import { exportRequests } from '../../utils/exportHelper';
 
 export type InspectorTabType = 'general' | 'request' | 'response' | 'graphql' | 'websocket' | 'sse';
 
@@ -231,24 +232,72 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
             />
           </button>
 
-          {/* Share Dropdown */}
+          {/* Share & Export Dropdown */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setIsShareMenuOpen(!isShareMenuOpen)}
-              className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 cursor-pointer"
-              title={t.share}
+              className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 cursor-pointer flex items-center gap-1"
+              title="Share & Export Request/Response"
             >
               <Share2 className="w-3.5 h-3.5" />
             </button>
 
             {isShareMenuOpen && (
               <div
-                className="absolute right-0 top-full mt-1 w-44 rounded-2xl shadow-xl py-1 border z-50 text-xs flex flex-col animate-in fade-in zoom-in-95 duration-75 bg-white dark:bg-gray-900"
+                className="absolute right-0 top-full mt-1 w-48 rounded-2xl shadow-xl p-1.5 border z-50 text-xs flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-75 bg-white dark:bg-gray-900"
                 style={{
                   borderColor: 'var(--md-sys-color-divider)',
                 }}
               >
+                <span className="px-2.5 py-1 text-[10px] font-black uppercase text-gray-400 tracking-wider">
+                  Export Options
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'har', `request_${request.id}`);
+                    setIsShareMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span>Export as .HAR</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'json', `request_${request.id}`);
+                    setIsShareMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span>Export as .JSON</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'csv', `request_${request.id}`);
+                    setIsShareMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Export as .CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportRequests([request], 'sh', `request_${request.id}`);
+                    setIsShareMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
+                >
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  <span>Export as .SH Script</span>
+                </button>
+                <div className="h-px bg-gray-100 dark:bg-gray-800 my-1" />
                 <button
                   type="button"
                   onClick={() => {
@@ -256,14 +305,17 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
                     toast.success(t.copied, request.url);
                     setIsShareMenuOpen(false);
                   }}
-                  className="px-3 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
                 >
                   {t.copyUrl}
                 </button>
                 <button
                   type="button"
-                  onClick={handleCopyCurl}
-                  className="px-3 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
+                  onClick={() => {
+                    handleCopyCurl();
+                    setIsShareMenuOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 text-left rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-700 dark:text-gray-200"
                 >
                   {t.copyCurl}
                 </button>
@@ -273,8 +325,8 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
         </div>
       </div>
 
-      {/* Tab Content Panes (Full Tab Scrollable) */}
-      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+      {/* Tab Content Panes (Full Tab Smooth Scrolling Container) */}
+      <div className="flex-1 overflow-y-auto min-h-0">
         {activeTab === 'general' && <GeneralTab request={request} />}
         {activeTab === 'request' && (
           <RequestTab
