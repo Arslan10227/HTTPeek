@@ -110,9 +110,13 @@ export function ReplayRequest(arg1:proxy.HttpRequest):Promise<proxy.HttpResponse
 
 export function ResumeBreakpoint(arg1:string,arg2:boolean,arg3:string):Promise<void>;
 
+export function ReverseADBPort(arg1:string,arg2:number):Promise<Record<string, any>>;
+
 export function SelectJavaFolder():Promise<cert.JavaInstallation>;
 
 export function SendCustomRequest(arg1:string):Promise<proxy.HttpResponse>;
+
+export function SendRemoteMobileCommand(arg1:string,arg2:string,arg3:any):Promise<void>;
 
 export function SetBlockRules(arg1:Array<interceptor.BlockRule>):Promise<void>;
 
@@ -153,6 +157,8 @@ export function StartProxy(arg1:number,arg2:boolean,arg3:boolean):Promise<void>;
 export function Stop():Promise<void>;
 
 export function StopProxy():Promise<void>;
+
+export function SyncRulesToMobile(arg1:string):Promise<void>;
 
 export function ToggleFavoriteRequest(arg1:string,arg2:boolean):Promise<void>;
 

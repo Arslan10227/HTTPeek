@@ -210,12 +210,20 @@ export function ResumeBreakpoint(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResumeBreakpoint'](arg1, arg2, arg3);
 }
 
+export function ReverseADBPort(arg1, arg2) {
+  return window['go']['main']['App']['ReverseADBPort'](arg1, arg2);
+}
+
 export function SelectJavaFolder() {
   return window['go']['main']['App']['SelectJavaFolder']();
 }
 
 export function SendCustomRequest(arg1) {
   return window['go']['main']['App']['SendCustomRequest'](arg1);
+}
+
+export function SendRemoteMobileCommand(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SendRemoteMobileCommand'](arg1, arg2, arg3);
 }
 
 export function SetBlockRules(arg1) {
@@ -296,6 +304,10 @@ export function Stop() {
 
 export function StopProxy() {
   return window['go']['main']['App']['StopProxy']();
+}
+
+export function SyncRulesToMobile(arg1) {
+  return window['go']['main']['App']['SyncRulesToMobile'](arg1);
 }
 
 export function ToggleFavoriteRequest(arg1, arg2) {
