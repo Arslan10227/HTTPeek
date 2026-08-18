@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -28,6 +29,7 @@ class SslFragment : Fragment() {
     private val bypassDomains = mutableListOf<String>()
     private lateinit var bypassAdapter: BypassDomainAdapter
     private val gson = Gson()
+    private var isDeviceRooted = false
 
     companion object {
         private const val PREFS_SSL = "httpeek_ssl_prefs"
@@ -47,6 +49,7 @@ class SslFragment : Fragment() {
 
         loadSslPreferences()
         setupCertInfo()
+        setupSmartHeroInstaller()
         setupFallbackButtons()
         setupBypassList()
     }
@@ -57,7 +60,12 @@ class SslFragment : Fragment() {
 
         binding.switchSslDecryption.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(KEY_SSL_ENABLED, isChecked).apply()
-            Toast.makeText(requireContext(), if (isChecked) "HTTPS Decryption Enabled" else "HTTPS Decryption Disabled (Passthrough)", Toast.LENGTH_SHORT).show()
+            val msg = if (isChecked) {
+                "🔓 (★ω★) HTTPS Decryption Enabled! All secrets revealed!"
+            } else {
+                "🔒 (︶ω︶) Passthrough Active. Traffic encrypted without MITM."
+            }
+            Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
         }
 
         val json = prefs.getString(KEY_BYPASS_DOMAINS, null)
@@ -81,13 +89,67 @@ class SslFragment : Fragment() {
         val hash = ca.getOldSubjectHash()
         binding.tvCertHash.text = "$hash.0"
 
-        val isRooted = RootCAInstaller.isDeviceRooted()
-        if (isRooted) {
-            binding.tvRootStatus.text = "⚡ Root Access: Active (Magisk / KernelSU detected)"
-            binding.btnInstallMagiskRoot.isEnabled = true
+        isDeviceRooted = RootCAInstaller.isDeviceRooted()
+        if (isDeviceRooted) {
+            binding.tvRootStatus.text = "⚡ ٩(◕‿◕｡)۶ Root Detected! (Magisk / KernelSU / APatch active)"
+            binding.btnHeroInstall.text = "👑 1-Tap Install System Root CA (Magisk Module)"
+            binding.tvHeroSubtitle.text = "Directly overlays into system trust store for 100% full app capture."
+            binding.btnHeroInstall.backgroundTintList = ContextCompat.getColorStateList(requireContext(), R.color.primary)
         } else {
-            binding.tvRootStatus.text = "ℹ️ Root Access: Not detected (Use Tier 1 or Tier 3)"
-            binding.btnInstallMagiskRoot.text = "2. Install via Root (Requires Root)"
+            binding.tvRootStatus.text = "🛡️ (＾▽＾) Non-Root Mode (Android KeyChain User Store)"
+            binding.btnHeroInstall.text = "🔑 1-Tap Install to User Store (KeyChain)"
+            binding.tvHeroSubtitle.text = "Installs to Android KeyChain credentials for user-cert supporting apps."
+            binding.btnHeroInstall.backgroundTintList = ContextCompat.getColorStateList(requireContext(), R.color.status_connected)
+        }
+    }
+
+    private fun setupSmartHeroInstaller() {
+        binding.btnHeroInstall.setOnClickListener {
+            if (isDeviceRooted) {
+                installRootModule()
+            } else {
+                installUserKeyChain()
+            }
+        }
+    }
+
+    private fun installRootModule() {
+        val ctx = requireContext()
+        binding.btnHeroInstall.isEnabled = false
+        binding.btnInstallMagiskRoot.isEnabled = false
+        binding.tvCertStatus.text = "⏳ (•̀ᴗ•́)و Injecting CA module via Superuser shell..."
+
+        lifecycleScope.launch {
+            try {
+                val success = RootCAInstaller.installToSystemStoreWithRoot(ctx, ca) { step ->
+                    binding.tvCertStatus.text = "• ${step.message}"
+                }
+                if (success) {
+                    Toast.makeText(ctx, "👑 (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ BOOM! System CA Installed via Root! Reboot device to activate.", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(ctx, "⚠️ (⊙_☉) Root module partially created. Check steps above.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                binding.tvCertStatus.text = "💥 (⊙_☉) Error: ${e.localizedMessage}"
+            } finally {
+                binding.btnHeroInstall.isEnabled = true
+                binding.btnInstallMagiskRoot.isEnabled = true
+            }
+        }
+    }
+
+    private fun installUserKeyChain() {
+        val ctx = requireContext()
+        val bytes = ca.getRootCADerBytes()
+        if (bytes != null) {
+            lifecycleScope.launch {
+                RootCAInstaller.installToUserStore(ctx, bytes) { step ->
+                    binding.tvCertStatus.text = "• ${step.message}"
+                }
+                Toast.makeText(ctx, "🔑 (＾▽＾) KeyChain installer opened! Set name to 'HTTPeek CA'.", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(ctx, "💥 (⊙_☉) CA Certificate not initialized yet!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -95,35 +157,11 @@ class SslFragment : Fragment() {
         val ctx = requireContext()
 
         binding.btnInstallKeyChain.setOnClickListener {
-            val bytes = ca.getRootCADerBytes()
-            if (bytes != null) {
-                lifecycleScope.launch {
-                    RootCAInstaller.installToUserStore(ctx, bytes) { step ->
-                        binding.tvCertStatus.text = "• ${step.message}"
-                    }
-                }
-            } else {
-                Toast.makeText(ctx, "CA Certificate not initialized", Toast.LENGTH_SHORT).show()
-            }
+            installUserKeyChain()
         }
 
         binding.btnInstallMagiskRoot.setOnClickListener {
-            binding.btnInstallMagiskRoot.isEnabled = false
-            binding.tvCertStatus.text = "Executing superuser installation..."
-            lifecycleScope.launch {
-                try {
-                    val success = RootCAInstaller.installToSystemStoreWithRoot(ctx, ca) { step ->
-                        binding.tvCertStatus.text = "• ${step.message}"
-                    }
-                    if (success) {
-                        Toast.makeText(ctx, "System CA Module Installed! Reboot device for full effect.", Toast.LENGTH_LONG).show()
-                    }
-                } catch (e: Exception) {
-                    binding.tvCertStatus.text = "• Error: ${e.localizedMessage}"
-                } finally {
-                    binding.btnInstallMagiskRoot.isEnabled = true
-                }
-            }
+            installRootModule()
         }
 
         binding.btnSaveDownloads.setOnClickListener {
@@ -134,7 +172,7 @@ class SslFragment : Fragment() {
                         binding.tvCertStatus.text = "• ${step.message}"
                     }
                     if (uri != null) {
-                        Toast.makeText(ctx, "Saved to Downloads/httpeek-root-ca.crt", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "💾 ＼(≧▽≦)／ Saved to Downloads/httpeek-root-ca.crt!", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -145,13 +183,14 @@ class SslFragment : Fragment() {
                 RootCAInstaller.openSecuritySettings(ctx) { step ->
                     binding.tvCertStatus.text = "• ${step.message}"
                 }
+                Toast.makeText(ctx, "⚙️ (・∀・) Opening Security Settings -> Install from storage...", Toast.LENGTH_SHORT).show()
             }
         }
 
         binding.btnCopyAdbScript.setOnClickListener {
             val cmd = RootCAInstaller.copyAdbCommandToClipboard(ctx, ca)
-            binding.tvCertStatus.text = "• Copied ADB command:\n$cmd"
-            Toast.makeText(ctx, "ADB Command Copied", Toast.LENGTH_SHORT).show()
+            binding.tvCertStatus.text = "• (¬‿¬) Copied ADB command:\n$cmd"
+            Toast.makeText(ctx, "📋 (⌐■_■) ADB Command Copied to Clipboard!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -160,7 +199,7 @@ class SslFragment : Fragment() {
             bypassDomains.remove(domain)
             saveBypassDomains()
             bypassAdapter.notifyDataSetChanged()
-            Toast.makeText(requireContext(), "Removed $domain from bypass list", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "🗑️ (´･ω･`) Removed $domain from bypass list", Toast.LENGTH_SHORT).show()
         }
 
         binding.recyclerBypassDomains.apply {
@@ -175,7 +214,7 @@ class SslFragment : Fragment() {
                 saveBypassDomains()
                 bypassAdapter.notifyDataSetChanged()
                 binding.etBypassDomain.setText("")
-                Toast.makeText(requireContext(), "Added $domain to bypass list", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "💨 (⌒▽⌒) Zoom! Bypassed $domain at lightspeed!", Toast.LENGTH_SHORT).show()
             }
         }
     }

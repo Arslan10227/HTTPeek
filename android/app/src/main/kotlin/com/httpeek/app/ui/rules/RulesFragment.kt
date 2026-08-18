@@ -201,7 +201,7 @@ class RulesFragment : Fragment() {
         }
         rulesEngine.saveRules()
         loadTabRules()
-        Toast.makeText(requireContext(), "Rule deleted", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "🗑️ (´･ω･`) Bye bye rule! Poof!", Toast.LENGTH_SHORT).show()
     }
 
     private fun showAddRuleDialog() {
@@ -228,7 +228,7 @@ class RulesFragment : Fragment() {
                 val action = etAction.text.toString().trim()
 
                 if (pattern.isEmpty()) {
-                    Toast.makeText(ctx, "Pattern cannot be empty", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "💥 (⊙_☉) Pattern cannot be empty!", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
@@ -262,7 +262,7 @@ class RulesFragment : Fragment() {
 
                 rulesEngine.saveRules()
                 loadTabRules()
-                Toast.makeText(ctx, "Rule added successfully", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "🪄 (★ω★) Rule Activated! Magic in progress!", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()

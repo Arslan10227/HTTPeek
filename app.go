@@ -155,6 +155,7 @@ func (a *App) startup(ctx context.Context) {
 
 	a.wireServices()
 	a.attachMobileBridge()
+	a.wireMobileEvents()
 
 	// 5. Load persisted rules
 	a.loadRules()

@@ -98,7 +98,7 @@ class HttpeekVpnService : VpnService() {
 
         currentInstance = this
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("HTTPeek Active • 0 requests"))
+        startForeground(NOTIFICATION_ID, buildNotification("🚀 (•̀ᴗ•́)و HTTPeek Active • 0 requests"))
 
         try {
             val ca = DynamicCertAuthority(applicationContext)
@@ -122,7 +122,7 @@ class HttpeekVpnService : VpnService() {
                     onRequestCaptured?.invoke(req)
                     desktopBridge?.sendRequest(req)
                     if (count % 5 == 0) {
-                        updateNotification("HTTPeek Active • $count requests captured")
+                        updateNotification("🚀 (•̀ᴗ•́)و HTTPeek Active • $count requests captured")
                     }
                 },
                 onResponse = { resp ->

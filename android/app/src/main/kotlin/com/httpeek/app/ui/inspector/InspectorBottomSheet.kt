@@ -46,7 +46,7 @@ class InspectorBottomSheet(
             val curl = buildCurlCommand(request)
             val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("cURL", curl))
-            Toast.makeText(requireContext(), "cURL copied to clipboard", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "📋 (¬‿¬) Copied cURL command! Ready to run in terminal!", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -43,7 +43,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   ...settingTriggers
 }) => {
   const { t } = useTranslation();
-  const { requests, status, setStatus, clearRequests } = useProxyStore();
+  const { requests, status, setStatus, clearRequests, connectedMobileDevices } = useProxyStore();
   const { clearConfirm, getActiveColorPreset } = useAppConfig();
   const [isPhoneConnectOpen, setIsPhoneConnectOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -229,15 +229,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         {/* Weak Network Indicator (conditionally shown) */}
         <WeakNetworkIndicator onOpenWeakNetwork={settingTriggers.onOpenWeakNetwork} />
 
-        {/* Mobile Connect */}
-        <button
-          type="button"
-          onClick={() => setIsPhoneConnectOpen(true)}
-          className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300 transition-colors"
-          title={t.mobileConnect}
-        >
-          <Smartphone className="w-5 h-5" />
-        </button>
+        {/* Mobile Connect / Active Connected Android Device Badge */}
+        {connectedMobileDevices && connectedMobileDevices.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setIsPhoneConnectOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/60 cursor-pointer shadow-2xs transition-all animate-pulse"
+            title={`Android Connected: ${connectedMobileDevices[0].deviceName || 'Mobile Device'} (${connectedMobileDevices[0].remoteIp}) - Click to manage`}
+          >
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>
+              📱 {connectedMobileDevices[0].deviceName || 'Android'} ({connectedMobileDevices[0].packetCount} reqs)
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsPhoneConnectOpen(true)}
+            className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300 transition-colors"
+            title={t.mobileConnect}
+          >
+            <Smartphone className="w-5 h-5" />
+          </button>
+        )}
 
         {/* Documentation / In-App Guides Modal */}
         {onOpenDocs && (

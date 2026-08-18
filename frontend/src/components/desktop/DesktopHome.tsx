@@ -95,6 +95,35 @@ export const DesktopHome: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Listen for Mobile Companion connections
+  useEffect(() => {
+    const fetchMobileDevices = () => {
+      if ((window as any).go?.main?.App?.GetConnectedMobileDevices) {
+        (window as any).go.main.App.GetConnectedMobileDevices()
+          .then((devs: any) => {
+            useProxyStore.getState().setConnectedMobileDevices(devs || []);
+          })
+          .catch(console.error);
+      }
+    };
+
+    fetchMobileDevices();
+
+    if ((window as any).runtime?.EventsOn) {
+      (window as any).runtime.EventsOn('mobile:devices_changed', (devs: any) => {
+        useProxyStore.getState().setConnectedMobileDevices(devs || []);
+      });
+    }
+
+    const interval = setInterval(fetchMobileDevices, 5000);
+    return () => {
+      clearInterval(interval);
+      if ((window as any).runtime?.EventsOff) {
+        (window as any).runtime.EventsOff('mobile:devices_changed');
+      }
+    };
+  }, []);
+
   // Request Composer / Editor State
   const [composerRequest, setComposerRequest] = useState<HttpRequest | null>(null);
   const [isComposerOpen, setIsComposerOpen] = useState(false);

@@ -56,21 +56,21 @@ class AppsFragment : Fragment() {
         binding.radioAllApps.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 filterManager.setFilterMode(AppFilterMode.ALL_APPS)
-                Toast.makeText(requireContext(), "Mode: Capture all applications", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "🌐 ٩(◕‿◕｡)۶ Mode: Capture ALL applications globally!", Toast.LENGTH_SHORT).show()
             }
         }
 
         binding.radioOnlySelected.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 filterManager.setFilterMode(AppFilterMode.ONLY_SELECTED)
-                Toast.makeText(requireContext(), "Mode: Capture only selected applications", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "🎯 (・∀・) Mode: Intercept ONLY selected apps (Whitelist)!", Toast.LENGTH_SHORT).show()
             }
         }
 
         binding.radioExcludeSelected.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 filterManager.setFilterMode(AppFilterMode.EXCLUDE_SELECTED)
-                Toast.makeText(requireContext(), "Mode: Exclude selected applications", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "🛡️ (˘▾˘) Mode: Exclude selected apps (Blacklist)!", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -104,7 +104,7 @@ class AppsFragment : Fragment() {
             }
             appAdapter.notifyDataSetChanged()
             updateCountLabel()
-            Toast.makeText(requireContext(), "Selected all visible apps", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "🎯 ＼(≧▽≦)／ Selected all visible applications!", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnDeselectAllApps.setOnClickListener {
@@ -114,7 +114,7 @@ class AppsFragment : Fragment() {
             }
             appAdapter.notifyDataSetChanged()
             updateCountLabel()
-            Toast.makeText(requireContext(), "Deselected all apps", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "🧹 (︶ω︶) Cleared selection (0 apps selected)", Toast.LENGTH_SHORT).show()
         }
     }
 

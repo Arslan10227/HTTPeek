@@ -149,6 +149,14 @@ func (s *Server) CertManager() *cert.CertificateManager {
 	return s.certManager
 }
 
+// MobileAPI returns the MobileAPIManager instance.
+func (s *Server) MobileAPI() *MobileAPIManager {
+	if s.handler != nil {
+		return s.handler.mobileAPI
+	}
+	return nil
+}
+
 // SetMobileAPIBridge registers app-level handlers for mobile REST endpoints.
 func (s *Server) SetMobileAPIBridge(b MobileAPIBridge) {
 	s.mobileBridge = b

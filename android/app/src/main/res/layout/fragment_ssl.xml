@@ -25,7 +25,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:text="Manage HTTPS MITM decryption, CA trust store, and SSL bypass rules"
+            android:text="Manage HTTPS MITM decryption, Root CA trust store, and SSL bypass rules"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
@@ -78,7 +78,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- CA Info Card -->
+        <!-- CA Info & Smart Installer Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -134,6 +134,31 @@
                     android:textSize="11sp"
                     android:textStyle="bold" />
 
+                <!-- Dynamic Hero Smart Install Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnHeroInstall"
+                    style="@style/Widget.Material3.Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:backgroundTint="@color/primary"
+                    android:gravity="center"
+                    android:text="⚡ 1-Tap Install System Root CA (Magisk)"
+                    android:textAllCaps="false"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    app:cornerRadius="12dp"
+                    app:icon="@android:drawable/ic_menu_upload" />
+
+                <TextView
+                    android:id="@+id/tvHeroSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Directly overlays into system cacerts store for full capture"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="10sp" />
+
                 <TextView
                     android:id="@+id/tvCertStatus"
                     android:layout_width="match_parent"
@@ -141,15 +166,24 @@
                     android:layout_marginTop="8dp"
                     android:background="@drawable/search_bg"
                     android:padding="8dp"
-                    android:text="Ready for installation"
+                    android:text="Ready for installation (・ω・)b"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
 
-                <!-- 5 Fallback Buttons -->
+                <!-- Fallback Installation Options -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Fallback Installation Techniques:"
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="6dp"
                     android:orientation="vertical">
 
                     <com.google.android.material.button.MaterialButton
@@ -159,20 +193,21 @@
                         android:layout_height="wrap_content"
                         android:gravity="start|center_vertical"
                         android:text="1. Install via Android KeyChain (User Store)"
+                        android:textAllCaps="false"
                         android:textSize="11sp"
                         app:cornerRadius="10dp"
                         app:icon="@android:drawable/ic_dialog_info" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnInstallMagiskRoot"
-                        style="@style/Widget.Material3.Button"
+                        style="@style/Widget.Material3.Button.TonalButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:gravity="start|center_vertical"
                         android:text="2. Install System CA via Magisk / Root Module"
+                        android:textAllCaps="false"
                         android:textSize="11sp"
-                        app:backgroundTint="@color/primary"
                         app:cornerRadius="10dp"
                         app:icon="@android:drawable/ic_menu_upload" />
 
@@ -184,6 +219,7 @@
                         android:layout_marginTop="4dp"
                         android:gravity="start|center_vertical"
                         android:text="3. Save .CRT to Downloads Folder"
+                        android:textAllCaps="false"
                         android:textColor="@color/text_primary"
                         android:textSize="11sp"
                         app:cornerRadius="10dp"
@@ -198,6 +234,7 @@
                         android:layout_marginTop="4dp"
                         android:gravity="start|center_vertical"
                         android:text="4. Open Android Security Settings"
+                        android:textAllCaps="false"
                         android:textColor="@color/text_primary"
                         android:textSize="11sp"
                         app:cornerRadius="10dp"
@@ -212,6 +249,7 @@
                         android:layout_marginTop="2dp"
                         android:gravity="start|center_vertical"
                         android:text="5. Copy One-Line ADB Root Command"
+                        android:textAllCaps="false"
                         android:textSize="11sp"
                         app:cornerRadius="10dp"
                         app:icon="@android:drawable/ic_menu_share" />

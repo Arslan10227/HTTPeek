@@ -47,9 +47,9 @@ class TrafficFragment : Fragment() {
             activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
             isVpnRunning = true
             updateUIState()
-            Toast.makeText(requireContext(), "HTTPeek VPN Interception Active", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "🚀 (•̀ᴗ•́)و Let's Go! HTTPeek VPN Interception is LIVE!", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(requireContext(), "VPN permission required for traffic capture", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "⚠️ (⊙_☉) VPN permission is required to capture network packets!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -184,7 +184,7 @@ class TrafficFragment : Fragment() {
                 desktopHost = null
                 binding.tvConnectionTarget.text = "Standalone Mode (127.0.0.1:9099)"
                 binding.chipDesktopStatus.text = "Desktop: Standalone"
-                Toast.makeText(requireContext(), "Operating in standalone mode", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "💻 (⌐■_■) Operating in standalone local mode", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -203,7 +203,7 @@ class TrafficFragment : Fragment() {
                 if (ok) {
                     binding.chipDesktopStatus.text = "Desktop: Connected (${latency}ms)"
                     binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_connected))
-                    Toast.makeText(requireContext(), "Connected to Desktop HTTPeek (${latency}ms)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "📱⚡ ٩(◕‿◕｡)۶ Paired & Synced with Desktop HTTPeek! Latency: ${latency}ms", Toast.LENGTH_SHORT).show()
                 } else {
                     binding.chipDesktopStatus.text = "Desktop: Paired (${info.host})"
                     binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_vpn_active))
@@ -213,7 +213,7 @@ class TrafficFragment : Fragment() {
             if (isVpnRunning) stopVpn()
             startVpn()
         } else {
-            Toast.makeText(requireContext(), "Could not parse IP or QR Code: $raw", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), "💥 (⊙_☉) Could not parse IP or QR Code: $raw", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -244,7 +244,7 @@ class TrafficFragment : Fragment() {
             activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
             isVpnRunning = true
             updateUIState()
-            Toast.makeText(requireContext(), "HTTPeek VPN Interception Active", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "🚀 (•̀ᴗ•́)و Let's Go! HTTPeek VPN Interception is LIVE!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -252,7 +252,7 @@ class TrafficFragment : Fragment() {
         activity?.startService(HttpeekVpnService.stopIntent(requireContext()))
         isVpnRunning = false
         updateUIState()
-        Toast.makeText(requireContext(), "VPN Capture Stopped", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "🛑 (︶ω︶) Zzz... VPN Interception Stopped!", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateUIState() {

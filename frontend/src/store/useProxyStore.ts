@@ -91,6 +91,10 @@ interface ProxyStore {
   filterConfig: FilterConfig;
   setFilterConfig: (cfg: FilterConfig) => void;
 
+  // Mobile Devices
+  connectedMobileDevices: MobileDeviceInfo[];
+  setConnectedMobileDevices: (devices: MobileDeviceInfo[]) => void;
+
   // Actions
   addRequest: (req: HttpRequest) => void;
   updateResponse: (resp: HttpResponse) => void;
@@ -118,7 +122,21 @@ interface ProxyStore {
   selectPrev: () => void;
 }
 
+export interface MobileDeviceInfo {
+  deviceId: string;
+  deviceName: string;
+  osVersion: string;
+  isRooted: boolean;
+  remoteIp: string;
+  connectedAt: string;
+  lastPing: string;
+  packetCount: number;
+}
+
 export const useProxyStore = create<ProxyStore>((set, get) => ({
+  connectedMobileDevices: [],
+  setConnectedMobileDevices: (connectedMobileDevices) => set({ connectedMobileDevices }),
+
   maxRequests: 10000,
   setMaxRequests: (maxRequests) => set({ maxRequests }),
 

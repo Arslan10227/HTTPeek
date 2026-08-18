@@ -18,11 +18,25 @@ import (
 	"httpeek/pkg/logger"
 )
 
+// MobileDeviceInfo represents an active mobile connection.
+type MobileDeviceInfo struct {
+	DeviceID    string    `json:"deviceId"`
+	DeviceName  string    `json:"deviceName"`
+	OSVersion   string    `json:"osVersion"`
+	IsRooted    bool      `json:"isRooted"`
+	RemoteIP    string    `json:"remoteIp"`
+	ConnectedAt time.Time `json:"connectedAt"`
+	LastPing    time.Time `json:"lastPing"`
+	PacketCount int64     `json:"packetCount"`
+}
+
 // MobileAPIManager handles embedded REST endpoints and WebSocket event streams for mobile clients.
 type MobileAPIManager struct {
-	server  *Server
-	wsConns map[string]net.Conn
-	mu      sync.RWMutex
+	server         *Server
+	wsConns        map[string]net.Conn
+	devices        map[string]*MobileDeviceInfo
+	onDeviceChange func([]MobileDeviceInfo)
+	mu             sync.RWMutex
 }
 
 // NewMobileAPIManager initializes a mobile API manager.
@@ -30,11 +44,58 @@ func NewMobileAPIManager(s *Server) *MobileAPIManager {
 	m := &MobileAPIManager{
 		server:  s,
 		wsConns: make(map[string]net.Conn),
+		devices: make(map[string]*MobileDeviceInfo),
 	}
 
 	// Hook server event listener to broadcast to all connected mobile WebSockets
 	s.AddListener(&mobileAPIEventListener{mgr: m})
 	return m
+}
+
+// SetOnDeviceChange registers a callback invoked when mobile devices connect or disconnect.
+func (m *MobileAPIManager) SetOnDeviceChange(fn func([]MobileDeviceInfo)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onDeviceChange = fn
+}
+
+// GetConnectedDevices returns a list of currently connected mobile devices.
+func (m *MobileAPIManager) GetConnectedDevices() []MobileDeviceInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	res := make([]MobileDeviceInfo, 0, len(m.devices))
+	for _, d := range m.devices {
+		res = append(res, *d)
+	}
+	return res
+}
+
+// DisconnectDevice closes the connection for a specific device.
+func (m *MobileAPIManager) DisconnectDevice(deviceID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for connID, dev := range m.devices {
+		if dev.DeviceID == deviceID || dev.RemoteIP == deviceID {
+			if conn, ok := m.wsConns[connID]; ok {
+				_ = conn.Close()
+				delete(m.wsConns, connID)
+			}
+			delete(m.devices, connID)
+		}
+	}
+	m.notifyDeviceChangeLocked()
+}
+
+func (m *MobileAPIManager) notifyDeviceChangeLocked() {
+	if m.onDeviceChange != nil {
+		res := make([]MobileDeviceInfo, 0, len(m.devices))
+		for _, d := range m.devices {
+			res = append(res, *d)
+		}
+		go m.onDeviceChange(res)
+	}
 }
 
 type mobileAPIEventListener struct {
@@ -694,6 +755,45 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		_ = logger.ClearLogs()
 		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"ok": "true"})
 
+	case path == "/mobile/devices" && req.Method == http.MethodGet:
+		sendJSONResponse(clientConn, http.StatusOK, m.GetConnectedDevices())
+
+	case path == "/mobile/sync" && req.Method == http.MethodPost:
+		var syncPayload struct {
+			DeviceID   string          `json:"deviceId"`
+			DeviceName string          `json:"deviceName"`
+			Requests   []*HttpRequest  `json:"requests"`
+			Responses  []*HttpResponse `json:"responses"`
+		}
+		bodyBytes, _ := io.ReadAll(req.Body)
+		if err := json.Unmarshal(bodyBytes, &syncPayload); err != nil {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if m.server != nil {
+			for _, r := range syncPayload.Requests {
+				m.server.BroadcastRequest(r)
+			}
+			for _, r := range syncPayload.Responses {
+				m.server.BroadcastResponse(r)
+			}
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]any{
+			"status":   "ok",
+			"ingested": len(syncPayload.Requests) + len(syncPayload.Responses),
+		})
+
+	case path == "/mobile/disconnect" && req.Method == http.MethodPost:
+		var payload struct {
+			DeviceID string `json:"deviceId"`
+		}
+		bodyBytes, _ := io.ReadAll(req.Body)
+		_ = json.Unmarshal(bodyBytes, &payload)
+		if payload.DeviceID != "" {
+			m.DisconnectDevice(payload.DeviceID)
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"status": "disconnected"})
+
 	default:
 		sendJSONResponse(clientConn, http.StatusNotFound, map[string]string{"error": "Endpoint not found"})
 	}
@@ -721,10 +821,25 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 		return
 	}
 
+	remoteAddr := clientConn.RemoteAddr().String()
+	remoteIP := remoteAddr
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		remoteIP = host
+	}
+
 	connID := fmt.Sprintf("%p", clientConn)
 	m.mu.Lock()
 	m.wsConns[connID] = clientConn
+	m.devices[connID] = &MobileDeviceInfo{
+		DeviceID:    connID,
+		DeviceName:  "Android (" + remoteIP + ")",
+		OSVersion:   "Android",
+		RemoteIP:    remoteIP,
+		ConnectedAt: time.Now(),
+		LastPing:    time.Now(),
+	}
 	m.mu.Unlock()
+	m.notifyDeviceChangeLocked()
 
 	// Send initial status event upon connection
 	m.BroadcastEvent("proxy:status", map[string]any{
@@ -738,7 +853,9 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 		defer func() {
 			m.mu.Lock()
 			delete(m.wsConns, connID)
+			delete(m.devices, connID)
 			m.mu.Unlock()
+			m.notifyDeviceChangeLocked()
 			_ = clientConn.Close()
 		}()
 
@@ -795,13 +912,13 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 				pong := []byte{0x8A, 0x00}
 				_, _ = clientConn.Write(pong)
 			} else if opcode == 0x01 { // Text frame
-				m.handleIncomingClientMessage(payload)
+				m.handleIncomingClientMessage(connID, payload)
 			}
 		}
 	}()
 }
 
-func (m *MobileAPIManager) handleIncomingClientMessage(data []byte) {
+func (m *MobileAPIManager) handleIncomingClientMessage(connID string, data []byte) {
 	var msg struct {
 		Event string          `json:"event"`
 		Data  json.RawMessage `json:"data"`
@@ -811,20 +928,93 @@ func (m *MobileAPIManager) handleIncomingClientMessage(data []byte) {
 	}
 
 	switch msg.Event {
+	case "mobile:hello":
+		var helloData struct {
+			DeviceID   string `json:"deviceId"`
+			DeviceName string `json:"deviceName"`
+			OSVersion  string `json:"osVersion"`
+			IsRooted   bool   `json:"isRooted"`
+		}
+		if err := json.Unmarshal(msg.Data, &helloData); err == nil {
+			m.mu.Lock()
+			if dev, ok := m.devices[connID]; ok {
+				if helloData.DeviceID != "" {
+					dev.DeviceID = helloData.DeviceID
+				}
+				if helloData.DeviceName != "" {
+					dev.DeviceName = helloData.DeviceName
+				}
+				dev.OSVersion = helloData.OSVersion
+				dev.IsRooted = helloData.IsRooted
+				dev.LastPing = time.Now()
+			}
+			m.mu.Unlock()
+			m.notifyDeviceChangeLocked()
+
+			// Send ACK back
+			ackPayload, _ := json.Marshal(map[string]any{
+				"event": "mobile:hello_ack",
+				"data": map[string]any{
+					"status":  "paired",
+					"version": "1.0.0",
+					"time":    time.Now().UnixMilli(),
+				},
+			})
+			m.sendToConn(connID, encodeWSTextFrame(ackPayload))
+		}
+
+	case "mobile:ping":
+		m.mu.Lock()
+		if dev, ok := m.devices[connID]; ok {
+			dev.LastPing = time.Now()
+		}
+		m.mu.Unlock()
+		pongPayload, _ := json.Marshal(map[string]any{
+			"event": "mobile:pong",
+			"data": map[string]any{
+				"time": time.Now().UnixMilli(),
+			},
+		})
+		m.sendToConn(connID, encodeWSTextFrame(pongPayload))
+
 	case "proxy:request":
 		var req HttpRequest
 		if err := json.Unmarshal(msg.Data, &req); err == nil {
+			m.mu.Lock()
+			if dev, ok := m.devices[connID]; ok {
+				dev.PacketCount++
+				dev.LastPing = time.Now()
+			}
+			m.mu.Unlock()
+
 			if m.server != nil {
 				m.server.BroadcastRequest(&req)
 			}
 		}
+
 	case "proxy:response":
 		var resp HttpResponse
 		if err := json.Unmarshal(msg.Data, &resp); err == nil {
+			m.mu.Lock()
+			if dev, ok := m.devices[connID]; ok {
+				dev.PacketCount++
+				dev.LastPing = time.Now()
+			}
+			m.mu.Unlock()
+
 			if m.server != nil {
 				m.server.BroadcastResponse(&resp)
 			}
 		}
+	}
+}
+
+func (m *MobileAPIManager) sendToConn(connID string, frame []byte) {
+	m.mu.RLock()
+	conn, ok := m.wsConns[connID]
+	m.mu.RUnlock()
+	if ok && conn != nil {
+		_, _ = conn.Write(frame)
 	}
 }
 

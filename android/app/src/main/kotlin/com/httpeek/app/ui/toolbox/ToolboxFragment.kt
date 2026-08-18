@@ -139,7 +139,7 @@ class ToolboxFragment : Fragment() {
             if (text.isNotBlank()) {
                 val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Tool Output", text))
-                Toast.makeText(requireContext(), "Output copied to clipboard", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "📋 (¬‿¬) Copied to clipboard! Ready to paste!", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -148,6 +148,7 @@ class ToolboxFragment : Fragment() {
         val pos = binding.spinnerToolboxMode.selectedItemPosition
         val input = binding.etToolInput.text.toString()
         val param = binding.etToolParam.text.toString()
+        Toast.makeText(requireContext(), "⚡ (⌐■_■) Executing tool...", Toast.LENGTH_SHORT).show()
 
         when (pos) {
             0 -> { // JWT
