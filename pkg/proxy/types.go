@@ -199,6 +199,7 @@ type SSEEvent struct {
 	RequestID string    `json:"requestId"`
 	Event     string    `json:"event"`
 	Data      string    `json:"data"`
+	EventID   string    `json:"eventId,omitempty"` // SSE "id:" field from the wire
 	Retry     int       `json:"retry,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }

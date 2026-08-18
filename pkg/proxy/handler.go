@@ -150,6 +150,13 @@ func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Re
 			return
 		}
 
+		// WebSocket upgrade over plain HTTP: the Go transport cannot relay
+		// 101 responses, so handle the upgrade explicitly like the TLS path.
+		if strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
+			h.handleWebSocketUpgrade(ctx, clientConn, req, false)
+			return
+		}
+
 		// Plain HTTP proxy request
 		if err := h.forwardHTTPRequest(ctx, clientConn, req, isTLS); err != nil {
 			h.server.DispatchError(ctx, nil, err)
@@ -422,12 +429,13 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	outReq.Header.Del("Content-Encoding")
 	outReq.Header.Del("Content-Length")
 	outReq.Header.Del("Transfer-Encoding")
-	if outReq.Header.Get("Host") == "" {
-		outReq.Header.Set("Host", httpReq.HostPort.Host)
-	}
-	outReq.Host = httpReq.Headers.Get("Host")
-	if outReq.Host == "" {
-		outReq.Host = httpReq.HostPort.Host
+	// Preserve the original authority including non-default ports (virtual
+	// hosts depend on Host:port). Go stores the Host header outside the
+	// Header map, so an interceptor-supplied "Host" key takes precedence.
+	outReq.Host = httpReq.HostPort.String()
+	if host := httpReq.Headers.Get("Host"); host != "" {
+		outReq.Host = host
+		outReq.Header.Set("Host", host)
 	}
 
 	// Limit Accept-Encoding to formats we decompress reliably
@@ -523,6 +531,13 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		if modResp != nil {
 			httpResp = modResp
 			decodedRespBytes = httpResp.Body
+			// Re-derive metadata after interceptor mutation so UI/export
+			// consumers agree with the bytes actually delivered.
+			httpResp.BodySize = int64(len(decodedRespBytes))
+			if ct := httpResp.Headers.Get("Content-Type"); ct != "" {
+				httpResp.ContentType = ct
+			}
+			httpResp.IsBinary = isBinaryContentType(httpResp.ContentType)
 		}
 	}
 
@@ -556,7 +571,13 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	clientHeaders.Del("Content-Encoding")
 	clientHeaders.Del("Transfer-Encoding")
 	clientHeaders.Set("Content-Length", strconv.Itoa(len(decodedRespBytes)))
-	clientHeaders.Set("Connection", "keep-alive")
+	// HTTP/1.0 closes by default unless keep-alive was requested; reflect the
+	// client's framing intent instead of always advertising keep-alive.
+	if req != nil && req.Close {
+		clientHeaders.Set("Connection", "close")
+	} else {
+		clientHeaders.Set("Connection", "keep-alive")
+	}
 
 	statusCode := httpResp.StatusCode
 	if statusCode == 0 {

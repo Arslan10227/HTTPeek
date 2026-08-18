@@ -18,8 +18,13 @@ func (h *Handler) streamSSEResponse(ctx *Context, clientConn net.Conn, resp *htt
 	resp.Header.Del("Content-Length")
 	resp.Header.Set("Transfer-Encoding", "chunked")
 
-	// Write HTTP status line & headers
-	statusLine := fmt.Sprintf("%s %d %s\r\n", resp.Proto, resp.StatusCode, http.StatusText(resp.StatusCode))
+	// Use the client's request protocol for the downstream status line, never
+	// the upstream transport's protocol (which may be HTTP/2.0).
+	clientProto := "HTTP/1.1"
+	if ctx != nil && ctx.CurrentRequest != nil && ctx.CurrentRequest.Protocol != "" {
+		clientProto = ctx.CurrentRequest.Protocol
+	}
+	statusLine := fmt.Sprintf("%s %d %s\r\n", clientProto, resp.StatusCode, http.StatusText(resp.StatusCode))
 	if _, err := clientConn.Write([]byte(statusLine)); err != nil {
 		return err
 	}
@@ -41,6 +46,12 @@ func (h *Handler) streamSSEResponse(ctx *Context, clientConn net.Conn, resp *htt
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
+			// Flush any trailing partial line, then terminate the chunked body.
+			if len(line) > 0 {
+				chunkHeader := fmt.Sprintf("%x\r\n", len(line))
+				_, _ = clientConn.Write([]byte(chunkHeader + line + "\r\n"))
+			}
+			_, _ = clientConn.Write([]byte("0\r\n\r\n"))
 			return err
 		}
 
@@ -52,11 +63,13 @@ func (h *Handler) streamSSEResponse(ctx *Context, clientConn net.Conn, resp *htt
 
 		trimmed := strings.TrimRight(line, "\r\n")
 		if trimmed == "" {
-			// Dispatch completed SSE event
+			// Dispatch completed SSE event. Copy so listeners do not share a
+			// mutable pointer to the accumulator.
 			if currentEvent.Data != "" || currentEvent.Event != "" {
-				currentEvent.ID = uuid.NewString()
-				currentEvent.Timestamp = time.Now()
-				h.server.DispatchSSEEvent(ctx, &currentEvent)
+				evt := currentEvent
+				evt.ID = uuid.NewString()
+				evt.Timestamp = time.Now()
+				h.server.DispatchSSEEvent(ctx, &evt)
 				currentEvent = SSEEvent{RequestID: ctx.CurrentRequest.ID}
 			}
 			continue
@@ -74,7 +87,7 @@ func (h *Handler) streamSSEResponse(ctx *Context, clientConn net.Conn, resp *htt
 			}
 			currentEvent.Data += data
 		} else if strings.HasPrefix(trimmed, "id:") {
-			currentEvent.ID = strings.TrimSpace(strings.TrimPrefix(trimmed, "id:"))
+			currentEvent.EventID = strings.TrimSpace(strings.TrimPrefix(trimmed, "id:"))
 		} else if strings.HasPrefix(trimmed, "retry:") {
 			r, _ := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trimmed, "retry:")))
 			currentEvent.Retry = r

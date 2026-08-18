@@ -1055,3 +1055,15 @@ Cross-cutting rule: each phase lands with regression tests, and no phase weakens
 | NEWM-005 (slice) | `/mobile/sync` batch capped at 1000 requests + 1000 responses (413). Per-item body limits remain with the Android queue contract. | Existing suite |
 
 Still open in Phase 2 (design-dependent, need product decisions before implementation): mandatory-auth/local-only mode with warnings (DEEP-016), expiring one-time pairing credentials replacing long-lived QR tokens (DEEP-017), token removal from WS query strings (NEWM-009 — coordinated frontend+Android change), CA download one-time URLs (NEWM-002), composer/upstream-proxy SSRF controls (NEWM-004/014), typed error envelope (NEWM-016), script sandbox budgets (NEWI-040-043), report webhook redaction (NEWI-050), Android backup rules + network security config (NEWB-015/016/018).
+
+## 8. Phase 3 slice A — protocol correctness (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| NEWH-01 | Upstream `Host` header now preserves the full authority (`host:port`) unless an interceptor explicitly sets one. | `TestHostHeaderPreservedWithPort` (new) |
+| NEWH-05 | Plain-HTTP (`ws://`) upgrades are routed through the WebSocket handler instead of the transport (which rejects 101). | `TestPlainHTTPWebSocketUpgrade` (new, RFC 6455 handshake + frame relay) |
+| DEEP-010 | SSE: terminal `0\r\n\r\n` chunk, client-protocol status line (never upstream HTTP/2), wire `id:` preserved in new `EventID` field; fixed a real capture bug where every dispatched SSE event aliased the accumulator pointer (all events captured empty). | `TestSSEStreamFraming` (new) |
+| NEWP-017 | Response `Connection` header reflects client framing (`close` for HTTP/1.0 / explicit close). | `TestHTTP10ResponseHeader` (new) |
+| DEEP-013 | Response `BodySize`/`ContentType`/`IsBinary` re-derived after interceptor mutation. | `TestResponseMetadataNormalizedAfterInterceptor` (new) |
+
+Still open in Phase 3: WS fragmentation reassembly + ping/pong lifecycle, WS upstream-proxy chaining (DEEP-009), upstream TLS verification policy (DEEP-012), real DNS/TLS timing (no more `connectMs/2`), graceful shutdown with draining, Android half-close/bandwidth shaping refinements, zstd (NEWP-022).
