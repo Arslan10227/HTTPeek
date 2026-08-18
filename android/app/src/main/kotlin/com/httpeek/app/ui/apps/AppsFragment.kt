@@ -9,7 +9,6 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,6 +18,7 @@ import com.httpeek.app.core.vpn.AppFilterManager
 import com.httpeek.app.core.vpn.AppFilterMode
 import com.httpeek.app.core.vpn.InstalledAppItem
 import com.httpeek.app.databinding.FragmentAppsBinding
+import com.httpeek.app.ui.common.LottieToast
 import kotlinx.coroutines.launch
 
 class AppsFragment : Fragment() {
@@ -56,21 +56,21 @@ class AppsFragment : Fragment() {
         binding.radioAllApps.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 filterManager.setFilterMode(AppFilterMode.ALL_APPS)
-                Toast.makeText(requireContext(), "🌐 ٩(◕‿◕｡)۶ Mode: Capture ALL applications globally!", Toast.LENGTH_SHORT).show()
+                LottieToast.showSuccess(requireContext(), "🌐 Capture ALL applications globally!")
             }
         }
 
         binding.radioOnlySelected.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 filterManager.setFilterMode(AppFilterMode.ONLY_SELECTED)
-                Toast.makeText(requireContext(), "🎯 (・∀・) Mode: Intercept ONLY selected apps (Whitelist)!", Toast.LENGTH_SHORT).show()
+                LottieToast.showShield(requireContext(), "🎯 Intercept ONLY selected apps (Whitelist)!")
             }
         }
 
         binding.radioExcludeSelected.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 filterManager.setFilterMode(AppFilterMode.EXCLUDE_SELECTED)
-                Toast.makeText(requireContext(), "🛡️ (˘▾˘) Mode: Exclude selected apps (Blacklist)!", Toast.LENGTH_SHORT).show()
+                LottieToast.showWink(requireContext(), "🛡️ Exclude selected apps (Blacklist)!")
             }
         }
     }
@@ -104,7 +104,7 @@ class AppsFragment : Fragment() {
             }
             appAdapter.notifyDataSetChanged()
             updateCountLabel()
-            Toast.makeText(requireContext(), "🎯 ＼(≧▽≦)／ Selected all visible applications!", Toast.LENGTH_SHORT).show()
+            LottieToast.showRocket(requireContext(), "🎯 Selected all visible applications!")
         }
 
         binding.btnDeselectAllApps.setOnClickListener {
@@ -114,7 +114,7 @@ class AppsFragment : Fragment() {
             }
             appAdapter.notifyDataSetChanged()
             updateCountLabel()
-            Toast.makeText(requireContext(), "🧹 (︶ω︶) Cleared selection (0 apps selected)", Toast.LENGTH_SHORT).show()
+            LottieToast.showWink(requireContext(), "🧹 Cleared selection (0 apps selected)")
         }
     }
 

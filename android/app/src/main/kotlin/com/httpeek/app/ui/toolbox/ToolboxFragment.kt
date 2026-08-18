@@ -9,10 +9,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.httpeek.app.databinding.FragmentToolboxBinding
+import com.httpeek.app.ui.common.LottieToast
 import kotlinx.coroutines.launch
 
 class ToolboxFragment : Fragment() {
@@ -139,7 +139,7 @@ class ToolboxFragment : Fragment() {
             if (text.isNotBlank()) {
                 val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Tool Output", text))
-                Toast.makeText(requireContext(), "📋 (¬‿¬) Copied to clipboard! Ready to paste!", Toast.LENGTH_SHORT).show()
+                LottieToast.showSuccess(requireContext(), "📋 Output copied to clipboard!")
             }
         }
     }
@@ -148,7 +148,7 @@ class ToolboxFragment : Fragment() {
         val pos = binding.spinnerToolboxMode.selectedItemPosition
         val input = binding.etToolInput.text.toString()
         val param = binding.etToolParam.text.toString()
-        Toast.makeText(requireContext(), "⚡ (⌐■_■) Executing tool...", Toast.LENGTH_SHORT).show()
+        LottieToast.showRocket(requireContext(), "⚡ Executing tool...")
 
         when (pos) {
             0 -> { // JWT
@@ -214,7 +214,7 @@ class ToolboxFragment : Fragment() {
                 val method = binding.spinnerComposerMethod.selectedItem.toString()
                 val url = binding.etComposerUrl.text.toString().trim()
                 if (url.isEmpty()) {
-                    Toast.makeText(requireContext(), "URL cannot be empty", Toast.LENGTH_SHORT).show()
+                    LottieToast.showError(requireContext(), "💥 URL cannot be empty!")
                     return
                 }
 
@@ -222,6 +222,7 @@ class ToolboxFragment : Fragment() {
                 lifecycleScope.launch {
                     val response = ToolboxUtils.sendHttpRequest(method, url, param, input)
                     binding.tvToolOutput.text = response
+                    LottieToast.showSuccess(requireContext(), "⚡ HTTP Request Completed!")
                 }
             }
         }

@@ -16,6 +16,7 @@ import com.httpeek.app.core.rules.MockRule
 import com.httpeek.app.core.rules.RewriteRule
 import com.httpeek.app.core.rules.RulesEngine
 import com.httpeek.app.databinding.FragmentRulesBinding
+import com.httpeek.app.ui.common.LottieToast
 import java.util.UUID
 
 class RulesFragment : Fragment() {
@@ -201,7 +202,7 @@ class RulesFragment : Fragment() {
         }
         rulesEngine.saveRules()
         loadTabRules()
-        Toast.makeText(requireContext(), "🗑️ (´･ω･`) Bye bye rule! Poof!", Toast.LENGTH_SHORT).show()
+        LottieToast.showWink(requireContext(), "🗑️ Rule deleted successfully!")
     }
 
     private fun showAddRuleDialog() {
@@ -228,7 +229,7 @@ class RulesFragment : Fragment() {
                 val action = etAction.text.toString().trim()
 
                 if (pattern.isEmpty()) {
-                    Toast.makeText(ctx, "💥 (⊙_☉) Pattern cannot be empty!", Toast.LENGTH_SHORT).show()
+                    LottieToast.showError(ctx, "💥 Pattern cannot be empty!")
                     return@setPositiveButton
                 }
 
@@ -262,7 +263,7 @@ class RulesFragment : Fragment() {
 
                 rulesEngine.saveRules()
                 loadTabRules()
-                Toast.makeText(ctx, "🪄 (★ω★) Rule Activated! Magic in progress!", Toast.LENGTH_SHORT).show()
+                LottieToast.showRocket(ctx, "🪄 Rule Activated! Magic in progress!")
             }
             .setNegativeButton("Cancel", null)
             .show()

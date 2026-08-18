@@ -84,6 +84,8 @@ export function ImportHAR(arg1:string,arg2:string):Promise<storage.Session>;
 
 export function InstallAndroidRootCA(arg1:string):Promise<cert.AndroidInstallResult>;
 
+export function InstallCertToAndroid(arg1:string):Promise<cert.AndroidInstallResult>;
+
 export function InstallCertToJava(arg1:string):Promise<void>;
 
 export function InstallRootCA():Promise<void>;

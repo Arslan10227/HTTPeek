@@ -88,9 +88,10 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
     setIsInstallingAdb(true);
     setAdbInstallLog([`⚡ [${serial}] Starting 1-Click ADB CA Certificate installation...`]);
 
-    if ((window as any).go?.main?.App?.InstallCertToAndroid) {
+    const installFunc = (window as any).go?.main?.App?.InstallCertToAndroid || (window as any).go?.main?.App?.InstallAndroidRootCA;
+    if (installFunc) {
       try {
-        const res = await (window as any).go.main.App.InstallCertToAndroid(serial);
+        const res = await installFunc(serial);
         if (res && res.steps) {
           const logs = res.steps.map((s: any) => `• [${s.method}] ${s.message}`);
           setAdbInstallLog((prev) => [...prev, ...logs]);

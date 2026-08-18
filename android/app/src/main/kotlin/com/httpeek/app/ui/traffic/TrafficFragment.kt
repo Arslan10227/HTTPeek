@@ -23,6 +23,7 @@ import com.httpeek.app.core.bridge.DesktopPairingManager
 import com.httpeek.app.databinding.FragmentTrafficBinding
 import com.httpeek.app.model.HttpRequestModel
 import com.httpeek.app.ui.adapter.RequestAdapter
+import com.httpeek.app.ui.common.LottieToast
 import com.httpeek.app.ui.inspector.InspectorBottomSheet
 import com.httpeek.app.ui.scanner.QrScanActivity
 import kotlinx.coroutines.launch
@@ -47,9 +48,9 @@ class TrafficFragment : Fragment() {
             activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
             isVpnRunning = true
             updateUIState()
-            Toast.makeText(requireContext(), "🚀 (•̀ᴗ•́)و Let's Go! HTTPeek VPN Interception is LIVE!", Toast.LENGTH_SHORT).show()
+            LottieToast.showRocket(requireContext(), "🚀 Let's Go! HTTPeek VPN Interception is LIVE!")
         } else {
-            Toast.makeText(requireContext(), "⚠️ (⊙_☉) VPN permission is required to capture network packets!", Toast.LENGTH_SHORT).show()
+            LottieToast.showError(requireContext(), "⚠️ VPN permission required for packet capture!")
         }
     }
 
@@ -184,7 +185,7 @@ class TrafficFragment : Fragment() {
                 desktopHost = null
                 binding.tvConnectionTarget.text = "Standalone Mode (127.0.0.1:9099)"
                 binding.chipDesktopStatus.text = "Desktop: Standalone"
-                Toast.makeText(requireContext(), "💻 (⌐■_■) Operating in standalone local mode", Toast.LENGTH_SHORT).show()
+                LottieToast.showWink(requireContext(), "💻 Operating in Standalone Local Mode")
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -203,7 +204,7 @@ class TrafficFragment : Fragment() {
                 if (ok) {
                     binding.chipDesktopStatus.text = "Desktop: Connected (${latency}ms)"
                     binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_connected))
-                    Toast.makeText(requireContext(), "📱⚡ ٩(◕‿◕｡)۶ Paired & Synced with Desktop HTTPeek! Latency: ${latency}ms", Toast.LENGTH_SHORT).show()
+                    LottieToast.showSuccess(requireContext(), "📱⚡ Paired with Desktop HTTPeek! (${latency}ms)")
                 } else {
                     binding.chipDesktopStatus.text = "Desktop: Paired (${info.host})"
                     binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_vpn_active))
@@ -213,7 +214,7 @@ class TrafficFragment : Fragment() {
             if (isVpnRunning) stopVpn()
             startVpn()
         } else {
-            Toast.makeText(requireContext(), "💥 (⊙_☉) Could not parse IP or QR Code: $raw", Toast.LENGTH_LONG).show()
+            LottieToast.showError(requireContext(), "💥 Could not parse IP or QR Code: $raw")
         }
     }
 
@@ -244,7 +245,7 @@ class TrafficFragment : Fragment() {
             activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
             isVpnRunning = true
             updateUIState()
-            Toast.makeText(requireContext(), "🚀 (•̀ᴗ•́)و Let's Go! HTTPeek VPN Interception is LIVE!", Toast.LENGTH_SHORT).show()
+            LottieToast.showRocket(requireContext(), "🚀 Let's Go! HTTPeek VPN Interception is LIVE!")
         }
     }
 
@@ -252,7 +253,7 @@ class TrafficFragment : Fragment() {
         activity?.startService(HttpeekVpnService.stopIntent(requireContext()))
         isVpnRunning = false
         updateUIState()
-        Toast.makeText(requireContext(), "🛑 (︶ω︶) Zzz... VPN Interception Stopped!", Toast.LENGTH_SHORT).show()
+        LottieToast.showWink(requireContext(), "🛑 VPN Interception Stopped!")
     }
 
     private fun updateUIState() {

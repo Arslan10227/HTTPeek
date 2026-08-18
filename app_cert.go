@@ -107,6 +107,11 @@ func (a *App) InstallAndroidRootCA(deviceSerial string) cert.AndroidInstallResul
 	return inst.Install(deviceSerial, host, port)
 }
 
+// InstallCertToAndroid is an alias for InstallAndroidRootCA.
+func (a *App) InstallCertToAndroid(deviceSerial string) cert.AndroidInstallResult {
+	return a.InstallAndroidRootCA(deviceSerial)
+}
+
 // ListADBDevices returns Android devices connected via ADB.
 func (a *App) ListADBDevices() []cert.ADBDeviceInfo {
 	if a.certMgr == nil || a.certMgr.CA() == nil {

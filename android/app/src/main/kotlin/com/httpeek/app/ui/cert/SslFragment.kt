@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -18,6 +17,7 @@ import com.httpeek.app.R
 import com.httpeek.app.databinding.FragmentSslBinding
 import com.httpeek.app.security.DynamicCertAuthority
 import com.httpeek.app.security.RootCAInstaller
+import com.httpeek.app.ui.common.LottieToast
 import kotlinx.coroutines.launch
 
 class SslFragment : Fragment() {
@@ -60,12 +60,11 @@ class SslFragment : Fragment() {
 
         binding.switchSslDecryption.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(KEY_SSL_ENABLED, isChecked).apply()
-            val msg = if (isChecked) {
-                "🔓 (★ω★) HTTPS Decryption Enabled! All secrets revealed!"
+            if (isChecked) {
+                LottieToast.showSuccess(requireContext(), "🔓 HTTPS MITM Decryption Enabled!")
             } else {
-                "🔒 (︶ω︶) Passthrough Active. Traffic encrypted without MITM."
+                LottieToast.showShield(requireContext(), "🔒 Passthrough Active (Decryption disabled)")
             }
-            Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
         }
 
         val json = prefs.getString(KEY_BYPASS_DOMAINS, null)
@@ -91,12 +90,12 @@ class SslFragment : Fragment() {
 
         isDeviceRooted = RootCAInstaller.isDeviceRooted()
         if (isDeviceRooted) {
-            binding.tvRootStatus.text = "⚡ ٩(◕‿◕｡)۶ Root Detected! (Magisk / KernelSU / APatch active)"
+            binding.tvRootStatus.text = "⚡ Root Detected! (Magisk / KernelSU active)"
             binding.btnHeroInstall.text = "👑 1-Tap Install System Root CA (Magisk Module)"
             binding.tvHeroSubtitle.text = "Directly overlays into system trust store for 100% full app capture."
             binding.btnHeroInstall.backgroundTintList = ContextCompat.getColorStateList(requireContext(), R.color.primary)
         } else {
-            binding.tvRootStatus.text = "🛡️ (＾▽＾) Non-Root Mode (Android KeyChain User Store)"
+            binding.tvRootStatus.text = "🛡️ Non-Root Mode (Android KeyChain User Store)"
             binding.btnHeroInstall.text = "🔑 1-Tap Install to User Store (KeyChain)"
             binding.tvHeroSubtitle.text = "Installs to Android KeyChain credentials for user-cert supporting apps."
             binding.btnHeroInstall.backgroundTintList = ContextCompat.getColorStateList(requireContext(), R.color.status_connected)
@@ -117,7 +116,7 @@ class SslFragment : Fragment() {
         val ctx = requireContext()
         binding.btnHeroInstall.isEnabled = false
         binding.btnInstallMagiskRoot.isEnabled = false
-        binding.tvCertStatus.text = "⏳ (•̀ᴗ•́)و Injecting CA module via Superuser shell..."
+        binding.tvCertStatus.text = "⏳ Injecting CA module via Superuser shell..."
 
         lifecycleScope.launch {
             try {
@@ -125,12 +124,13 @@ class SslFragment : Fragment() {
                     binding.tvCertStatus.text = "• ${step.message}"
                 }
                 if (success) {
-                    Toast.makeText(ctx, "👑 (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ BOOM! System CA Installed via Root! Reboot device to activate.", Toast.LENGTH_LONG).show()
+                    LottieToast.showRocket(ctx, "👑 System CA Module Installed! Reboot device to activate.")
                 } else {
-                    Toast.makeText(ctx, "⚠️ (⊙_☉) Root module partially created. Check steps above.", Toast.LENGTH_SHORT).show()
+                    LottieToast.showWink(ctx, "⚠️ Root module created. Check steps above.")
                 }
             } catch (e: Exception) {
-                binding.tvCertStatus.text = "💥 (⊙_☉) Error: ${e.localizedMessage}"
+                binding.tvCertStatus.text = "💥 Error: ${e.localizedMessage}"
+                LottieToast.showError(ctx, "Root installation error: ${e.message}")
             } finally {
                 binding.btnHeroInstall.isEnabled = true
                 binding.btnInstallMagiskRoot.isEnabled = true
@@ -146,10 +146,10 @@ class SslFragment : Fragment() {
                 RootCAInstaller.installToUserStore(ctx, bytes) { step ->
                     binding.tvCertStatus.text = "• ${step.message}"
                 }
-                Toast.makeText(ctx, "🔑 (＾▽＾) KeyChain installer opened! Set name to 'HTTPeek CA'.", Toast.LENGTH_SHORT).show()
+                LottieToast.showShield(ctx, "🔑 KeyChain opened! Set cert name to 'HTTPeek CA'.")
             }
         } else {
-            Toast.makeText(ctx, "💥 (⊙_☉) CA Certificate not initialized yet!", Toast.LENGTH_SHORT).show()
+            LottieToast.showError(ctx, "💥 CA Certificate not initialized yet!")
         }
     }
 
@@ -172,7 +172,7 @@ class SslFragment : Fragment() {
                         binding.tvCertStatus.text = "• ${step.message}"
                     }
                     if (uri != null) {
-                        Toast.makeText(ctx, "💾 ＼(≧▽≦)／ Saved to Downloads/httpeek-root-ca.crt!", Toast.LENGTH_SHORT).show()
+                        LottieToast.showSuccess(ctx, "💾 Saved to Downloads/httpeek-root-ca.crt!")
                     }
                 }
             }
@@ -183,14 +183,14 @@ class SslFragment : Fragment() {
                 RootCAInstaller.openSecuritySettings(ctx) { step ->
                     binding.tvCertStatus.text = "• ${step.message}"
                 }
-                Toast.makeText(ctx, "⚙️ (・∀・) Opening Security Settings -> Install from storage...", Toast.LENGTH_SHORT).show()
+                LottieToast.showWink(ctx, "⚙️ Opening Android Security Settings...")
             }
         }
 
         binding.btnCopyAdbScript.setOnClickListener {
             val cmd = RootCAInstaller.copyAdbCommandToClipboard(ctx, ca)
-            binding.tvCertStatus.text = "• (¬‿¬) Copied ADB command:\n$cmd"
-            Toast.makeText(ctx, "📋 (⌐■_■) ADB Command Copied to Clipboard!", Toast.LENGTH_SHORT).show()
+            binding.tvCertStatus.text = "• Copied ADB command:\n$cmd"
+            LottieToast.showSuccess(ctx, "📋 ADB Command Copied to Clipboard!")
         }
     }
 
@@ -199,7 +199,7 @@ class SslFragment : Fragment() {
             bypassDomains.remove(domain)
             saveBypassDomains()
             bypassAdapter.notifyDataSetChanged()
-            Toast.makeText(requireContext(), "🗑️ (´･ω･`) Removed $domain from bypass list", Toast.LENGTH_SHORT).show()
+            LottieToast.showWink(requireContext(), "🗑️ Removed $domain from bypass list")
         }
 
         binding.recyclerBypassDomains.apply {
@@ -214,7 +214,7 @@ class SslFragment : Fragment() {
                 saveBypassDomains()
                 bypassAdapter.notifyDataSetChanged()
                 binding.etBypassDomain.setText("")
-                Toast.makeText(requireContext(), "💨 (⌒▽⌒) Zoom! Bypassed $domain at lightspeed!", Toast.LENGTH_SHORT).show()
+                LottieToast.showRocket(requireContext(), "💨 Bypassed $domain from TLS decryption!")
             }
         }
     }

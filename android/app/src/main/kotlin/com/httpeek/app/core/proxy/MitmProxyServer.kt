@@ -326,7 +326,7 @@ class MitmProxyServer(
             reqModel.response = mockResp
             onRequest(reqModel)
             onResponse(mockResp)
-            writeResponseToClient(output, mockResp)
+            writeResponseToClient(output, mockResp, mockResp.bodyString?.toByteArray() ?: ByteArray(0))
             return
         }
 
@@ -356,26 +356,37 @@ class MitmProxyServer(
 
             val upstreamResp = okHttpClient.newCall(reqBuilder.build()).execute()
             val durationMs = System.currentTimeMillis() - startTimeMs
-            val respBodyBytes = upstreamResp.body?.bytes()
-            val respBodyStr = respBodyBytes?.let { String(it, Charsets.UTF_8) }
+            val rawBodyBytes = upstreamResp.body?.bytes()
+            val contentEncoding = upstreamResp.header("content-encoding")
+            val contentTypeHeader = upstreamResp.header("content-type") ?: ""
+
+            // Decompress compressed response bodies (GZIP / Deflate)
+            val decompressedBytes = DecompressUtils.decompress(rawBodyBytes, contentEncoding)
+            val respBodyStr = DecompressUtils.decodeToString(decompressedBytes, contentTypeHeader)
 
             val respHeaders = mutableMapOf<String, List<String>>()
             upstreamResp.headers.names().forEach { name ->
-                respHeaders[name] = upstreamResp.headers.values(name)
+                // If decompressed, strip Content-Encoding and Content-Length so client receives plaintext cleanly
+                if (!name.equals("content-encoding", ignoreCase = true) &&
+                    !name.equals("content-length", ignoreCase = true) &&
+                    !name.equals("transfer-encoding", ignoreCase = true)) {
+                    respHeaders[name] = upstreamResp.headers.values(name)
+                }
             }
 
+            val finalBodyBytes = decompressedBytes ?: rawBodyBytes ?: ByteArray(0)
             val respModel = HttpResponseModel(
                 id = "resp_$requestId",
                 statusCode = upstreamResp.code,
                 statusText = upstreamResp.message.ifEmpty { "OK" },
                 headers = respHeaders,
                 bodyString = respBodyStr,
-                bodySize = respBodyBytes?.size?.toLong() ?: 0L,
-                contentType = upstreamResp.header("content-type") ?: "",
+                bodySize = finalBodyBytes.size.toLong(),
+                contentType = contentTypeHeader,
                 durationMs = durationMs
             )
 
-            writeResponseToClient(output, respModel)
+            writeResponseToClient(output, respModel, finalBodyBytes)
             onResponse(respModel)
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startTimeMs
@@ -391,13 +402,12 @@ class MitmProxyServer(
         }
     }
 
-    private fun writeResponseToClient(out: OutputStream, resp: HttpResponseModel) {
+    private fun writeResponseToClient(out: OutputStream, resp: HttpResponseModel, bodyBytes: ByteArray) {
         val statusLine = "HTTP/1.1 ${resp.statusCode} ${resp.statusText}\r\n"
         out.write(statusLine.toByteArray())
         resp.headers?.forEach { (k, vals) ->
             vals.forEach { out.write("$k: $it\r\n".toByteArray()) }
         }
-        val bodyBytes = resp.bodyString?.toByteArray() ?: ByteArray(0)
         out.write("Content-Length: ${bodyBytes.size}\r\n\r\n".toByteArray())
         if (bodyBytes.isNotEmpty()) {
             out.write(bodyBytes)

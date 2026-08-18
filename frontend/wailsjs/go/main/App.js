@@ -158,6 +158,10 @@ export function InstallAndroidRootCA(arg1) {
   return window['go']['main']['App']['InstallAndroidRootCA'](arg1);
 }
 
+export function InstallCertToAndroid(arg1) {
+  return window['go']['main']['App']['InstallCertToAndroid'](arg1);
+}
+
 export function InstallCertToJava(arg1) {
   return window['go']['main']['App']['InstallCertToJava'](arg1);
 }

@@ -183,8 +183,8 @@ func (m *MobileAPIManager) HandleRequest(clientConn net.Conn, req *http.Request)
 		return true
 	}
 
-	// 1. WebSocket Event Stream for Android WebView
-	if path == "/ws/events" || (path == "/ws" && strings.EqualFold(req.Header.Get("Upgrade"), "websocket")) {
+	// 1. WebSocket Event Stream for Android Companion & Web clients
+	if strings.HasPrefix(path, "/ws") || strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
 		if !m.checkAuth(req) {
 			sendJSONResponse(clientConn, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 			return true
@@ -775,6 +775,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 				m.server.BroadcastRequest(r)
 			}
 			for _, r := range syncPayload.Responses {
+				cleanMobileResponse(r)
 				m.server.BroadcastResponse(r)
 			}
 		}
@@ -1003,8 +1004,35 @@ func (m *MobileAPIManager) handleIncomingClientMessage(connID string, data []byt
 			m.mu.Unlock()
 
 			if m.server != nil {
+				cleanMobileResponse(&resp)
 				m.server.BroadcastResponse(&resp)
 			}
+		}
+	}
+}
+
+func cleanMobileResponse(resp *HttpResponse) {
+	if resp == nil {
+		return
+	}
+	contentEncoding := ""
+	contentType := ""
+	if resp.Headers != nil {
+		for k, vals := range resp.Headers {
+			if len(vals) > 0 {
+				if strings.EqualFold(k, "Content-Encoding") {
+					contentEncoding = vals[0]
+				} else if strings.EqualFold(k, "Content-Type") {
+					contentType = vals[0]
+				}
+			}
+		}
+	}
+	rawBytes := []byte(resp.BodyString)
+	if len(rawBytes) > 0 {
+		_, decodedStr := DecodeBody(rawBytes, contentEncoding, contentType)
+		if decodedStr != "" {
+			resp.BodyString = decodedStr
 		}
 	}
 }

@@ -97,19 +97,22 @@ func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Re
 		}
 
 		// Check if request is addressed directly to the internal proxy host / endpoint
+		path := req.URL.Path
 		isInternal := req.Host == "proxy.pin" || req.Host == "httpeek.local" || req.URL.Host == "" ||
-			req.Host == fmt.Sprintf("127.0.0.1:%d", h.server.Port()) || req.Host == fmt.Sprintf("localhost:%d", h.server.Port())
+			strings.Contains(req.Host, fmt.Sprintf(":%d", h.server.Port())) ||
+			strings.HasPrefix(path, "/ws") || strings.HasPrefix(path, "/api/") ||
+			path == "/ssl" || path == "/ssl/" || path == "/ca.crt" || path == "/favicon.ico"
 
 		if isInternal {
 			// Handle Mobile API / WebSocket event stream
-			if h.mobileAPI != nil && (strings.HasPrefix(req.URL.Path, "/api/") || req.URL.Path == "/ws/events" || req.URL.Path == "/ws") {
+			if h.mobileAPI != nil && (strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ws") || path == "/ca.crt") {
 				if h.mobileAPI.HandleRequest(clientConn, req) {
 					return
 				}
 			}
 
 			// Handle Root CA certificate download endpoint
-			if req.URL.Path == "/ssl" || req.URL.Path == "/ssl/" {
+			if path == "/ssl" || path == "/ssl/" || path == "/ca.crt" {
 				h.serveCACertificate(clientConn, req)
 				return
 			}

@@ -7,11 +7,11 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.httpeek.app.databinding.SheetInspectorBinding
 import com.httpeek.app.model.HttpRequestModel
+import com.httpeek.app.ui.common.LottieToast
 
 class InspectorBottomSheet(
     private val request: HttpRequestModel
@@ -46,7 +46,7 @@ class InspectorBottomSheet(
             val curl = buildCurlCommand(request)
             val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("cURL", curl))
-            Toast.makeText(requireContext(), "📋 (¬‿¬) Copied cURL command! Ready to run in terminal!", Toast.LENGTH_SHORT).show()
+            LottieToast.showSuccess(requireContext(), "📋 cURL command copied to clipboard!")
         }
     }
 
