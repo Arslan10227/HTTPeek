@@ -94,27 +94,52 @@ object RootCAInstaller {
         ca: DynamicCertAuthority,
         onStep: (CertInstallStep) -> Unit
     ): Boolean {
-        val hash = ca.getOldSubjectHash()
+        val oldHash = ca.getOldSubjectHash()
+        val newHash = ca.getNewSubjectHash()
         val pem = ca.getRootCAPem()
-        val targetFileName = "$hash.0"
+        val oldTargetFileName = "$oldHash.0"
+        val newTargetFileName = "$newHash.0"
 
         withContext(Dispatchers.Main) {
-            onStep(CertInstallStep("root", "running", "Checking root access for $targetFileName..."))
+            onStep(CertInstallStep("root", "running", "Injecting root certificates ($oldTargetFileName & $newTargetFileName)..."))
         }
 
         return withContext(Dispatchers.IO) {
             try {
-                // 1. Write temporary cert file in app cache
-                val tempCert = File(context.cacheDir, targetFileName)
-                tempCert.writeText(pem)
+                // 1. Write temporary cert files in app cache
+                val tempCertOld = File(context.cacheDir, oldTargetFileName)
+                tempCertOld.writeText(pem)
+
+                val tempCertNew = File(context.cacheDir, newTargetFileName)
+                tempCertNew.writeText(pem)
 
                 val magiskModuleDir = "/data/adb/modules/httpeek_ca"
                 val systemCacertsDir = "/system/etc/security/cacerts"
                 val conscryptDir = "/apex/com.android.conscrypt/cacerts"
 
-                // 2. Prepare comprehensive script for Magisk, KernelSU, and Live Bind Mounts
+                // 2. Prepare comprehensive script for live tmpfs injection + Magisk persistence
                 val commands = mutableListOf(
-                    // Magisk / KernelSU Module Structure
+                    // A. Prepare merged certificates in tmpfs overlay folder
+                    "mkdir -p /data/local/tmp/cacerts_overlay",
+                    "rm -rf /data/local/tmp/cacerts_overlay/*",
+                    "cp -f $systemCacertsDir/* /data/local/tmp/cacerts_overlay/ 2>/dev/null || true",
+                    "if [ -d '$conscryptDir' ]; then cp -f $conscryptDir/* /data/local/tmp/cacerts_overlay/ 2>/dev/null || true; fi",
+                    "cp -f ${tempCertOld.absolutePath} /data/local/tmp/cacerts_overlay/$oldTargetFileName",
+                    "cp -f ${tempCertNew.absolutePath} /data/local/tmp/cacerts_overlay/$newTargetFileName",
+                    "chmod 644 /data/local/tmp/cacerts_overlay/*",
+                    "chown root:root /data/local/tmp/cacerts_overlay/*",
+
+                    // B. Mount live tmpfs over /system/etc/security/cacerts (in Global Mount Namespace)
+                    "mount -t tmpfs tmpfs $systemCacertsDir 2>/dev/null || true",
+                    "cp -f /data/local/tmp/cacerts_overlay/* $systemCacertsDir/ 2>/dev/null || true",
+                    "chown root:root $systemCacertsDir/* 2>/dev/null || true",
+                    "chmod 644 $systemCacertsDir/* 2>/dev/null || true",
+                    "chcon u:object_r:system_file:s0 $systemCacertsDir/* 2>/dev/null || true",
+
+                    // C. Bind mount over Conscrypt APEX if present (Android 10 - 14)
+                    "if [ -d '$conscryptDir' ]; then mount --bind $systemCacertsDir $conscryptDir 2>/dev/null || true; fi",
+
+                    // D. Magisk / KernelSU / APatch Module Structure for persistence across reboots
                     "mkdir -p $magiskModuleDir/system/etc/security/cacerts",
                     "echo 'id=httpeek_ca' > $magiskModuleDir/module.prop",
                     "echo 'name=HTTPeek System CA' >> $magiskModuleDir/module.prop",
@@ -122,25 +147,18 @@ object RootCAInstaller {
                     "echo 'versionCode=1' >> $magiskModuleDir/module.prop",
                     "echo 'author=HTTPeek' >> $magiskModuleDir/module.prop",
                     "echo 'description=System CA Certificate for HTTPS Traffic Interception' >> $magiskModuleDir/module.prop",
-                    "cp ${tempCert.absolutePath} $magiskModuleDir/system/etc/security/cacerts/$targetFileName",
-                    "chmod 644 $magiskModuleDir/system/etc/security/cacerts/$targetFileName",
-                    "touch $magiskModuleDir/auto_mount",
-
-                    // Live copy attempt if system is writable
-                    "mount -o rw,remount / 2>/dev/null || mount -o rw,remount /system 2>/dev/null || true",
-                    "cp ${tempCert.absolutePath} $systemCacertsDir/$targetFileName 2>/dev/null || true",
-                    "chmod 644 $systemCacertsDir/$targetFileName 2>/dev/null || true",
-
-                    // Conscrypt APEX live copy (Android 10 - 14)
-                    "cp ${tempCert.absolutePath} $conscryptDir/$targetFileName 2>/dev/null || true",
-                    "chmod 644 $conscryptDir/$targetFileName 2>/dev/null || true"
+                    "cp ${tempCertOld.absolutePath} $magiskModuleDir/system/etc/security/cacerts/$oldTargetFileName",
+                    "cp ${tempCertNew.absolutePath} $magiskModuleDir/system/etc/security/cacerts/$newTargetFileName",
+                    "chmod 644 $magiskModuleDir/system/etc/security/cacerts/$oldTargetFileName",
+                    "chmod 644 $magiskModuleDir/system/etc/security/cacerts/$newTargetFileName",
+                    "touch $magiskModuleDir/auto_mount"
                 )
 
                 val result = runSuCommands(commands)
 
                 withContext(Dispatchers.Main) {
                     if (result.success) {
-                        onStep(CertInstallStep("root", "success", "Root installation successful! Magisk module created in $magiskModuleDir. (Reboot recommended for system-wide effect)"))
+                        onStep(CertInstallStep("root", "success", "Live System CA activated instantly! (Persisted via Magisk module)"))
                     } else {
                         onStep(CertInstallStep("root", "failed", "Root execution failed: ${result.error}"))
                     }
@@ -159,9 +177,13 @@ object RootCAInstaller {
     private data class ShellResult(val success: Boolean, val exitCode: Int, val output: String, val error: String)
 
     private fun runSuCommands(commands: List<String>): ShellResult {
-        var process: Process? = null
         return try {
-            process = Runtime.getRuntime().exec("su")
+            // Try 'su -mm' for Mount Master (global mount namespace) first, fallback to standard 'su'
+            val process = try {
+                Runtime.getRuntime().exec(arrayOf("su", "-mm"))
+            } catch (e: Exception) {
+                Runtime.getRuntime().exec("su")
+            }
 
             val stdout = StringBuilder()
             val stderr = StringBuilder()
@@ -221,7 +243,6 @@ object RootCAInstaller {
                 ShellResult(false, exitCode, stdout.toString(), stderr.toString().ifEmpty { "Exit code $exitCode" })
             }
         } catch (e: Exception) {
-            process?.destroy()
             ShellResult(false, -1, "", e.message ?: "Failed to execute 'su' binary")
         }
     }

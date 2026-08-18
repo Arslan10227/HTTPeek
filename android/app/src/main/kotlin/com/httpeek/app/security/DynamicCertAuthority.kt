@@ -107,6 +107,11 @@ class DynamicCertAuthority(private val context: Context) {
                 false,
                 extUtils.createSubjectKeyIdentifier(keyPair.public)
             )
+            certBuilder.addExtension(
+                Extension.authorityKeyIdentifier,
+                false,
+                extUtils.createAuthorityKeyIdentifier(keyPair.public)
+            )
 
             val signer = JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keyPair.private)
             val cert = JcaX509CertificateConverter().setProvider("BC").getCertificate(certBuilder.build(signer))
@@ -177,6 +182,27 @@ class DynamicCertAuthority(private val context: Context) {
     }
 
     /**
+     * Calculates Android system trust store Subject Hash (new) based on SHA-1 (OpenSSL 1.0.0+)
+     */
+    fun getNewSubjectHash(): String {
+        val cert = caCert ?: return "httpeek"
+        try {
+            val subjectX500 = cert.subjectX500Principal.encoded
+            val md = MessageDigest.getInstance("SHA-1")
+            val digest = md.digest(subjectX500)
+
+            val hash = ((digest[0].toLong() and 0xFF)) or
+                    ((digest[1].toLong() and 0xFF) shl 8) or
+                    ((digest[2].toLong() and 0xFF) shl 16) or
+                    ((digest[3].toLong() and 0xFF) shl 24)
+
+            return String.format(Locale.US, "%08x", hash)
+        } catch (e: Exception) {
+            return "8c0ea220"
+        }
+    }
+
+    /**
      * Dynamically generates and caches an SSLContext for the given target hostname.
      */
     fun getOrCreateSSLContext(host: String): SSLContext {
@@ -217,12 +243,17 @@ class DynamicCertAuthority(private val context: Context) {
             certBuilder.addExtension(
                 Extension.extendedKeyUsage,
                 false,
-                ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth)
+                ExtendedKeyUsage(arrayOf(KeyPurposeId.id_kp_serverAuth, KeyPurposeId.id_kp_clientAuth))
             )
             certBuilder.addExtension(
                 Extension.subjectKeyIdentifier,
                 false,
                 extUtils.createSubjectKeyIdentifier(leafKeyPair.public)
+            )
+            certBuilder.addExtension(
+                Extension.authorityKeyIdentifier,
+                false,
+                extUtils.createAuthorityKeyIdentifier(rootCert)
             )
 
             // Subject Alternative Names (SAN)
