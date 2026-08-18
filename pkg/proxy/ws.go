@@ -25,6 +25,19 @@ const (
 	OpcodePong         = 0xA
 )
 
+// maxWebSocketFrameSize bounds a single WebSocket frame payload to prevent
+// memory exhaustion from untrusted length fields.
+const maxWebSocketFrameSize = 16 * 1024 * 1024
+
+// writeWSCloseFrame sends a minimal RFC 6455 close frame (payload ≤ 125).
+func writeWSCloseFrame(dst io.Writer, code uint16, reason string) {
+	payload := make([]byte, 2+len(reason))
+	binary.BigEndian.PutUint16(payload, code)
+	copy(payload[2:], reason)
+	_, _ = dst.Write([]byte{0x88, byte(len(payload))})
+	_, _ = dst.Write(payload)
+}
+
 func opcodeName(op int) string {
 	switch op {
 	case OpcodeContinuation:
@@ -195,6 +208,12 @@ func (h *Handler) interceptWSFrames(ctx *Context, reqID string, src io.Reader, d
 			return err
 		}
 
+		// RSV bits must be zero unless an extension negotiated them.
+		if header[0]&0x70 != 0 {
+			writeWSCloseFrame(dst, 1002, "RSV bits set")
+			return fmt.Errorf("WebSocket frame with RSV bits set")
+		}
+
 		opcode := int(header[0] & 0x0F)
 		masked := (header[1] & 0x80) != 0
 		payloadLen := int64(header[1] & 0x7F)
@@ -210,7 +229,23 @@ func (h *Handler) interceptWSFrames(ctx *Context, reqID string, src io.Reader, d
 			if _, err := io.ReadFull(src, ext); err != nil {
 				return err
 			}
-			payloadLen = int64(binary.BigEndian.Uint64(ext))
+			length := binary.BigEndian.Uint64(ext)
+			if length > uint64(^uint64(0)>>1) {
+				writeWSCloseFrame(dst, 1009, "frame too large")
+				return fmt.Errorf("WebSocket frame length overflows int64: %d", length)
+			}
+			payloadLen = int64(length)
+		}
+
+		if payloadLen < 0 || payloadLen > maxWebSocketFrameSize {
+			writeWSCloseFrame(dst, 1009, "frame too large")
+			return fmt.Errorf("WebSocket frame too large: %d bytes", payloadLen)
+		}
+
+		// Control frames must not be fragmented and carry at most 125 bytes.
+		if opcode >= 0x8 && (header[0]&0x80 == 0 || payloadLen > 125) {
+			writeWSCloseFrame(dst, 1002, "invalid control frame")
+			return fmt.Errorf("invalid WebSocket control frame")
 		}
 
 		var maskKey []byte

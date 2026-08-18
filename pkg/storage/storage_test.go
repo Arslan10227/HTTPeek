@@ -4,11 +4,49 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"httpeek/pkg/proxy"
 )
+
+// TestExportToCSVFormulaInjection verifies spreadsheet formula characters in
+// captured fields are neutralized before CSV export.
+func TestExportToCSVFormulaInjection(t *testing.T) {
+	req := &proxy.HttpRequest{
+		ID:        "id-1",
+		Method:    proxy.MethodGet,
+		URL:       `=HYPERLINK("http://evil.example")`,
+		Path:      "@cmd|calc",
+		StartTime: time.Now(),
+		HostPort:  proxy.HostPort{Host: "-example.com"},
+		Response: &proxy.HttpResponse{
+			StatusCode:  200,
+			ContentType: "+application/json",
+			BodySize:    10,
+		},
+	}
+	out := ExportToCSV([]*proxy.HttpRequest{req})
+	for _, cell := range []string{`"'=HYPERLINK`, `"'@cmd|calc`, `"'-example.com`, `"'+application/json`} {
+		if !strings.Contains(out, cell) {
+			t.Errorf("expected formula-neutralized cell %s in CSV output:\n%s", cell, out)
+		}
+	}
+}
+
+// TestCSVFieldQuoting verifies quote doubling and formula neutralization.
+func TestCSVFieldQuoting(t *testing.T) {
+	if got := csvField(`say "hi"`); got != `"say ""hi"""` {
+		t.Errorf("unexpected quoting: %s", got)
+	}
+	if got := csvField("=1+1"); got != `"'=1+1"` {
+		t.Errorf("unexpected formula neutralization: %s", got)
+	}
+	if got := csvField("plain"); got != `"plain"` {
+		t.Errorf("unexpected plain cell: %s", got)
+	}
+}
 
 func TestStorageAndHARImportExport(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "httpeek-test-*")

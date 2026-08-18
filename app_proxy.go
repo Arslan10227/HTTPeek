@@ -188,9 +188,22 @@ func (a *App) SetProxyPort(port int) error {
 func (a *App) SetSSLEnabled(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.server != nil {
-		cfg := a.server.Config()
-		cfg.EnableSSL = enabled
+
+	if a.server == nil {
+		return fmt.Errorf("proxy server not initialized")
+	}
+
+	cfg := a.server.Config()
+	if cfg.EnableSSL == enabled {
+		return nil
+	}
+	cfg.EnableSSL = enabled
+
+	if a.server.IsRunning() {
+		if err := a.server.Restart(&cfg); err != nil {
+			logger.Error("App", fmt.Sprintf("Failed to restart proxy after SSL toggle: %v", err))
+			return err
+		}
 	}
 	logger.Info("App", fmt.Sprintf("HTTPS SSL decryption set to %v", enabled))
 	return nil

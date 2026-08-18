@@ -3,6 +3,7 @@ package cert
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -13,6 +14,17 @@ import (
 	"sync"
 	"time"
 )
+
+// subjectKeyIDFromPublicKey derives a standard RFC 5280 subject key
+// identifier (SHA-1 of the subject public key info) for a certificate.
+func subjectKeyIDFromPublicKey(pub *rsa.PublicKey) ([]byte, error) {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha1.Sum(der)
+	return sum[:], nil
+}
 
 // CertificateManager handles on-the-fly certificate generation for MITM TLS interception.
 type CertificateManager struct {
@@ -136,9 +148,17 @@ func (m *CertificateManager) GenerateLeafCert(host string, remoteCert *x509.Cert
 		}
 	}
 
+	// Go auto-fills AuthorityKeyId from the parent CA's SubjectKeyId, but it
+	// does not derive a SubjectKeyId for the leaf, so compute it explicitly.
+	leafSKID, err := subjectKeyIDFromPublicKey(&m.serverKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("compute leaf subject key id failed: %w", err)
+	}
+
 	template := &x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               subject,
+		SubjectKeyId:          leafSKID,
 		NotBefore:             now,
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -145,6 +146,156 @@ func TestDefaultServerBodyLimits(t *testing.T) {
 	cfg := DefaultServerConfig()
 	if cfg.MaxRequestBodyBytes <= 0 || cfg.MaxResponseBodyBytes <= 0 {
 		t.Fatalf("expected positive body limits, got request=%d response=%d", cfg.MaxRequestBodyBytes, cfg.MaxResponseBodyBytes)
+	}
+}
+
+// startEchoServer starts a TCP echo server and returns its address.
+func startEchoServer(t *testing.T) net.Listener {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("echo listen: %v", err)
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				_, _ = io.Copy(c, c)
+			}(conn)
+		}
+	}()
+	t.Cleanup(func() { _ = ln.Close() })
+	return ln
+}
+
+// TestConnectTunnelPassthrough exercises the raw CONNECT tunnel path
+// (SSL disabled forces passthrough). This is a regression test for the
+// buffer pool type-assertion panic in passthroughTunnelWithRemote and for
+// preservation of bytes buffered after the CONNECT request line.
+func TestConnectTunnelPassthrough(t *testing.T) {
+	backend := startEchoServer(t)
+
+	cfg := DefaultServerConfig()
+	cfg.Port = 19102
+	cfg.EnableSSL = false
+	server := NewServer(cfg, nil)
+	if err := server.Start(); err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	defer server.Stop()
+
+	conn, err := net.Dial("tcp", "127.0.0.1:19102")
+	if err != nil {
+		t.Fatalf("proxy dial: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+	// Send CONNECT and immediately pipeline the payload bytes (no waiting
+	// for the 200 reply) to prove buffered bytes survive the tunnel.
+	payload := []byte("hello-through-tunnel")
+	backendAddr := backend.Addr().String()
+	connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", backendAddr, backendAddr)
+	if _, err := conn.Write([]byte(connectReq)); err != nil {
+		t.Fatalf("CONNECT write: %v", err)
+	}
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("payload write: %v", err)
+	}
+
+	reply := make([]byte, 0, 64)
+	buf := make([]byte, 512)
+	for !strings.Contains(string(reply), "\r\n\r\n") {
+		n, err := conn.Read(buf)
+		if err != nil {
+			t.Fatalf("read CONNECT reply: %v", err)
+		}
+		reply = append(reply, buf[:n]...)
+	}
+	if !strings.HasPrefix(string(reply), "HTTP/1.1 200") {
+		t.Fatalf("unexpected CONNECT reply: %q", reply)
+	}
+
+	// Read the echoed payload (may already be partially in reply buffer).
+	all := string(reply)
+	for !strings.Contains(all, string(payload)) {
+		n, err := conn.Read(buf)
+		if err != nil {
+			t.Fatalf("read echo: %v", err)
+		}
+		all += string(buf[:n])
+	}
+	if !strings.HasSuffix(all, string(payload)) {
+		t.Fatalf("echoed payload mismatch: %q", all)
+	}
+}
+
+// TestSocks5TunnelPassthrough exercises the SOCKS5 raw-tunnel path, which
+// previously panicked in passthroughTunnelWithRemote.
+func TestSocks5TunnelPassthrough(t *testing.T) {
+	backend := startEchoServer(t)
+	backendHost, backendPortStr, err := net.SplitHostPort(backend.Addr().String())
+	if err != nil {
+		t.Fatalf("backend addr: %v", err)
+	}
+	backendPort, _ := strconv.Atoi(backendPortStr)
+	ip := net.ParseIP(backendHost).To4()
+	if ip == nil {
+		t.Fatalf("backend not an IPv4 literal: %s", backendHost)
+	}
+
+	cfg := DefaultServerConfig()
+	cfg.Port = 19103
+	server := NewServer(cfg, nil)
+	if err := server.Start(); err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	defer server.Stop()
+
+	conn, err := net.Dial("tcp", "127.0.0.1:19103")
+	if err != nil {
+		t.Fatalf("proxy dial: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		t.Fatalf("SOCKS greeting: %v", err)
+	}
+	greeting := make([]byte, 2)
+	if _, err := io.ReadFull(conn, greeting); err != nil {
+		t.Fatalf("SOCKS greeting response: %v", err)
+	}
+	if greeting[1] != 0x00 {
+		t.Fatalf("expected no-auth, got method %d", greeting[1])
+	}
+
+	req := []byte{0x05, 0x01, 0x00, 0x01, ip[0], ip[1], ip[2], ip[3], byte(backendPort >> 8), byte(backendPort & 0xFF)}
+	if _, err := conn.Write(req); err != nil {
+		t.Fatalf("SOCKS connect request: %v", err)
+	}
+	response := make([]byte, 10)
+	if _, err := io.ReadFull(conn, response); err != nil {
+		t.Fatalf("SOCKS connect response: %v", err)
+	}
+	if response[1] != 0x00 {
+		t.Fatalf("expected SOCKS success, got 0x%02x", response[1])
+	}
+
+	payload := []byte("socks-echo-check")
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("payload write: %v", err)
+	}
+	echo := make([]byte, len(payload))
+	if _, err := io.ReadFull(conn, echo); err != nil {
+		t.Fatalf("read echo: %v", err)
+	}
+	if string(echo) != string(payload) {
+		t.Fatalf("echo mismatch: %q", echo)
 	}
 }
 

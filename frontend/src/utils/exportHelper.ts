@@ -457,18 +457,26 @@ export async function importHarOrJsonFile(): Promise<boolean> {
   });
 }
 
+function csvCell(value: string): string {
+  let cell = value.replace(/"/g, '""');
+  if (cell.length > 0 && ['=', '+', '-', '@'].includes(cell[0])) {
+    cell = "'" + cell;
+  }
+  return `"${cell}"`;
+}
+
 function generateCSV(requests: HttpRequest[]): string {
   const lines = ['ID,Method,URL,Status,Duration(ms),StartTime,ContentType,Size(B)'];
   requests.forEach((r) => {
-    const id = r.id || '';
-    const method = r.method || 'GET';
-    const url = (r.url || '').replace(/"/g, '""');
+    const id = csvCell(r.id || '');
+    const method = csvCell(r.method || 'GET');
+    const url = csvCell(r.url || '');
     const status = r.response?.statusCode || 0;
     const dur = r.durationMs || r.duration || 0;
-    const start = (r.startTime || '').replace(/"/g, '""');
-    const ct = (r.response?.contentType || '').replace(/"/g, '""');
+    const start = csvCell(r.startTime || '');
+    const ct = csvCell(r.response?.contentType || '');
     const size = r.response?.bodySize || 0;
-    lines.push(`"${id}","${method}","${url}",${status},${dur},"${start}","${ct}",${size}`);
+    lines.push(`${id},${method},${url},${status},${dur},${start},${ct},${size}`);
   });
   return lines.join('\n');
 }

@@ -286,7 +286,7 @@ func (a *App) SendCustomRequest(reqJSON string) (*proxy.HttpResponse, error) {
 		Body:       []byte(bodyStr),
 		StartTime:  time.Now(),
 	}
-	return a.ReplayRequest(req)
+	return a.ReplayRequest(&req)
 }
 
 type appEventListener struct {

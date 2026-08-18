@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ func (b *BlockRule) UnmarshalJSON(data []byte) error {
 	}
 	if b.Action == "" {
 		if b.StatusCode > 0 {
-			b.Action = BlockAction(string(rune(b.StatusCode)))
+			b.Action = BlockAction(strconv.Itoa(b.StatusCode))
 		} else {
 			b.Action = BlockAction403
 		}

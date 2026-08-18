@@ -114,7 +114,7 @@ func (b *appMobileBridge) RepeatRequest(requestID string) (any, error) {
 	if err == nil {
 		for _, r := range reqs {
 			if r.ID == requestID {
-				return b.app.ReplayRequest(*r)
+				return b.app.ReplayRequest(r)
 			}
 		}
 	}

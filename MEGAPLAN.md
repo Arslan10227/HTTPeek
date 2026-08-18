@@ -994,3 +994,42 @@ Cross-cutting rule: each phase lands with regression tests, and no phase weakens
 ## 5. Definition of done (unchanged, applies to every work item)
 
 1. Behavior reproduced or disproven with evidence. 2. Root cause + data flow documented. 3. Minimal fix without weakening security/lifecycle cleanup. 4. Regression test or repeatable manual test. 5. Desktop/Android/fallback/persistence/UI consumers checked. 6. Compatibility + migration impact documented. 7. Issue row updated with evidence, status, acceptance results.
+
+## 6. Phase 0 + Phase 1 implementation status (2026-08-18)
+
+### Completed in this slice
+
+| Item | Work done | Verification |
+|---|---|---|
+| Phase 0 | Committed the pre-existing Phase A/B working-tree changes with `AGENTS.md`/`MEGAPLAN.md` as `1305912`. | Clean `git status` |
+| NEWP-000 (CRITICAL) | Replaced panicking `bufferPool.Get().([]byte)` assertions with `GetBuffer()`/`PutBuffer()` helpers in `passthroughTunnelWithRemote`. | `TestConnectTunnelPassthrough`, `TestSocks5TunnelPassthrough` (new) |
+| NEWH-04 | CONNECT tunnels now wrap the client conn in `bufferedConn`, preserving bytes the `bufio.Reader` buffered beyond the request line (pipelined TLS ClientHello/payload) for both MITM and passthrough paths. | Covered by pipelined payload in `TestConnectTunnelPassthrough` |
+| DEEP-011 / NEWT-036 | `serveCACertificate` nil-guards server/cert-manager/CA and returns 404 instead of panicking. | Existing suite |
+| NEWP-001 | SOCKS5 domain length capped at 253 with ADDRESS_TYPE_NOT_SUPPORTED reply. | Existing suite |
+| NEWP-002 / DEEP-008 (bounds part) | WS frames: 16 MiB frame cap (incl. int64 overflow guard), RSV-bit rejection, control-frame validation, close frames 1002/1009. Fragmentation reassembly remains Phase 3. | Existing suite |
+| NEWP-003 / DEEP-018 | Mobile WS 64-bit length parsed correctly and capped at 32 MiB. | Existing suite |
+| NEWM-001/005 (bounds part) | `readJSONBody` with 64 MiB cap replaces all 19 unbounded `io.ReadAll(req.Body)` REST reads; `Content-Length` pre-check returns 413; composer upstream response body bounded. Per-endpoint/sync-batch item limits remain Phase 2/4. | Existing suite |
+| NEWP-010 | `ReadTimeout`/`WriteTimeout` now applied: read deadline per keep-alive request, write deadline around all response writes, deadlines cleared for long-lived tunnels. | Existing suite |
+| NEWP-014 | `MaxConnections` config (default 1000) with atomic active-connection accounting and reject-on-overflow. | Existing suite |
+| NEWH-02 | `SetSSLEnabled` now applies config (restarting a running server) instead of silently discarding it. | Existing suite |
+| NEWI-015 | Block rule status action uses `strconv.Itoa` instead of `string(rune())`. | Existing suite |
+| NEWI-032 | `pkcs7Unpad` returns errors on invalid padding (bounds-checked, block-size-limited) instead of returning raw ciphertext. | Existing suite |
+| NEWS-029 / NEWF-005 | CSV export (Go `ExportToCSV` + frontend `generateCSV`) neutralizes `=`/`+`/`-`/`@` formula injection and quotes cells correctly. | `TestExportToCSVFormulaInjection`, `TestCSVFieldQuoting` (new); `npm run build` green |
+| NEWT-009 | Leaf certificates now carry an explicit `SubjectKeyId` (SHA-1 of SPKI); Go already auto-fills AKID from the CA. | `TestLeafCertificateExtensions` (new) |
+| vet/copylocks | `RepeatRequest`/`ReplayRequest` take `*proxy.HttpRequest` instead of copying a mutex-bearing struct. Wails JSON contract unchanged. | `go vet ./...` clean |
+
+### Verification for this slice
+
+- `go vet ./...`: **passed**.
+- `go test ./...`: **passed**.
+- `go test -race ./pkg/proxy ./pkg/interceptor ./pkg/storage ./pkg/cert`: **passed**.
+- `npm run build` (frontend): **passed**; existing 705 kB chunk warning remains (Phase 6 code-splitting backlog).
+
+### Remaining Phase 1 work
+
+- Mobile sync batch item-count/total-size limits (NEWM-005 refinement, with Android).
+- WS fragmentation reassembly + ping/pong lifecycle (moved to Phase 3 with DEEP-008 full scope).
+- Spill-file cleanup policy + 0600 permissions (NEWP-015).
+- Copy-goroutine cancellation in tunnels/WS (NEWP-006/007).
+- Discovery broadcaster lifecycle (NEWP-008).
+- Android: CA key permissions (NEWA-021), chunked bodies (DEEP-025), response limits (NEWA-008), connection semaphore (NEWA-005), socket timeouts (NEWA-002), coroutine cleanup (NEWA-003/004).

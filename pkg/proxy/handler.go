@@ -121,6 +121,7 @@ func (h *Handler) isInternalRequest(req *http.Request) bool {
 
 func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Reader, isTLS bool) {
 	for {
+		h.applyReadDeadline(clientConn)
 		req, err := http.ReadRequest(reader)
 		if err != nil {
 			return
@@ -145,7 +146,7 @@ func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Re
 		}
 
 		if req.Method == http.MethodConnect {
-			h.handleConnectTunnel(ctx, clientConn, req)
+			h.handleConnectTunnel(ctx, clientConn, reader, req)
 			return
 		}
 
@@ -162,7 +163,7 @@ func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Re
 	}
 }
 
-func (h *Handler) handleConnectTunnel(ctx *Context, clientConn net.Conn, req *http.Request) {
+func (h *Handler) handleConnectTunnel(ctx *Context, clientConn net.Conn, reader *bufio.Reader, req *http.Request) {
 	host, portStr, err := net.SplitHostPort(req.Host)
 	if err != nil {
 		host = req.Host
@@ -180,14 +181,24 @@ func (h *Handler) handleConnectTunnel(ctx *Context, clientConn net.Conn, req *ht
 		return
 	}
 
+	// Long-lived tunnel: clear request-scoped deadlines.
+	_ = clientConn.SetDeadline(time.Time{})
+
+	// Wrap the connection so any bytes the bufio.Reader buffered beyond the
+	// CONNECT request line (e.g. a pipelined TLS ClientHello) are preserved.
+	conn := clientConn
+	if reader != nil {
+		conn = &bufferedConn{Conn: clientConn, reader: reader}
+	}
+
 	if filtered || !h.server.Config().EnableSSL {
 		// Passthrough without MITM TLS decryption (filtered hosts or SSL disabled)
-		h.passthroughTunnel(ctx, clientConn, targetAddr)
+		h.passthroughTunnel(ctx, conn, targetAddr)
 		return
 	}
 
 	if h.server.CertManager() == nil {
-		h.passthroughTunnel(ctx, clientConn, targetAddr)
+		h.passthroughTunnel(ctx, conn, targetAddr)
 		return
 	}
 
@@ -202,7 +213,7 @@ func (h *Handler) handleConnectTunnel(ctx *Context, clientConn net.Conn, req *ht
 		},
 		NextProtos: []string{"http/1.1"},
 	}
-	tlsClientConn := tls.Server(clientConn, tlsConfig)
+	tlsClientConn := tls.Server(conn, tlsConfig)
 	if err := tlsClientConn.Handshake(); err != nil {
 		h.server.DispatchError(ctx, nil, fmt.Errorf("TLS client handshake failed for %s: %w", host, err))
 		return
@@ -219,6 +230,7 @@ func (h *Handler) handleConnectTunnel(ctx *Context, clientConn net.Conn, req *ht
 
 func (h *Handler) handleDecryptedTLS(ctx *Context, clientConn net.Conn, reader *bufio.Reader, host string, port int) {
 	for {
+		h.applyReadDeadline(clientConn)
 		req, err := http.ReadRequest(reader)
 		if err != nil {
 			return
@@ -363,6 +375,8 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 			h.server.DispatchRequest(ctx, httpReq)
 			h.server.DispatchResponse(ctx, mockResp)
 
+			h.applyWriteDeadline(clientConn)
+			defer clientConn.SetWriteDeadline(time.Time{})
 			statusText := mockResp.StatusText
 			if statusText == "" {
 				statusText = http.StatusText(mockResp.StatusCode)
@@ -553,6 +567,8 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		statusText = http.StatusText(statusCode)
 	}
 
+	h.applyWriteDeadline(clientConn)
+	defer clientConn.SetWriteDeadline(time.Time{})
 	clientProto := "HTTP/1.1"
 	if req != nil && req.Proto != "" {
 		clientProto = req.Proto
@@ -582,6 +598,13 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 }
 
 func (h *Handler) serveCACertificate(clientConn net.Conn, req *http.Request) {
+	if h.server == nil || h.server.CertManager() == nil || h.server.CertManager().CA() == nil {
+		body := []byte("Root CA not available")
+		resp := fmt.Sprintf("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", len(body))
+		_, _ = clientConn.Write([]byte(resp))
+		_, _ = clientConn.Write(body)
+		return
+	}
 	caCertPEM := h.server.CertManager().CA().CertPEM
 	resp := fmt.Sprintf(
 		"HTTP/1.1 200 OK\r\n"+
@@ -608,15 +631,15 @@ func (h *Handler) passthroughTunnelWithRemote(clientConn net.Conn, remoteConn ne
 
 	errChan := make(chan error, 2)
 	go func() {
-		buf := bufferPool.Get().([]byte)
-		defer bufferPool.Put(buf)
-		_, err := io.CopyBuffer(remoteConn, clientConn, buf)
+		buf := GetBuffer()
+		defer PutBuffer(buf)
+		_, err := io.CopyBuffer(remoteConn, clientConn, *buf)
 		errChan <- err
 	}()
 	go func() {
-		buf := bufferPool.Get().([]byte)
-		defer bufferPool.Put(buf)
-		_, err := io.CopyBuffer(clientConn, remoteConn, buf)
+		buf := GetBuffer()
+		defer PutBuffer(buf)
+		_, err := io.CopyBuffer(clientConn, remoteConn, *buf)
 		errChan <- err
 	}()
 
@@ -681,6 +704,24 @@ func (h *Handler) rewriteRequestHost(req *http.Request, host string, port int) {
 	req.Host = req.URL.Host
 }
 
+func (h *Handler) applyReadDeadline(conn net.Conn) {
+	if h.server == nil {
+		return
+	}
+	if rt := h.server.Config().ReadTimeout; rt > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(rt))
+	}
+}
+
+func (h *Handler) applyWriteDeadline(conn net.Conn) {
+	if h.server == nil {
+		return
+	}
+	if wt := h.server.Config().WriteTimeout; wt > 0 {
+		_ = conn.SetWriteDeadline(time.Now().Add(wt))
+	}
+}
+
 func readLimitedBody(reader io.Reader, limit int64) ([]byte, error) {
 	if limit <= 0 {
 		return io.ReadAll(reader)
@@ -696,6 +737,8 @@ func readLimitedBody(reader io.Reader, limit int64) ([]byte, error) {
 }
 
 func (h *Handler) writeBodyLimitError(clientConn net.Conn, req *http.Request, err error, status int) error {
+	h.applyWriteDeadline(clientConn)
+	defer clientConn.SetWriteDeadline(time.Time{})
 	body := []byte(err.Error())
 	proto := "HTTP/1.1"
 	if req != nil && req.Proto != "" {
@@ -709,6 +752,8 @@ func (h *Handler) writeBodyLimitError(clientConn net.Conn, req *http.Request, er
 }
 
 func (h *Handler) writeInterceptorError(clientConn net.Conn, req *http.Request, err error) error {
+	h.applyWriteDeadline(clientConn)
+	defer clientConn.SetWriteDeadline(time.Time{})
 	status := http.StatusBadGateway
 	msg := err.Error()
 	switch {

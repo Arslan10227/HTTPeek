@@ -248,6 +248,18 @@ func ExportToJSON(requests []*proxy.HttpRequest) (string, error) {
 	return string(data), nil
 }
 
+// csvField quotes a CSV cell and neutralizes spreadsheet formula injection.
+func csvField(s string) string {
+	s = strings.ReplaceAll(s, "\"", "\"\"")
+	if s != "" {
+		switch s[0] {
+		case '=', '+', '-', '@':
+			s = "'" + s
+		}
+	}
+	return "\"" + s + "\""
+}
+
 // ExportToCSV serializes requests into a summary CSV format.
 func ExportToCSV(requests []*proxy.HttpRequest) string {
 	var sb strings.Builder
@@ -261,19 +273,17 @@ func ExportToCSV(requests []*proxy.HttpRequest) string {
 			contentType = req.Response.ContentType
 			bodySize = req.Response.BodySize
 		}
-		cleanURL := strings.ReplaceAll(req.URL, "\"", "\"\"")
-		cleanPath := strings.ReplaceAll(req.Path, "\"", "\"\"")
-		sb.WriteString(fmt.Sprintf("%q,%q,%q,%q,%q,%d,%q,%d,%d,%q\n",
-			req.ID,
-			req.Method,
-			cleanURL,
-			req.HostPort.Host,
-			cleanPath,
+		sb.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%d,%s,%d,%d,%s\n",
+			csvField(req.ID),
+			csvField(string(req.Method)),
+			csvField(req.URL),
+			csvField(req.HostPort.Host),
+			csvField(req.Path),
 			status,
-			contentType,
+			csvField(contentType),
 			req.DurationMs,
 			bodySize,
-			req.StartTime.Format(time.RFC3339),
+			csvField(req.StartTime.Format(time.RFC3339)),
 		))
 	}
 	return sb.String()

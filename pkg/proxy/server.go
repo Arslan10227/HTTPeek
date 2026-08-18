@@ -23,6 +23,7 @@ type ServerConfig struct {
 	StorageDir           string        `json:"storageDir"`
 	MaxRequestBodyBytes  int64         `json:"maxRequestBodyBytes"`
 	MaxResponseBodyBytes int64         `json:"maxResponseBodyBytes"`
+	MaxConnections       int           `json:"maxConnections"`
 	UpstreamProxy        string        `json:"upstreamProxy,omitempty"` // http://user:pass@host:port or socks5://...
 }
 
@@ -37,6 +38,7 @@ func DefaultServerConfig() ServerConfig {
 		WriteTimeout:         60 * time.Second,
 		MaxRequestBodyBytes:  16 * 1024 * 1024,
 		MaxResponseBodyBytes: 16 * 1024 * 1024,
+		MaxConnections:       1000,
 	}
 }
 
@@ -52,6 +54,7 @@ type Server struct {
 	listenersMu  sync.RWMutex
 	mobileBridge MobileAPIBridge
 	running      atomic.Bool
+	activeConns  atomic.Int64
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
@@ -275,6 +278,14 @@ func (s *Server) acceptLoop() {
 
 func (s *Server) handleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
+
+	if max := s.Config().MaxConnections; max > 0 {
+		if s.activeConns.Add(1) > int64(max) {
+			s.activeConns.Add(-1)
+			return
+		}
+		defer s.activeConns.Add(-1)
+	}
 
 	ctx := NewContext(s.ctx, clientConn)
 	defer ctx.Cancel()

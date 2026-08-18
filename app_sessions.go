@@ -122,7 +122,7 @@ func (a *App) ToggleFavoriteRequest(requestID string, isFavorite bool) error {
 }
 
 // RepeatRequest executes a request multiple times in sequence with specified delay interval.
-func (a *App) RepeatRequest(req proxy.HttpRequest, count int, intervalMs int) ([]*proxy.HttpResponse, error) {
+func (a *App) RepeatRequest(req *proxy.HttpRequest, count int, intervalMs int) ([]*proxy.HttpResponse, error) {
 	if count <= 0 {
 		count = 1
 	}
@@ -144,7 +144,7 @@ func (a *App) RepeatRequest(req proxy.HttpRequest, count int, intervalMs int) ([
 }
 
 // ReplayRequest resends an intercepted HTTP request.
-func (a *App) ReplayRequest(req proxy.HttpRequest) (*proxy.HttpResponse, error) {
+func (a *App) ReplayRequest(req *proxy.HttpRequest) (*proxy.HttpResponse, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}

@@ -71,6 +71,11 @@ func (h *Handler) handleSOCKS5(ctx *Context, clientConn net.Conn, reader *bufio.
 		if err != nil {
 			return
 		}
+		if lenByte > 253 {
+			// Domain name exceeds DNS limits; reject with ADDRESS_TYPE_NOT_SUPPORTED.
+			_, _ = clientConn.Write([]byte{socks5Version, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+			return
+		}
 		domainBytes := make([]byte, lenByte)
 		if _, err := io.ReadFull(reader, domainBytes); err != nil {
 			return

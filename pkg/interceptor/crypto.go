@@ -204,7 +204,7 @@ func (c *RequestCryptoInterceptor) decryptData(data []byte, rule *CryptoRule) ([
 		mode := cipher.NewCBCDecrypter(block, iv)
 		plain := make([]byte, len(ciphertext))
 		mode.CryptBlocks(plain, ciphertext)
-		return pkcs7Unpad(plain), nil
+		return pkcs7Unpad(plain)
 
 	case AlgorithmAES_CTR:
 		if len(iv) != aes.BlockSize {
@@ -234,25 +234,27 @@ func (c *RequestCryptoInterceptor) decryptData(data []byte, rule *CryptoRule) ([
 		for bs, be := 0, aes.BlockSize; bs < len(ciphertext); bs, be = bs+aes.BlockSize, be+aes.BlockSize {
 			block.Decrypt(plain[bs:be], ciphertext[bs:be])
 		}
-		return pkcs7Unpad(plain), nil
+		return pkcs7Unpad(plain)
 	}
 
 	return nil, errors.New("unsupported algorithm")
 }
 
-func pkcs7Unpad(data []byte) []byte {
+// pkcs7Unpad removes RFC 5652 padding. It rejects invalid padding instead of
+// returning the raw ciphertext so callers can distinguish failure from data.
+func pkcs7Unpad(data []byte) ([]byte, error) {
 	length := len(data)
 	if length == 0 {
-		return data
+		return nil, errors.New("empty ciphertext")
 	}
 	unpadding := int(data[length-1])
-	if unpadding > length || unpadding == 0 {
-		return data
+	if unpadding == 0 || unpadding > aes.BlockSize || unpadding > length {
+		return nil, errors.New("invalid PKCS7 padding")
 	}
 	for i := length - unpadding; i < length; i++ {
 		if data[i] != byte(unpadding) {
-			return data
+			return nil, errors.New("invalid PKCS7 padding")
 		}
 	}
-	return data[:(length - unpadding)]
+	return data[:length-unpadding], nil
 }

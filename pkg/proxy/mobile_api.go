@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -253,9 +254,29 @@ func (m *MobileAPIManager) checkAuth(req *http.Request) bool {
 	return false
 }
 
+// maxAPIBodyBytes bounds mobile REST request bodies to prevent memory
+// exhaustion from oversized payloads.
+const maxAPIBodyBytes = 64 * 1024 * 1024
+
+// maxAPIFrameSize bounds a single mobile WebSocket frame payload.
+const maxAPIFrameSize = 32 * 1024 * 1024
+
+// readJSONBody reads a mobile API request body with a size bound.
+func readJSONBody(r *http.Request) ([]byte, error) {
+	if r == nil || r.Body == nil {
+		return nil, nil
+	}
+	return readLimitedBody(r.Body, maxAPIBodyBytes)
+}
+
 func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 	if !m.checkAuth(req) {
 		sendJSONResponse(clientConn, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+		return
+	}
+
+	if req.ContentLength > maxAPIBodyBytes {
+		sendJSONResponse(clientConn, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
 		return
 	}
 
@@ -314,7 +335,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			Headers map[string][]string `json:"headers"`
 			Body    string              `json:"body"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -337,7 +358,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			return
 		}
 		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readLimitedBody(resp.Body, maxAPIBodyBytes)
 		sendJSONResponse(clientConn, http.StatusOK, map[string]any{
 			"statusCode": resp.StatusCode,
 			"statusText": resp.Status,
@@ -356,7 +377,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			EnableSSL         bool `json:"enableSSL"`
 			EnableSystemProxy bool `json:"enableSystemProxy"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -388,7 +409,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		var payload struct {
 			Port int `json:"port"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		if payload.Port > 0 {
 			cfg := m.server.Config()
@@ -401,7 +422,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		var payload struct {
 			EnableSSL bool `json:"enableSsl"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		cfg := m.server.Config()
 		cfg.EnableSSL = payload.EnableSSL
@@ -412,7 +433,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		var payload struct {
 			EnableSystemProxy bool `json:"enableSystemProxy"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		cfg := m.server.Config()
 		cfg.EnableSystemProxy = payload.EnableSystemProxy
@@ -426,7 +447,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			Port     int    `json:"port"`
 			Protocol string `json:"protocol"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		proto := payload.Protocol
 		if proto == "" {
@@ -467,7 +488,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		var payload struct {
 			Name string `json:"name"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		sess, err := bridge.CreateSession(payload.Name)
 		if err != nil {
@@ -510,7 +531,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		var payload struct {
 			Har         string `json:"har"`
 			SessionName string `json:"sessionName"`
@@ -538,7 +559,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		var payload struct {
 			Requests []*HttpRequest `json:"requests"`
 		}
@@ -559,7 +580,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		resp, err := bridge.SendCustomRequest(string(bodyBytes))
 		if err != nil {
 			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -586,7 +607,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		var payload struct {
 			RequestID  string `json:"requestId"`
 			IsFavorite bool   `json:"isFavorite"`
@@ -635,7 +656,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			return
 		}
 		kind := strings.TrimPrefix(path, "/rules/")
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		if err := bridge.SetRules(kind, bodyBytes); err != nil {
 			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -661,7 +682,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		if err := bridge.SetReportConfigs(bodyBytes); err != nil {
 			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -674,7 +695,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		var payload struct {
 			RequestID    string `json:"requestId"`
 			ID           string `json:"id"`
@@ -703,7 +724,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
 			return
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		var payload struct {
 			RequestID  string `json:"requestId"`
 			ID         string `json:"id"`
@@ -729,7 +750,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			RequestID string `json:"requestId"`
 			ID        string `json:"id"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		reqID := payload.RequestID
 		if reqID == "" {
@@ -763,7 +784,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		})
 
 	case (path == "/logs/write" || path == "/logs") && req.Method == http.MethodPost:
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		var payload struct {
 			Level    string                 `json:"level"`
 			Category string                 `json:"category"`
@@ -798,7 +819,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			Requests   []*HttpRequest  `json:"requests"`
 			Responses  []*HttpResponse `json:"responses"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		if err := json.Unmarshal(bodyBytes, &syncPayload); err != nil {
 			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -821,7 +842,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		var payload struct {
 			DeviceID string `json:"deviceId"`
 		}
-		bodyBytes, _ := io.ReadAll(req.Body)
+		bodyBytes, _ := readJSONBody(req)
 		_ = json.Unmarshal(bodyBytes, &payload)
 		if payload.DeviceID != "" {
 			m.DisconnectDevice(payload.DeviceID)
@@ -928,7 +949,12 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, bufReader *bufi
 				if _, err := io.ReadFull(frameReader, extLen); err != nil {
 					break
 				}
-				payloadLen = int(extLen[4])<<24 | int(extLen[5])<<16 | int(extLen[6])<<8 | int(extLen[7])
+				length := binary.BigEndian.Uint64(extLen)
+			if length > uint64(maxAPIFrameSize) {
+				writeWSCloseFrame(clientConn, 1009, "frame too large")
+				break
+			}
+			payloadLen = int(length)
 			}
 
 			var maskKey []byte
