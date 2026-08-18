@@ -91,10 +91,12 @@ object DesktopPairingManager {
         return null
     }
 
-    suspend fun testConnection(host: String, port: Int): Pair<Boolean, Long> = withContext(Dispatchers.IO) {
+    suspend fun testConnection(host: String, port: Int, token: String? = null): Pair<Boolean, Long> = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
         try {
-            val req = Request.Builder().url("http://$host:$port/api/status").build()
+            val requestBuilder = Request.Builder().url("http://$host:$port/api/status")
+            token?.let { requestBuilder.header("X-HTTPeek-Token", it) }
+            val req = requestBuilder.build()
             val resp = client.newCall(req).execute()
             val latency = System.currentTimeMillis() - start
             Pair(resp.isSuccessful, latency)

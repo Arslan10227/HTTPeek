@@ -40,6 +40,7 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({ isOpen, onClos
   const { status } = useProxyStore();
   const [localIps, setLocalIps] = useState<string[]>([]);
   const [selectedIp, setSelectedIp] = useState('');
+  const [apiToken, setApiToken] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [caDetails, setCaDetails] = useState<any>(null);
   const [installingDesktop, setInstallingDesktop] = useState(false);
@@ -68,6 +69,15 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (!isOpen) return;
+    const loadApiToken = async () => {
+      const app = (window as any).go?.main?.App;
+      if (app?.GetMobileAPIToken) {
+        setApiToken((await app.GetMobileAPIToken()) || '');
+      } else {
+        setApiToken(localStorage.getItem('httpeek_api_token') || '');
+      }
+    };
+    loadApiToken().catch(() => {});
     if ((window as any).go?.main?.App?.GetLocalIPs) {
       (window as any).go.main.App.GetLocalIPs().then((ips: string[]) => {
         setLocalIps(ips);
@@ -84,17 +94,19 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
+  const tokenQuery = apiToken ? `?token=${encodeURIComponent(apiToken)}` : '';
   const pairingPayload = JSON.stringify({
     scheme: 'httpeek',
     version: '1.0',
     host: selectedIp,
     port: status.port,
     enableSsl: status.enableSsl,
-    caUrl: `http://${selectedIp}:${status.port}/api/ca/export`,
-    wsUrl: `ws://${selectedIp}:${status.port}/ws/events`,
+    token: apiToken || undefined,
+    caUrl: `http://${selectedIp}:${status.port}/api/ca/export${tokenQuery}`,
+    wsUrl: `ws://${selectedIp}:${status.port}/ws/events${tokenQuery}`,
   });
 
-  const certUrl = `http://${selectedIp}:${status.port}/api/ca/export`;
+  const certUrl = `http://${selectedIp}:${status.port}/api/ca/export${tokenQuery}`;
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);

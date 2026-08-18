@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -17,6 +18,10 @@ func (a *App) GetConnectedMobileDevices() []proxy.MobileDeviceInfo {
 		return a.server.MobileAPI().GetConnectedDevices()
 	}
 	return []proxy.MobileDeviceInfo{}
+}
+
+func (a *App) GetMobileAPIToken() string {
+	return os.Getenv("HTTPEEK_API_TOKEN")
 }
 
 // DisconnectMobileDevice disconnects a target mobile device.

@@ -48,6 +48,7 @@ class HttpeekVpnService : VpnService() {
 
         const val EXTRA_DESKTOP_HOST = "extra_desktop_host"
         const val EXTRA_DESKTOP_PORT = "extra_desktop_port"
+        const val EXTRA_DESKTOP_TOKEN = "extra_desktop_token"
 
         var isVpnActive = false
         private var currentInstance: HttpeekVpnService? = null
@@ -63,11 +64,12 @@ class HttpeekVpnService : VpnService() {
         var onVpnStateChanged: ((Boolean) -> Unit)? = null
         var onRemoteClearRequested: (() -> Unit)? = null
 
-        fun startIntent(context: Context, desktopHost: String? = null, desktopPort: Int = 9099): Intent {
+        fun startIntent(context: Context, desktopHost: String? = null, desktopPort: Int = 9099, desktopToken: String? = null): Intent {
             return Intent(context, HttpeekVpnService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_DESKTOP_HOST, desktopHost)
                 putExtra(EXTRA_DESKTOP_PORT, desktopPort)
+                putExtra(EXTRA_DESKTOP_TOKEN, desktopToken)
             }
         }
 
@@ -85,7 +87,8 @@ class HttpeekVpnService : VpnService() {
             ACTION_START -> {
                 val desktopHost = intent.getStringExtra(EXTRA_DESKTOP_HOST)
                 val desktopPort = intent.getIntExtra(EXTRA_DESKTOP_PORT, 9099)
-                startVpnCapture(desktopHost, desktopPort)
+                val desktopToken = intent.getStringExtra(EXTRA_DESKTOP_TOKEN)
+                startVpnCapture(desktopHost, desktopPort, desktopToken)
             }
             ACTION_STOP -> {
                 stopVpnCapture()
@@ -94,7 +97,7 @@ class HttpeekVpnService : VpnService() {
         return START_STICKY
     }
 
-    private fun startVpnCapture(desktopHost: String?, desktopPort: Int) {
+    private fun startVpnCapture(desktopHost: String?, desktopPort: Int, desktopToken: String? = null) {
         if (isRunning.get()) return
 
         currentInstance = this
@@ -108,12 +111,20 @@ class HttpeekVpnService : VpnService() {
 
             // Setup Desktop Companion Bridge if host provided
             if (!desktopHost.isNullOrEmpty()) {
-                desktopBridge = DesktopBridgeClient(desktopHost, desktopPort, applicationContext)
+                desktopBridge = DesktopBridgeClient(
+                    host = desktopHost,
+                    port = desktopPort,
+                    token = desktopToken,
+                    context = applicationContext
+                )
                 desktopBridge?.onRulesSyncReceived = { json ->
                     rulesEngine.importRulesFromDesktopJson(json)
                 }
                 desktopBridge?.onRemoteCommandReceived = { cmd ->
                     when (cmd) {
+                        "remote:vpn_start" -> {
+                            startVpnCapture(desktopHost, desktopPort, desktopToken)
+                        }
                         "remote:vpn_stop" -> {
                             stopVpnCapture()
                         }

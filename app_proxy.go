@@ -70,6 +70,7 @@ func (a *App) StartProxy(port int, enableSSL, enableSystemProxy bool) error {
 	if a.server != nil {
 		cfg = a.server.Config()
 	}
+	cfg.StorageDir = a.dataDir
 	cfg.Port = port
 	cfg.EnableSSL = enableSSL
 	cfg.EnableSystemProxy = enableSystemProxy
@@ -156,6 +157,7 @@ func (a *App) SetProxyPort(port int) error {
 	}
 
 	cfg := proxy.DefaultServerConfig()
+	cfg.StorageDir = a.dataDir
 	cfg.Port = port
 	cfg.EnableSSL = ssl
 	cfg.EnableSystemProxy = sysProxy

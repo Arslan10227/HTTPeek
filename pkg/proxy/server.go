@@ -14,25 +14,29 @@ import (
 
 // ServerConfig defines options for starting the proxy server.
 type ServerConfig struct {
-	Port              int           `json:"port"`
-	EnableSSL         bool          `json:"enableSsl"`
-	EnableSOCKS5      bool          `json:"enableSocks5"`
-	EnableSystemProxy bool          `json:"enableSystemProxy"`
-	ReadTimeout       time.Duration `json:"readTimeout"`
-	WriteTimeout      time.Duration `json:"writeTimeout"`
-	StorageDir        string        `json:"storageDir"`
-	UpstreamProxy     string        `json:"upstreamProxy,omitempty"` // http://user:pass@host:port or socks5://...
+	Port                 int           `json:"port"`
+	EnableSSL            bool          `json:"enableSsl"`
+	EnableSOCKS5         bool          `json:"enableSocks5"`
+	EnableSystemProxy    bool          `json:"enableSystemProxy"`
+	ReadTimeout          time.Duration `json:"readTimeout"`
+	WriteTimeout         time.Duration `json:"writeTimeout"`
+	StorageDir           string        `json:"storageDir"`
+	MaxRequestBodyBytes  int64         `json:"maxRequestBodyBytes"`
+	MaxResponseBodyBytes int64         `json:"maxResponseBodyBytes"`
+	UpstreamProxy        string        `json:"upstreamProxy,omitempty"` // http://user:pass@host:port or socks5://...
 }
 
 // DefaultServerConfig returns standard defaults.
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Port:              9099,
-		EnableSSL:         true,
-		EnableSOCKS5:      true,
-		EnableSystemProxy: false,
-		ReadTimeout:       60 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		Port:                 9099,
+		EnableSSL:            true,
+		EnableSOCKS5:         true,
+		EnableSystemProxy:    false,
+		ReadTimeout:          60 * time.Second,
+		WriteTimeout:         60 * time.Second,
+		MaxRequestBodyBytes:  16 * 1024 * 1024,
+		MaxResponseBodyBytes: 16 * 1024 * 1024,
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"time"
 )
 
 const (
@@ -95,32 +96,39 @@ func (h *Handler) handleSOCKS5(ctx *Context, clientConn net.Conn, reader *bufio.
 	port := binary.BigEndian.Uint16(portBytes)
 	targetAddr := net.JoinHostPort(targetHost, strconv.Itoa(int(port)))
 
-	// Reply SUCCESS
-	reply := []byte{socks5Version, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}
-	if _, err := clientConn.Write(reply); err != nil {
-		return
-	}
-
 	// Tunnel or MITM
 	if port == 443 || port == 8443 {
 		// Check if first bytes are TLS ClientHello (0x16 0x03 ...)
 		peekBytes, err := reader.Peek(3)
-		if err == nil && peekBytes[0] == 0x16 && peekBytes[1] == 0x03 {
-			if h.server.Config().EnableSSL {
-				tlsConfig := h.server.CertManager().TLSConfig()
-				tlsClientConn := tlsServerWrap(clientConn, reader, tlsConfig)
-				if err := tlsClientConn.Handshake(); err == nil {
-					defer tlsClientConn.Close()
-					tlsReader := bufio.NewReader(tlsClientConn)
-					h.handleDecryptedTLS(ctx, tlsClientConn, tlsReader, targetHost, int(port))
-					return
-				}
+		if err == nil && peekBytes[0] == 0x16 && peekBytes[1] == 0x03 &&
+			h.server.Config().EnableSSL && h.server.CertManager() != nil {
+			reply := []byte{socks5Version, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}
+			if _, err := clientConn.Write(reply); err != nil {
+				return
 			}
+			tlsConfig := h.server.CertManager().TLSConfig()
+			tlsClientConn := tlsServerWrap(clientConn, reader, tlsConfig)
+			if err := tlsClientConn.Handshake(); err != nil {
+				_ = tlsClientConn.Close()
+				return
+			}
+			defer tlsClientConn.Close()
+			tlsReader := bufio.NewReader(tlsClientConn)
+			h.handleDecryptedTLS(ctx, tlsClientConn, tlsReader, targetHost, int(port))
+			return
 		}
 	}
 
-	// Fallback to passthrough
-	h.passthroughTunnel(ctx, clientConn, targetAddr)
+	remoteConn, err := net.DialTimeout("tcp", targetAddr, 10*time.Second)
+	if err != nil {
+		_, _ = clientConn.Write([]byte{socks5Version, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+		return
+	}
+	if _, err := clientConn.Write([]byte{socks5Version, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}); err != nil {
+		_ = remoteConn.Close()
+		return
+	}
+	h.passthroughTunnelWithRemote(clientConn, remoteConn)
 }
 
 func tlsServerWrap(conn net.Conn, reader *bufio.Reader, config *tls.Config) *tls.Conn {

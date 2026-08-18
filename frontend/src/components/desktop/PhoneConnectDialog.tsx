@@ -39,6 +39,7 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
   const [selectedIp, setSelectedIp] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [tabMode, setTabMode] = useState<'pair' | 'connected' | 'adb' | 'cert'>('pair');
+  const [apiToken, setApiToken] = useState('');
 
   // ADB Installation State
   const [adbDevices, setAdbDevices] = useState<ADBDevice[]>([]);
@@ -50,6 +51,16 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
   const proxyPort = status.port || 9099;
 
   useEffect(() => {
+    const loadApiToken = async () => {
+      const app = (window as any).go?.main?.App;
+      if (app?.GetMobileAPIToken) {
+        setApiToken((await app.GetMobileAPIToken()) || '');
+      } else {
+        setApiToken(localStorage.getItem('httpeek_api_token') || '');
+      }
+    };
+    loadApiToken().catch(() => {});
+
     // Fetch local IPs from Go backend
     if ((window as any).go?.main?.App?.GetLocalIPs) {
       (window as any).go.main.App.GetLocalIPs().then((ips: string[]) => {
@@ -172,7 +183,8 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
   };
 
   const certDownloadUrl = `http://${selectedIp || '127.0.0.1'}:${proxyPort}/ssl`;
-  const appPairingPayload = `httpeek://connect?host=${selectedIp || '127.0.0.1'}&port=${proxyPort}`;
+  const tokenParam = apiToken ? `&token=${encodeURIComponent(apiToken)}` : '';
+  const appPairingPayload = `httpeek://connect?host=${selectedIp || '127.0.0.1'}&port=${proxyPort}${tokenParam}`;
 
   const handleCopyUrl = (text: string) => {
     navigator.clipboard.writeText(text);

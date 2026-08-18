@@ -147,6 +147,7 @@ func (a *App) startup(ctx context.Context) {
 	// 4. Initialize Proxy Server
 	srvCfg := proxy.DefaultServerConfig()
 	srvCfg.Port = 9099
+	srvCfg.StorageDir = a.dataDir
 	a.server = proxy.NewServer(srvCfg, a.certMgr)
 	a.server.SetInterceptor(a.chain)
 
@@ -482,4 +483,3 @@ func (a *App) GetStartupFile() string {
 	}
 	return ""
 }
-

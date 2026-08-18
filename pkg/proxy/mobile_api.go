@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -75,8 +76,6 @@ func (m *MobileAPIManager) GetConnectedDevices() []MobileDeviceInfo {
 // DisconnectDevice closes the connection for a specific device.
 func (m *MobileAPIManager) DisconnectDevice(deviceID string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	for connID, dev := range m.devices {
 		if dev.DeviceID == deviceID || dev.RemoteIP == deviceID {
 			if conn, ok := m.wsConns[connID]; ok {
@@ -86,16 +85,20 @@ func (m *MobileAPIManager) DisconnectDevice(deviceID string) {
 			delete(m.devices, connID)
 		}
 	}
-	m.notifyDeviceChangeLocked()
+	m.mu.Unlock()
+	m.notifyDeviceChange()
 }
 
-func (m *MobileAPIManager) notifyDeviceChangeLocked() {
-	if m.onDeviceChange != nil {
-		res := make([]MobileDeviceInfo, 0, len(m.devices))
-		for _, d := range m.devices {
-			res = append(res, *d)
-		}
-		go m.onDeviceChange(res)
+func (m *MobileAPIManager) notifyDeviceChange() {
+	m.mu.RLock()
+	callback := m.onDeviceChange
+	res := make([]MobileDeviceInfo, 0, len(m.devices))
+	for _, d := range m.devices {
+		res = append(res, *d)
+	}
+	m.mu.RUnlock()
+	if callback != nil {
+		go callback(res)
 	}
 }
 
@@ -870,7 +873,7 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, bufReader *bufi
 		LastPing:    time.Now(),
 	}
 	m.mu.Unlock()
-	m.notifyDeviceChangeLocked()
+	m.notifyDeviceChange()
 
 	// Send initial status event upon connection
 	m.BroadcastEvent("proxy:status", map[string]any{
@@ -896,7 +899,7 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, bufReader *bufi
 			delete(m.wsConns, connID)
 			delete(m.devices, connID)
 			m.mu.Unlock()
-			m.notifyDeviceChangeLocked()
+			m.notifyDeviceChange()
 			_ = clientConn.Close()
 		}()
 
@@ -989,7 +992,7 @@ func (m *MobileAPIManager) handleIncomingClientMessage(connID string, data []byt
 				dev.LastPing = time.Now()
 			}
 			m.mu.Unlock()
-			m.notifyDeviceChangeLocked()
+			m.notifyDeviceChange()
 
 			// Send ACK back
 			ackPayload, _ := json.Marshal(map[string]any{
@@ -1118,22 +1121,32 @@ func encodeWSTextFrame(payload []byte) []byte {
 func isLocalOrigin(req *http.Request) bool {
 	origin := req.Header.Get("Origin")
 	if origin == "" {
-		// No origin header — same-origin or non-browser client; allow.
 		return true
 	}
-	// Allow localhost variants
-	for _, local := range []string{"http://localhost", "https://localhost", "http://127.", "https://127.", "file://", "wails://"} {
-		if strings.HasPrefix(origin, local) {
-			return true
-		}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.User != nil {
+		return false
 	}
-	// Allow RFC 1918 private ranges (10.x, 172.16-31.x, 192.168.x)
-	for _, prefix := range []string{"http://10.", "https://10.", "http://192.168.", "https://192.168.", "http://172."} {
-		if strings.HasPrefix(origin, prefix) {
-			return true
-		}
+	if parsed.Scheme == "file" || parsed.Scheme == "wails" {
+		return parsed.Host == ""
 	}
-	return false
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	if parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+
+	host := strings.Trim(strings.ToLower(parsed.Hostname()), "[]")
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil {
+		return false
+	}
+	v4 := ip.To4()
+	return v4[0] == 10 || v4[0] == 192 && v4[1] == 168 || v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31
 }
 
 func corsOrigin(req *http.Request) string {
@@ -1151,7 +1164,6 @@ func sendJSONResponse(conn net.Conn, status int, data any) {
 			"Access-Control-Allow-Origin: %s\r\n"+
 			"Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n"+
 			"Access-Control-Allow-Headers: Content-Type, X-HTTPeek-Token\r\n"+
-			"Access-Control-Allow-Credentials: true\r\n"+
 			"Content-Length: %d\r\n"+
 			"Connection: close\r\n\r\n",
 		status, http.StatusText(status), "*", len(body),
@@ -1169,7 +1181,6 @@ func sendJSONResponseWithOrigin(conn net.Conn, req *http.Request, status int, da
 			"Access-Control-Allow-Origin: %s\r\n"+
 			"Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n"+
 			"Access-Control-Allow-Headers: Content-Type, X-HTTPeek-Token\r\n"+
-			"Access-Control-Allow-Credentials: true\r\n"+
 			"Content-Length: %d\r\n"+
 			"Connection: close\r\n\r\n",
 		status, http.StatusText(status), corsOrigin(req), len(body),
@@ -1185,7 +1196,6 @@ func sendCORSResponse(conn net.Conn, req *http.Request) {
 		"Access-Control-Allow-Origin: " + allowedOrigin + "\r\n" +
 		"Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n" +
 		"Access-Control-Allow-Headers: Content-Type, X-HTTPeek-Token\r\n" +
-		"Access-Control-Allow-Credentials: true\r\n" +
 		"Connection: close\r\n\r\n"
 	_, _ = conn.Write([]byte(resp))
 	_ = conn.Close()

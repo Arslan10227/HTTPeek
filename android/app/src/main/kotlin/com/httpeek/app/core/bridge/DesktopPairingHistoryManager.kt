@@ -14,6 +14,7 @@ object DesktopPairingHistoryManager {
     private const val PREFS_NAME = "httpeek_desktop_pairing"
     private const val KEY_LAST_HOST = "last_desktop_host"
     private const val KEY_LAST_PORT = "last_desktop_port"
+    private const val KEY_LAST_TOKEN = "last_desktop_token"
     private const val KEY_HISTORY = "desktop_pairing_history"
     private const val MAX_HISTORY = 8
 
@@ -33,12 +34,13 @@ object DesktopPairingHistoryManager {
         prefs.edit()
             .putString(KEY_LAST_HOST, info.host)
             .putInt(KEY_LAST_PORT, info.port)
+            .remove(KEY_LAST_TOKEN)
             .apply()
 
         // 2. Add to history list (deduplicated)
         val history = getRecentConnections(context).toMutableList()
         history.removeAll { it.host.equals(info.host, ignoreCase = true) && it.port == info.port }
-        history.add(0, info)
+        history.add(0, info.copy(token = null))
 
         val trimmed = history.take(MAX_HISTORY)
         val json = gson.toJson(trimmed)
@@ -62,6 +64,7 @@ object DesktopPairingHistoryManager {
         getPrefs(context).edit()
             .remove(KEY_LAST_HOST)
             .remove(KEY_LAST_PORT)
+            .remove(KEY_LAST_TOKEN)
             .apply()
     }
 

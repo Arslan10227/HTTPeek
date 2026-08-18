@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,5 +112,75 @@ func TestProxyServerLifecycleAndHTTPIntercept(t *testing.T) {
 	res := listener.responses[0]
 	if res.StatusCode != 200 {
 		t.Errorf("Captured response status mismatch: %d", res.StatusCode)
+	}
+}
+
+func TestInternalRequestAcceptsLANPairingHost(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.Port = 19101
+	handler := NewHandler(NewServer(cfg, nil))
+	req := httptest.NewRequest(http.MethodGet, "http://192.168.1.25:19101/ws/events", nil)
+	req.Host = "192.168.1.25:19101"
+	if !handler.isInternalRequest(req) {
+		t.Fatal("expected LAN pairing WebSocket request to be treated as internal")
+	}
+}
+
+func TestReadLimitedBody(t *testing.T) {
+	body, err := readLimitedBody(strings.NewReader("12345"), 5)
+	if err != nil {
+		t.Fatalf("readLimitedBody exact limit: %v", err)
+	}
+	if string(body) != "12345" {
+		t.Fatalf("unexpected body: %q", body)
+	}
+
+	_, err = readLimitedBody(strings.NewReader("123456"), 5)
+	if !errors.Is(err, ErrBodyTooLarge) {
+		t.Fatalf("expected ErrBodyTooLarge, got %v", err)
+	}
+}
+
+func TestDefaultServerBodyLimits(t *testing.T) {
+	cfg := DefaultServerConfig()
+	if cfg.MaxRequestBodyBytes <= 0 || cfg.MaxResponseBodyBytes <= 0 {
+		t.Fatalf("expected positive body limits, got request=%d response=%d", cfg.MaxRequestBodyBytes, cfg.MaxResponseBodyBytes)
+	}
+}
+
+func TestSOCKS5ReportsConnectionFailure(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.Port = 19100
+	server := NewServer(cfg, nil)
+	if err := server.Start(); err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	defer server.Stop()
+
+	conn, err := net.Dial("tcp", "127.0.0.1:19100")
+	if err != nil {
+		t.Fatalf("proxy dial: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+
+	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		t.Fatalf("SOCKS greeting: %v", err)
+	}
+	greeting := make([]byte, 2)
+	if _, err := io.ReadFull(conn, greeting); err != nil {
+		t.Fatalf("SOCKS greeting response: %v", err)
+	}
+
+	request := []byte{0x05, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0x01, 0x01}
+	if _, err := conn.Write(request); err != nil {
+		t.Fatalf("SOCKS connect request: %v", err)
+	}
+	response := make([]byte, 10)
+	if _, err := io.ReadFull(conn, response); err != nil {
+		t.Fatalf("SOCKS connect response: %v", err)
+	}
+	if response[1] == 0x00 {
+		t.Fatal("expected SOCKS connection failure, got success")
 	}
 }

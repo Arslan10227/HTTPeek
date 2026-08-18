@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DesktopBridgeClient(
     private val host: String,
     private val port: Int = 9099,
+    private val token: String? = null,
     private val context: android.content.Context? = null,
     private val onConnectionChange: ((Boolean) -> Unit)? = null
 ) {
@@ -51,7 +52,8 @@ class DesktopBridgeClient(
 
     fun connect() {
         isRunning.set(true)
-        val wsUrl = "ws://$host:$port/ws/events"
+        val tokenQuery = token?.let { "?token=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: ""
+        val wsUrl = "ws://$host:$port/ws/events" + tokenQuery
         val request = Request.Builder().url(wsUrl).build()
 
         Log.i(TAG, "Connecting to HTTPeek Desktop at $wsUrl...")
@@ -217,10 +219,11 @@ class DesktopBridgeClient(
                         "responses" to resps
                     )
                     val bodyJson = gson.toJson(bodyMap)
-                    val req = Request.Builder()
+                    val requestBuilder = Request.Builder()
                         .url(syncUrl)
                         .post(bodyJson.toRequestBody("application/json".toMediaTypeOrNull()))
-                        .build()
+                    token?.let { requestBuilder.header("X-HTTPeek-Token", it) }
+                    val req = requestBuilder.build()
                     client.newCall(req).execute().close()
                     Log.i(TAG, "Successfully flushed ${reqs.size} requests and ${resps.size} responses to desktop")
                 } catch (e: Exception) {

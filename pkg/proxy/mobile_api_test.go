@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +12,27 @@ import (
 
 	"httpeek/pkg/cert"
 )
+
+func TestMobileDeviceChangeSnapshot(t *testing.T) {
+	manager := NewMobileAPIManager(NewServer(DefaultServerConfig(), nil))
+	changes := make(chan []MobileDeviceInfo, 1)
+	manager.SetOnDeviceChange(func(devices []MobileDeviceInfo) {
+		changes <- devices
+	})
+	manager.mu.Lock()
+	manager.devices["connection-1"] = &MobileDeviceInfo{DeviceID: "device-1", DeviceName: "Test Android"}
+	manager.mu.Unlock()
+
+	manager.notifyDeviceChange()
+	select {
+	case devices := <-changes:
+		if len(devices) != 1 || devices[0].DeviceID != "device-1" {
+			t.Fatalf("unexpected device snapshot: %+v", devices)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("device change callback was not invoked")
+	}
+}
 
 func TestMobileAPIAuthRequiredWhenTokenSet(t *testing.T) {
 	t.Setenv("HTTPEEK_API_TOKEN", "secret-token")
@@ -50,6 +72,29 @@ func TestMobileAPIAuthRequiredWhenTokenSet(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without token, got %d", resp.StatusCode)
+	}
+}
+
+func TestLocalOriginValidation(t *testing.T) {
+	cases := []struct {
+		origin string
+		allow  bool
+	}{
+		{"http://localhost:5173", true},
+		{"http://127.0.0.1:5173", true},
+		{"http://192.168.1.20:5173", true},
+		{"http://172.16.0.10:5173", true},
+		{"http://172.32.0.10:5173", false},
+		{"http://127.evil.example:5173", false},
+		{"https://localhost.evil:5173", false},
+		{"https://example.com", false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/status", nil)
+		req.Header.Set("Origin", tc.origin)
+		if got := isLocalOrigin(req); got != tc.allow {
+			t.Errorf("origin %q: got %v, want %v", tc.origin, got, tc.allow)
+		}
 	}
 }
 

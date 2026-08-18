@@ -355,6 +355,11 @@ class MitmProxyServer(
 
         // 2. Evaluate URL Rewrite Rules
         reqModel = rulesEngine.evaluateRewriteRequest(reqModel)
+        val forwardedBodyBytes = if (reqModel.bodyString != bodyString) {
+            reqModel.bodyString?.toByteArray(Charsets.UTF_8) ?: ByteArray(0)
+        } else {
+            bodyBytes ?: ByteArray(0)
+        }
         onRequest(reqModel)
 
         // 3. Forward to Upstream Server via Protected OkHttp Client (with transparent Brotli/Gzip decompression)
@@ -371,8 +376,8 @@ class MitmProxyServer(
                 }
             }
 
-            val requestBody = if (reqModel.method in listOf("POST", "PUT", "PATCH") && bodyBytes != null) {
-                bodyBytes.toRequestBody(contentType?.toMediaTypeOrNull())
+            val requestBody = if (reqModel.method in listOf("POST", "PUT", "PATCH") && forwardedBodyBytes.isNotEmpty()) {
+                forwardedBodyBytes.toRequestBody(contentType?.toMediaTypeOrNull())
             } else if (reqModel.method in listOf("POST", "PUT", "PATCH")) {
                 ByteArray(0).toRequestBody(null)
             } else null
@@ -423,8 +428,10 @@ class MitmProxyServer(
                 durationMs = durationMs
             )
 
-            writeResponseToClient(output, respModel, finalBodyBytes)
-            onResponse(respModel)
+            val finalResp = rulesEngine.evaluateRewriteResponse(reqModel, respModel)
+            val finalRespBody = finalResp.bodyString?.toByteArray(Charsets.UTF_8) ?: finalBodyBytes
+            writeResponseToClient(output, finalResp, finalRespBody)
+            onResponse(finalResp)
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startTimeMs
             val errModel = HttpResponseModel(

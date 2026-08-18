@@ -226,6 +226,27 @@ class RulesEngine(private val context: Context) {
         return modified
     }
 
+    fun evaluateRewriteResponse(request: HttpRequestModel, response: HttpResponseModel): HttpResponseModel {
+        var modified = response
+        for (rule in rewriteRules) {
+            if (!rule.enabled || !matchesUrl(request.url, rule.urlPattern)) continue
+
+            val newHeaders = (modified.headers?.toMutableMap() ?: mutableMapOf())
+            rule.modifyHeaders?.forEach { (k, v) -> newHeaders[k] = listOf(v) }
+            rule.removeHeaders?.forEach { k -> newHeaders.remove(k) }
+            val newBody = rule.replaceBody ?: modified.bodyString
+            val newStatus = rule.overrideStatusCode ?: modified.statusCode
+            modified = modified.copy(
+                headers = newHeaders,
+                bodyString = newBody,
+                bodySize = newBody?.toByteArray()?.size?.toLong() ?: 0L,
+                statusCode = newStatus,
+                statusText = if (rule.overrideStatusCode != null) "" else modified.statusText
+            )
+        }
+        return modified
+    }
+
     private fun matchesDomain(host: String, pattern: String, isRegex: Boolean): Boolean {
         if (isRegex) {
             return try {

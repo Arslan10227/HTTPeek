@@ -49,6 +49,7 @@ class TrafficFragment : Fragment() {
     private var isVpnRunning = false
     private var desktopHost: String? = null
     private var desktopPort: Int = 9099
+    private var desktopToken: String? = null
 
     private var discoveryManager: NsdDiscoveryManager? = null
     private val discoveredDesktops = mutableListOf<DiscoveredDesktopBeacon>()
@@ -86,6 +87,7 @@ class TrafficFragment : Fragment() {
         if (lastConnected != null) {
             desktopHost = lastConnected.host
             desktopPort = lastConnected.port
+            desktopToken = lastConnected.token
             updateDesktopStatus(connected = false, label = "${lastConnected.host}:${lastConnected.port}")
         }
 
@@ -328,12 +330,13 @@ class TrafficFragment : Fragment() {
         if (info != null) {
             desktopHost = info.host
             desktopPort = info.port
+            desktopToken = info.token
             updateDesktopStatus(connected = false, label = "Testing…")
 
             DesktopPairingHistoryManager.saveConnection(ctx, info)
 
             lifecycleScope.launch {
-                val (ok, latency) = DesktopPairingManager.testConnection(info.host, info.port)
+                val (ok, latency) = DesktopPairingManager.testConnection(info.host, info.port, info.token)
                 if (ok) {
                     updateDesktopStatus(connected = true, label = "${info.host} (${latency}ms)")
                     LottieToast.showSuccess(ctx, "Paired with Desktop! ${latency}ms latency")
@@ -375,7 +378,7 @@ class TrafficFragment : Fragment() {
         if (prepareIntent != null) {
             vpnLauncher.launch(prepareIntent)
         } else {
-            activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
+            activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort, desktopToken))
             isVpnRunning = true
             updateUIState()
             LottieToast.showRocket(requireContext(), "VPN interception is now LIVE!")

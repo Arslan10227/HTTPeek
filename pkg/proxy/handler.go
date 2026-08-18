@@ -89,6 +89,36 @@ func (h *Handler) HandleConnection(ctx *Context, clientConn net.Conn) {
 	h.handleHTTP(ctx, clientConn, reader, false)
 }
 
+func (h *Handler) isInternalRequest(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+
+	host := strings.ToLower(strings.TrimSpace(req.Host))
+	hostName := host
+	port := 0
+	if parsedHost, parsedPort, err := net.SplitHostPort(host); err == nil {
+		hostName = strings.Trim(parsedHost, "[]")
+		port, _ = strconv.Atoi(parsedPort)
+	} else {
+		hostName = strings.Trim(host, "[]")
+	}
+
+	localHost := hostName == "" || hostName == "localhost" || hostName == "proxy.pin" ||
+		hostName == "httpeek.local" || hostName == "127.0.0.1" || hostName == "::1"
+	listenerPort := port != 0 && port == h.server.Port()
+	if !localHost && !listenerPort {
+		return false
+	}
+	if port != 0 && port != h.server.Port() {
+		return false
+	}
+
+	path := req.URL.Path
+	return strings.HasPrefix(path, "/ws") || strings.HasPrefix(path, "/api/") ||
+		path == "/ssl" || path == "/ssl/" || path == "/ca.crt" || path == "/favicon.ico"
+}
+
 func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Reader, isTLS bool) {
 	for {
 		req, err := http.ReadRequest(reader)
@@ -96,12 +126,8 @@ func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Re
 			return
 		}
 
-		// Check if request is addressed directly to the internal proxy host / endpoint
 		path := req.URL.Path
-		isInternal := req.Host == "proxy.pin" || req.Host == "httpeek.local" || req.URL.Host == "" ||
-			strings.Contains(req.Host, fmt.Sprintf(":%d", h.server.Port())) ||
-			strings.HasPrefix(path, "/ws") || strings.HasPrefix(path, "/api/") ||
-			path == "/ssl" || path == "/ssl/" || path == "/ca.crt" || path == "/favicon.ico"
+		isInternal := h.isInternalRequest(req)
 
 		if isInternal {
 			// Handle Mobile API / WebSocket event stream
@@ -231,12 +257,18 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	reqID := uuid.NewString()
 	startTime := time.Now()
 
-	// Read request body
 	var bodyBytes []byte
+	maxRequestBodyBytes := h.server.Config().MaxRequestBodyBytes
+	if maxRequestBodyBytes > 0 && req.ContentLength > maxRequestBodyBytes {
+		return h.writeBodyLimitError(clientConn, req, fmt.Errorf("%w: request is %d bytes", ErrBodyTooLarge, req.ContentLength), http.StatusRequestEntityTooLarge)
+	}
 	if req.Body != nil {
 		var err error
-		bodyBytes, err = io.ReadAll(req.Body)
+		bodyBytes, err = readLimitedBody(req.Body, maxRequestBodyBytes)
 		if err != nil {
+			if errors.Is(err, ErrBodyTooLarge) {
+				return h.writeBodyLimitError(clientConn, req, err, http.StatusRequestEntityTooLarge)
+			}
 			return err
 		}
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -373,6 +405,9 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		outReq.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 	outReq.Header = httpReq.Headers.Clone()
+	outReq.Header.Del("Content-Encoding")
+	outReq.Header.Del("Content-Length")
+	outReq.Header.Del("Transfer-Encoding")
 	if outReq.Header.Get("Host") == "" {
 		outReq.Header.Set("Host", httpReq.HostPort.Host)
 	}
@@ -393,6 +428,7 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		h.server.DispatchError(ctx, httpReq, err)
 		return err
 	}
+	defer resp.Body.Close()
 	contentType := resp.Header.Get("Content-Type")
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	isBinary := isBinaryContentType(contentType)
@@ -424,8 +460,11 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		return h.streamSSEResponse(ctx, clientConn, resp, nil)
 	}
 
-	respBodyBytes, err := io.ReadAll(resp.Body)
+	respBodyBytes, err := readLimitedBody(resp.Body, h.server.Config().MaxResponseBodyBytes)
 	if err != nil {
+		if errors.Is(err, ErrBodyTooLarge) {
+			return h.writeBodyLimitError(clientConn, req, err, http.StatusBadGateway)
+		}
 		return err
 	}
 
@@ -514,7 +553,11 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		statusText = http.StatusText(statusCode)
 	}
 
-	statusLine := fmt.Sprintf("%s %d %s\r\n", resp.Proto, statusCode, statusText)
+	clientProto := "HTTP/1.1"
+	if req != nil && req.Proto != "" {
+		clientProto = req.Proto
+	}
+	statusLine := fmt.Sprintf("%s %d %s\r\n", clientProto, statusCode, statusText)
 	if _, err := clientConn.Write([]byte(statusLine)); err != nil {
 		return err
 	}
@@ -557,6 +600,10 @@ func (h *Handler) passthroughTunnel(ctx *Context, clientConn net.Conn, targetAdd
 	if err != nil {
 		return
 	}
+	h.passthroughTunnelWithRemote(clientConn, remoteConn)
+}
+
+func (h *Handler) passthroughTunnelWithRemote(clientConn net.Conn, remoteConn net.Conn) {
 	defer remoteConn.Close()
 
 	errChan := make(chan error, 2)
@@ -632,6 +679,33 @@ func (h *Handler) rewriteRequestHost(req *http.Request, host string, port int) {
 		req.URL.Host = net.JoinHostPort(host, strconv.Itoa(port))
 	}
 	req.Host = req.URL.Host
+}
+
+func readLimitedBody(reader io.Reader, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		return io.ReadAll(reader)
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("%w: limit is %d bytes", ErrBodyTooLarge, limit)
+	}
+	return body, nil
+}
+
+func (h *Handler) writeBodyLimitError(clientConn net.Conn, req *http.Request, err error, status int) error {
+	body := []byte(err.Error())
+	proto := "HTTP/1.1"
+	if req != nil && req.Proto != "" {
+		proto = req.Proto
+	}
+	resp := fmt.Sprintf("%s %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+		proto, status, http.StatusText(status), len(body))
+	_, _ = clientConn.Write([]byte(resp))
+	_, _ = clientConn.Write(body)
+	return err
 }
 
 func (h *Handler) writeInterceptorError(clientConn net.Conn, req *http.Request, err error) error {

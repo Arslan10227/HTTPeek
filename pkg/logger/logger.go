@@ -179,10 +179,7 @@ func SetWailsContext(ctx context.Context) {
 
 // GetLogger returns the initialized default logger.
 func GetLogger() *Logger {
-	if defaultLogger == nil {
-		return Init()
-	}
-	return defaultLogger
+	return Init()
 }
 
 // SetLevel updates the minimum logging level threshold.

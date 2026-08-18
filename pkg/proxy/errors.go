@@ -9,4 +9,6 @@ var (
 	ErrBreakpointTimeout = errors.New("breakpoint timed out")
 	// ErrHostFiltered is returned when a host is excluded from capture by the filter.
 	ErrHostFiltered = errors.New("host filtered")
+	// ErrBodyTooLarge is returned when a request or response exceeds the configured capture limit.
+	ErrBodyTooLarge = errors.New("body exceeds configured limit")
 )
