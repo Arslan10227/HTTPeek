@@ -3,6 +3,7 @@ package com.httpeek.app.core.bridge
 import android.os.Build
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.httpeek.app.model.HttpRequestModel
 import com.httpeek.app.model.HttpResponseModel
 import com.httpeek.app.security.RootCAInstaller
@@ -42,6 +43,9 @@ class DesktopBridgeClient(
 
     private val pendingRequests = ConcurrentLinkedQueue<HttpRequestModel>()
     private val pendingResponses = ConcurrentLinkedQueue<HttpResponseModel>()
+
+    var onRulesSyncReceived: ((String) -> Unit)? = null
+    var onRemoteCommandReceived: ((String) -> Unit)? = null
 
     private var heartbeatJob: Job? = null
 
@@ -94,7 +98,24 @@ class DesktopBridgeClient(
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
-                // Desktop messages (e.g. hello_ack, pong, rule sync)
+                try {
+                    val root = gson.fromJson(text, JsonObject::class.java)
+                    val event = root.get("event")?.asString ?: return
+                    val data = root.get("data")
+
+                    when (event) {
+                        "rules:sync" -> {
+                            Log.i(TAG, "Received bi-directional rules sync from Desktop")
+                            onRulesSyncReceived?.invoke(data?.toString() ?: "{}")
+                        }
+                        "remote:vpn_start", "remote:vpn_stop", "remote:traffic_clear" -> {
+                            Log.i(TAG, "Received remote command from Desktop: $event")
+                            onRemoteCommandReceived?.invoke(event)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse incoming WebSocket message: ${e.message}")
+                }
             }
 
             override fun onClosing(ws: WebSocket, code: Int, reason: String) {

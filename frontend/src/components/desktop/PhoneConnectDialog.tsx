@@ -122,6 +122,55 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
     toast.info('📱 Disconnected', 'Mobile companion disconnected.');
   };
 
+  const handleSyncRules = async (deviceId: string) => {
+    try {
+      if ((window as any).go?.main?.App?.SyncRulesToMobile) {
+        await (window as any).go.main.App.SyncRulesToMobile(deviceId);
+        toast.success('⚡ (•̀ᴗ•́)و Rules Synced!', 'Desktop rules pushed to mobile companion.');
+      }
+    } catch (e: any) {
+      toast.error('Rule Sync Error', e?.message || 'Failed to sync rules');
+    }
+  };
+
+  const handleRemoteClearTraffic = async (deviceId: string) => {
+    try {
+      if ((window as any).go?.main?.App?.SendRemoteMobileCommand) {
+        await (window as any).go.main.App.SendRemoteMobileCommand(deviceId, 'remote:traffic_clear', null);
+        toast.success('🗑️ Traffic Cleared', 'Cleared traffic on mobile companion.');
+      }
+    } catch (e: any) {
+      toast.error('Remote Command Error', e?.message);
+    }
+  };
+
+  const handleRemoteStopVpn = async (deviceId: string) => {
+    try {
+      if ((window as any).go?.main?.App?.SendRemoteMobileCommand) {
+        await (window as any).go.main.App.SendRemoteMobileCommand(deviceId, 'remote:vpn_stop', null);
+        toast.info('🛑 VPN Stopped', 'Sent VPN stop instruction to mobile device.');
+      }
+    } catch (e: any) {
+      toast.error('Remote Command Error', e?.message);
+    }
+  };
+
+  const handleEnableUsbReverse = async (serial: string) => {
+    try {
+      if ((window as any).go?.main?.App?.ReverseADBPort) {
+        const res = await (window as any).go.main.App.ReverseADBPort(serial, proxyPort);
+        if (res.success) {
+          toast.success('🔌 USB Reverse Active!', `Android can now connect to 127.0.0.1:${proxyPort}`);
+          setAdbInstallLog((prev) => [...prev, `✅ USB Reverse active: tcp:${proxyPort} -> tcp:${proxyPort}`]);
+        } else {
+          toast.error('USB Reverse Failed', res.error);
+        }
+      }
+    } catch (e: any) {
+      toast.error('ADB Error', e?.message);
+    }
+  };
+
   const certDownloadUrl = `http://${selectedIp || '127.0.0.1'}:${proxyPort}/ssl`;
   const appPairingPayload = `httpeek://connect?host=${selectedIp || '127.0.0.1'}&port=${proxyPort}`;
 
@@ -319,14 +368,45 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDisconnectMobile(dev.deviceId)}
-                      className="p-2 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 cursor-pointer border border-transparent hover:border-red-200"
-                      title="Disconnect Device"
-                    >
-                      <PowerOff className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSyncRules(dev.deviceId)}
+                        className="px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-400 font-bold text-[10px] cursor-pointer border border-blue-200 dark:border-blue-800 flex items-center gap-1"
+                        title="Push Desktop Rewrite & Mock Rules to Mobile"
+                      >
+                        <Zap className="w-3 h-3" />
+                        <span>Sync Rules</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoteClearTraffic(dev.deviceId)}
+                        className="px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-600 dark:text-amber-400 font-bold text-[10px] cursor-pointer border border-amber-200 dark:border-amber-800 flex items-center gap-1"
+                        title="Clear Mobile Traffic List"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Clear List</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoteStopVpn(dev.deviceId)}
+                        className="p-1.5 rounded-xl text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/50 cursor-pointer border border-transparent hover:border-amber-200"
+                        title="Stop Mobile VPN Remotely"
+                      >
+                        <PowerOff className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnectMobile(dev.deviceId)}
+                        className="p-1.5 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 cursor-pointer border border-transparent hover:border-red-200"
+                        title="Disconnect Device"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -374,26 +454,38 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
                         <span>{dev.model || dev.serial}</span>
                         {dev.rooted ? (
                           <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-amber-100 text-amber-700 font-mono">
-                            ⚡ Rooted (System CA Store)
+                            ⚡ Rooted
                           </span>
                         ) : (
                           <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-blue-100 text-blue-700 font-mono">
-                            🔑 Non-Root (User CA Store)
+                            🔑 Non-Root
                           </span>
                         )}
                       </div>
                       <div className="text-[10px] text-gray-500 font-mono">{dev.serial}</div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleInstallViaAdb(dev.serial)}
-                      disabled={isInstallingAdb}
-                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-xs flex items-center gap-1"
-                    >
-                      <Zap className="w-3 h-3" />
-                      <span>{dev.rooted ? 'Install Root CA' : 'Install User CA'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEnableUsbReverse(dev.serial)}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs flex items-center gap-1"
+                        title="Enable 0-Latency USB Reverse Tunnel (127.0.0.1:9099)"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>USB Reverse</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleInstallViaAdb(dev.serial)}
+                        disabled={isInstallingAdb}
+                        className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-xs flex items-center gap-1"
+                      >
+                        <Zap className="w-3 h-3" />
+                        <span>{dev.rooted ? 'Install Root CA' : 'Install User CA'}</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

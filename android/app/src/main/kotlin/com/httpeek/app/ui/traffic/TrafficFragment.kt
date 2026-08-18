@@ -24,7 +24,10 @@ import com.httpeek.app.R
 import com.httpeek.app.core.bridge.DesktopPairingHistoryManager
 import com.httpeek.app.core.bridge.DesktopPairingInfo
 import com.httpeek.app.core.bridge.DesktopPairingManager
+import com.httpeek.app.core.discovery.NsdDiscoveryManager
+import com.httpeek.app.core.har.HarExportManager
 import com.httpeek.app.databinding.FragmentTrafficBinding
+import com.httpeek.app.model.DiscoveredDesktopBeacon
 import com.httpeek.app.model.HttpRequestModel
 import com.httpeek.app.ui.adapter.RequestAdapter
 import com.httpeek.app.ui.common.LottieToast
@@ -43,29 +46,29 @@ class TrafficFragment : Fragment() {
     private val requestMap = mutableMapOf<String, HttpRequestModel>()
     private var filterQuery = ""
 
+    private var isVpnRunning = false
     private var desktopHost: String? = null
     private var desktopPort: Int = 9099
-    private var isVpnRunning = false
+
+    private var discoveryManager: NsdDiscoveryManager? = null
+    private val discoveredDesktops = mutableListOf<DiscoveredDesktopBeacon>()
 
     // Pulse animation for the VPN status dot
     private var pulseAnimator: ObjectAnimator? = null
 
     private val vpnLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
-            isVpnRunning = true
-            updateUIState()
-            LottieToast.showRocket(requireContext(), "VPN interception is now LIVE!")
+            startVpn()
         } else {
-            LottieToast.showError(requireContext(), "VPN permission required for packet capture!")
+            LottieToast.showError(requireContext(), "VPN permission required for packet interception")
         }
     }
 
     private val qrScanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val qrResult = result.data?.getStringExtra(QrScanActivity.EXTRA_QR_RESULT)
-            if (!qrResult.isNullOrEmpty()) {
-                handlePairingInput(qrResult)
+            val qrText = result.data?.getStringExtra(QrScanActivity.EXTRA_QR_RESULT) ?: ""
+            if (qrText.isNotEmpty()) {
+                handlePairingInput(qrText)
             }
         }
     }
@@ -85,6 +88,17 @@ class TrafficFragment : Fragment() {
             desktopPort = lastConnected.port
             updateDesktopStatus(connected = false, label = "${lastConnected.host}:${lastConnected.port}")
         }
+
+        // Start LAN ZeroConf / UDP Discovery
+        discoveryManager = NsdDiscoveryManager(requireContext()) { beacons ->
+            discoveredDesktops.clear()
+            discoveredDesktops.addAll(beacons)
+            if (discoveredDesktops.isNotEmpty() && desktopHost == null) {
+                val best = discoveredDesktops.first()
+                binding.tvDesktopStatus.text = "Nearby: ${best.name}"
+            }
+        }
+        discoveryManager?.startDiscovery()
 
         setupRecyclerView()
         setupListeners()
@@ -137,6 +151,16 @@ class TrafficFragment : Fragment() {
                 updateUIState()
             }
         }
+
+        HttpeekVpnService.onRemoteClearRequested = {
+            activity?.runOnUiThread {
+                allRequests.clear()
+                requestMap.clear()
+                binding.tvPacketCount.text = "Interceptor ready"
+                applyFilter()
+                LottieToast.showWink(requireContext(), "Traffic cleared remotely by Desktop!")
+            }
+        }
     }
 
     private fun setupListeners() {
@@ -154,11 +178,11 @@ class TrafficFragment : Fragment() {
         }
 
         binding.btnClear.setOnClickListener {
-            allRequests.clear()
-            requestMap.clear()
-            binding.tvPacketCount.text = "Interceptor ready"
-            applyFilter()
-            LottieToast.showWink(requireContext(), "Traffic list cleared!")
+            if (allRequests.isEmpty()) {
+                LottieToast.showWink(requireContext(), "Traffic list is already empty")
+                return@setOnClickListener
+            }
+            showClearOrExportDialog()
         }
 
         binding.etSearch.addTextChangedListener(object : TextWatcher {
@@ -171,51 +195,102 @@ class TrafficFragment : Fragment() {
         })
     }
 
+    private fun showClearOrExportDialog() {
+        val options = arrayOf("🗑️ Clear Traffic List", "📦 Export Session as HAR (.har)")
+        AlertDialog.Builder(requireContext())
+            .setTitle("Session Actions (${allRequests.size} requests)")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        allRequests.clear()
+                        requestMap.clear()
+                        binding.tvPacketCount.text = "Interceptor ready"
+                        applyFilter()
+                        LottieToast.showWink(requireContext(), "Traffic list cleared!")
+                    }
+                    1 -> exportTrafficAsHar()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun exportTrafficAsHar() {
+        if (allRequests.isEmpty()) return
+        lifecycleScope.launch {
+            try {
+                val file = HarExportManager.saveHarToFile(requireContext(), allRequests)
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    requireContext(),
+                    "${requireContext().packageName}.fileprovider",
+                    file
+                )
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "HTTPeek Traffic Session (${allRequests.size} items)")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(shareIntent, "Export HAR Session via:"))
+                LottieToast.showSuccess(requireContext(), "HAR exported! Ready to share.")
+            } catch (e: Exception) {
+                LottieToast.showError(requireContext(), "Failed to export HAR: ${e.message}")
+            }
+        }
+    }
+
     private fun showManualPairingDialog() {
         val ctx = requireContext()
         val history = DesktopPairingHistoryManager.getRecentConnections(ctx)
 
         val builder = AlertDialog.Builder(ctx)
-        val view = layoutInflater.inflate(android.R.layout.select_dialog_item, null)
+        val fullOptionsList = mutableListOf<CharSequence>()
 
-        val input = EditText(ctx).apply {
-            hint = "e.g. 192.168.1.100:9099"
-            setText(desktopHost?.let { "$it:$desktopPort" } ?: "")
-            setPadding(40, 30, 40, 30)
+        // 1. Discovered LAN Desktops
+        if (discoveredDesktops.isNotEmpty()) {
+            discoveredDesktops.forEach { beacon ->
+                fullOptionsList.add("✨ ${beacon.name} (${beacon.remoteIp}:${beacon.port}) [Nearby LAN]")
+            }
         }
 
-        if (history.isNotEmpty()) {
-            val fullOptionsList = mutableListOf<CharSequence>("⌨️ Custom Host / Port…", "📱 Standalone Mode (No Desktop)")
-            history.forEach { info ->
-                fullOptionsList.add("💻 ${info.host}:${info.port}")
-            }
-            val fullOptions = fullOptionsList.toTypedArray()
+        // 2. Saved History
+        history.forEach { info ->
+            fullOptionsList.add("💻 ${info.host}:${info.port} [Recent]")
+        }
 
-            builder.setTitle("Desktop Companion Pairing")
-                .setItems(fullOptions) { _, which ->
-                    when (which) {
-                        0 -> showCustomHostInputDialog()
-                        1 -> {
-                            desktopHost = null
-                            DesktopPairingHistoryManager.clearActiveConnection(ctx)
-                            updateDesktopStatus(connected = false, label = "Standalone")
-                            LottieToast.showWink(ctx, "Running in standalone local mode")
-                            if (isVpnRunning) {
-                                stopVpn()
-                                startVpn()
-                            }
-                        }
-                        else -> {
-                            val selected = history[which - 2]
-                            handlePairingInput("${selected.host}:${selected.port}")
-                        }
+        // 3. System Actions
+        val actionOffset = fullOptionsList.size
+        fullOptionsList.add("⌨️ Custom Host / Port…")
+        fullOptionsList.add("📱 Standalone Mode (No Desktop)")
+
+        val fullOptions = fullOptionsList.toTypedArray()
+
+        builder.setTitle("Connect to HTTPeek Desktop")
+            .setItems(fullOptions) { _, which ->
+                val numDiscovered = discoveredDesktops.size
+                val numHistory = history.size
+
+                if (which < numDiscovered) {
+                    val d = discoveredDesktops[which]
+                    handlePairingInput("${d.remoteIp}:${d.port}")
+                } else if (which < numDiscovered + numHistory) {
+                    val h = history[which - numDiscovered]
+                    handlePairingInput("${h.host}:${h.port}")
+                } else if (which == actionOffset) {
+                    showCustomHostInputDialog()
+                } else {
+                    desktopHost = null
+                    DesktopPairingHistoryManager.clearActiveConnection(ctx)
+                    updateDesktopStatus(connected = false, label = "Standalone")
+                    LottieToast.showWink(ctx, "Running in standalone local mode")
+                    if (isVpnRunning) {
+                        stopVpn()
+                        startVpn()
                     }
                 }
-                .setNegativeButton("Cancel", null)
-                .show()
-        } else {
-            showCustomHostInputDialog()
-        }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showCustomHostInputDialog() {

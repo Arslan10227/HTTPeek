@@ -61,6 +61,7 @@ class HttpeekVpnService : VpnService() {
         var onRequestCaptured: ((HttpRequestModel) -> Unit)? = null
         var onResponseCaptured: ((HttpResponseModel) -> Unit)? = null
         var onVpnStateChanged: ((Boolean) -> Unit)? = null
+        var onRemoteClearRequested: (() -> Unit)? = null
 
         fun startIntent(context: Context, desktopHost: String? = null, desktopPort: Int = 9099): Intent {
             return Intent(context, HttpeekVpnService::class.java).apply {
@@ -108,6 +109,19 @@ class HttpeekVpnService : VpnService() {
             // Setup Desktop Companion Bridge if host provided
             if (!desktopHost.isNullOrEmpty()) {
                 desktopBridge = DesktopBridgeClient(desktopHost, desktopPort, applicationContext)
+                desktopBridge?.onRulesSyncReceived = { json ->
+                    rulesEngine.importRulesFromDesktopJson(json)
+                }
+                desktopBridge?.onRemoteCommandReceived = { cmd ->
+                    when (cmd) {
+                        "remote:vpn_stop" -> {
+                            stopVpnCapture()
+                        }
+                        "remote:traffic_clear" -> {
+                            onRemoteClearRequested?.invoke()
+                        }
+                    }
+                }
                 desktopBridge?.connect()
             }
 

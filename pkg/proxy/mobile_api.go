@@ -154,6 +154,33 @@ func (m *MobileAPIManager) BroadcastEvent(eventType string, data any) {
 	}
 }
 
+// SendRemoteCommand sends a targeted or broadcast remote control instruction to mobile devices.
+func (m *MobileAPIManager) SendRemoteCommand(deviceID, command string, data any) error {
+	payload, err := json.Marshal(map[string]any{
+		"event": command,
+		"data":  data,
+	})
+	if err != nil {
+		return err
+	}
+	frame := encodeWSTextFrame(payload)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, dev := range m.devices {
+		if deviceID == "" || dev.DeviceID == deviceID || id == deviceID {
+			if conn, ok := m.wsConns[id]; ok {
+				if _, err := conn.Write(frame); err != nil {
+					_ = conn.Close()
+					delete(m.wsConns, id)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // HandleRequest routes incoming mobile API and WebSocket requests.
 // reader is the bufio.Reader that already consumed the HTTP request line+headers;
 // any bytes it has buffered must be drained first before reading raw WebSocket frames.

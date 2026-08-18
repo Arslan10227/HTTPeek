@@ -43,6 +43,7 @@ type Server struct {
 	certManager  *cert.CertificateManager
 	interceptor  Interceptor
 	handler      *Handler
+	discovery    *DiscoveryBroadcaster
 	listeners    []EventListener
 	listenersMu  sync.RWMutex
 	mobileBridge MobileAPIBridge
@@ -60,6 +61,7 @@ func NewServer(cfg ServerConfig, certMgr *cert.CertificateManager) *Server {
 		certManager: certMgr,
 		ctx:         ctx,
 		cancel:      cancel,
+		discovery:   NewDiscoveryBroadcaster(cfg.Port),
 	}
 	s.handler = NewHandler(s)
 	return s
@@ -91,6 +93,11 @@ func (s *Server) Start() error {
 	s.listener = ln
 	s.running.Store(true)
 
+	if s.discovery != nil {
+		s.discovery.port = s.cfg.Port
+		s.discovery.Start()
+	}
+
 	logger.Info("Proxy", fmt.Sprintf("Proxy server started on %s (SSL: %v, SOCKS5: %v)", addr, s.cfg.EnableSSL, s.cfg.EnableSOCKS5))
 
 	s.wg.Add(1)
@@ -107,6 +114,10 @@ func (s *Server) Stop() error {
 
 	s.running.Store(false)
 	s.cancel()
+
+	if s.discovery != nil {
+		s.discovery.Stop()
+	}
 
 	var err error
 	if s.listener != nil {

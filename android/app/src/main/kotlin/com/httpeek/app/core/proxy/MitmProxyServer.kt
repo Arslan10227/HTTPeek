@@ -79,6 +79,8 @@ class MitmProxyServer(
         private const val TAG = "MitmProxyServer"
     }
 
+    var throttleProfile: com.httpeek.app.model.NetworkThrottleProfile = com.httpeek.app.model.NetworkThrottleProfile.UNLIMITED
+
     private var serverSocket: ServerSocket? = null
     private val isRunning = AtomicBoolean(false)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -312,6 +314,16 @@ class MitmProxyServer(
         val decompressedReqBody = DecompressUtils.decompress(bodyBytes, reqContentEncoding)
         val bodyString = DecompressUtils.decodeToString(decompressedReqBody ?: bodyBytes, contentType)
 
+        // Throttling simulation
+        if (throttleProfile.dropRate > 0f && Math.random() < throttleProfile.dropRate) {
+            output.write("HTTP/1.1 504 Gateway Timeout (Throttled)\r\nContent-Length: 0\r\n\r\n".toByteArray())
+            output.flush()
+            return
+        }
+        if (throttleProfile.latencyMs > 0) {
+            try { Thread.sleep(throttleProfile.latencyMs) } catch (e: Exception) {}
+        }
+
         val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date())
@@ -323,6 +335,9 @@ class MitmProxyServer(
             path = path,
             headers = headers,
             bodyString = bodyString,
+            bodyBase64 = if (bodyBytes != null && bodyBytes.isNotEmpty() && (bodyString == null || bodyBytes.size > 1024)) {
+                android.util.Base64.encodeToString(bodyBytes, android.util.Base64.NO_WRAP)
+            } else null,
             startTime = now,
             hostPort = HostPortModel(host = host, port = port, ssl = isSsl)
         )
@@ -375,6 +390,17 @@ class MitmProxyServer(
             val finalBodyBytes = decompressedBytes ?: rawBodyBytes ?: ByteArray(0)
             val respBodyStr = DecompressUtils.decodeToString(finalBodyBytes, contentTypeHeader)
 
+            val isBinary = contentTypeHeader.contains("image/") ||
+                           contentTypeHeader.contains("video/") ||
+                           contentTypeHeader.contains("audio/") ||
+                           contentTypeHeader.contains("application/pdf") ||
+                           contentTypeHeader.contains("application/octet-stream") ||
+                           contentTypeHeader.contains("application/x-protobuf")
+
+            val respB64 = if (isBinary && finalBodyBytes.isNotEmpty() && finalBodyBytes.size < 5 * 1024 * 1024) {
+                android.util.Base64.encodeToString(finalBodyBytes, android.util.Base64.NO_WRAP)
+            } else null
+
             val respHeaders = mutableMapOf<String, List<String>>()
             upstreamResp.headers.names().forEach { name ->
                 // Strip Content-Encoding and Content-Length since body is sent as clean decompressed data to client
@@ -391,6 +417,7 @@ class MitmProxyServer(
                 statusText = upstreamResp.message.ifEmpty { "OK" },
                 headers = respHeaders,
                 bodyString = respBodyStr,
+                bodyBase64 = respB64,
                 bodySize = finalBodyBytes.size.toLong(),
                 contentType = contentTypeHeader,
                 durationMs = durationMs

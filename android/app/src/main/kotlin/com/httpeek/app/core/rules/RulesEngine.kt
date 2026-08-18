@@ -2,6 +2,7 @@ package com.httpeek.app.core.rules
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.httpeek.app.model.HttpRequestModel
@@ -79,6 +80,58 @@ class RulesEngine(private val context: Context) {
             .putString(KEY_REWRITE_RULES, gson.toJson(rewriteRules))
             .putString(KEY_MOCK_RULES, gson.toJson(mockRules))
             .apply()
+    }
+
+    /**
+     * Imports rules pushed dynamically from Desktop over WebSocket.
+     */
+    fun importRulesFromDesktopJson(json: String) {
+        try {
+            val root = gson.fromJson(json, com.google.gson.JsonObject::class.java)
+
+            // 1. Rewrite Rules
+            root.getAsJsonArray("rewriteRules")?.let { arr ->
+                val type = object : TypeToken<List<RewriteRule>>() {}.type
+                val imported: List<RewriteRule>? = gson.fromJson(arr, type)
+                if (imported != null) {
+                    rewriteRules.clear()
+                    rewriteRules.addAll(imported)
+                }
+            }
+
+            // 2. Mock Rules
+            root.getAsJsonArray("mockRules")?.let { arr ->
+                val type = object : TypeToken<List<MockRule>>() {}.type
+                val imported: List<MockRule>? = gson.fromJson(arr, type)
+                if (imported != null) {
+                    mockRules.clear()
+                    mockRules.addAll(imported)
+                }
+            }
+
+            // 3. Whitelist / Blacklist
+            root.getAsJsonObject("hostFilterConfig")?.let { cfg ->
+                cfg.getAsJsonArray("whitelist")?.let { arr ->
+                    val type = object : TypeToken<List<String>>() {}.type
+                    val list: List<String>? = gson.fromJson(arr, type)
+                    if (list != null) {
+                        whitelist = list.map { HostRule(domain = it, enabled = true) }.toMutableList()
+                    }
+                }
+                cfg.getAsJsonArray("blacklist")?.let { arr ->
+                    val type = object : TypeToken<List<String>>() {}.type
+                    val list: List<String>? = gson.fromJson(arr, type)
+                    if (list != null) {
+                        blacklist = list.map { HostRule(domain = it, enabled = true) }.toMutableList()
+                    }
+                }
+            }
+
+            saveRules()
+            Log.i("RulesEngine", "Successfully synchronized rules from Desktop (${rewriteRules.size} rewrite, ${mockRules.size} mock)")
+        } catch (e: Exception) {
+            Log.e("RulesEngine", "Failed to sync rules from desktop: ${e.message}")
+        }
     }
 
     private fun <T> loadList(key: String, type: java.lang.reflect.Type): MutableList<T> {
