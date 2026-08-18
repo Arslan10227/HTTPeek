@@ -21,6 +21,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.httpeek.app.HttpeekVpnService
 import com.httpeek.app.R
+import com.httpeek.app.core.bridge.DesktopPairingHistoryManager
+import com.httpeek.app.core.bridge.DesktopPairingInfo
 import com.httpeek.app.core.bridge.DesktopPairingManager
 import com.httpeek.app.databinding.FragmentTrafficBinding
 import com.httpeek.app.model.HttpRequestModel
@@ -75,6 +77,15 @@ class TrafficFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // Restore last connected desktop if present
+        val lastConnected = DesktopPairingHistoryManager.getLastConnected(requireContext())
+        if (lastConnected != null) {
+            desktopHost = lastConnected.host
+            desktopPort = lastConnected.port
+            updateDesktopStatus(connected = false, label = "${lastConnected.host}:${lastConnected.port}")
+        }
+
         setupRecyclerView()
         setupListeners()
         setupVpnServiceCallbacks()
@@ -161,14 +172,62 @@ class TrafficFragment : Fragment() {
     }
 
     private fun showManualPairingDialog() {
-        val input = EditText(requireContext()).apply {
+        val ctx = requireContext()
+        val history = DesktopPairingHistoryManager.getRecentConnections(ctx)
+
+        val builder = AlertDialog.Builder(ctx)
+        val view = layoutInflater.inflate(android.R.layout.select_dialog_item, null)
+
+        val input = EditText(ctx).apply {
+            hint = "e.g. 192.168.1.100:9099"
+            setText(desktopHost?.let { "$it:$desktopPort" } ?: "")
+            setPadding(40, 30, 40, 30)
+        }
+
+        if (history.isNotEmpty()) {
+            val fullOptionsList = mutableListOf<CharSequence>("⌨️ Custom Host / Port…", "📱 Standalone Mode (No Desktop)")
+            history.forEach { info ->
+                fullOptionsList.add("💻 ${info.host}:${info.port}")
+            }
+            val fullOptions = fullOptionsList.toTypedArray()
+
+            builder.setTitle("Desktop Companion Pairing")
+                .setItems(fullOptions) { _, which ->
+                    when (which) {
+                        0 -> showCustomHostInputDialog()
+                        1 -> {
+                            desktopHost = null
+                            DesktopPairingHistoryManager.clearActiveConnection(ctx)
+                            updateDesktopStatus(connected = false, label = "Standalone")
+                            LottieToast.showWink(ctx, "Running in standalone local mode")
+                            if (isVpnRunning) {
+                                stopVpn()
+                                startVpn()
+                            }
+                        }
+                        else -> {
+                            val selected = history[which - 2]
+                            handlePairingInput("${selected.host}:${selected.port}")
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            showCustomHostInputDialog()
+        }
+    }
+
+    private fun showCustomHostInputDialog() {
+        val ctx = requireContext()
+        val input = EditText(ctx).apply {
             hint = "e.g. 192.168.1.100:9099"
             setText(desktopHost?.let { "$it:$desktopPort" } ?: "")
         }
 
-        AlertDialog.Builder(requireContext())
+        AlertDialog.Builder(ctx)
             .setTitle("Connect to HTTPeek Desktop")
-            .setMessage("Enter Desktop IP address or scan QR code:")
+            .setMessage("Enter Desktop IP address and Port:")
             .setView(input)
             .setPositiveButton("Connect") { _, _ ->
                 val str = input.text.toString().trim()
@@ -176,35 +235,43 @@ class TrafficFragment : Fragment() {
             }
             .setNeutralButton("Standalone") { _, _ ->
                 desktopHost = null
+                DesktopPairingHistoryManager.clearActiveConnection(ctx)
                 updateDesktopStatus(connected = false, label = "Standalone")
-                LottieToast.showWink(requireContext(), "Running in standalone local mode")
+                LottieToast.showWink(ctx, "Running in standalone local mode")
+                if (isVpnRunning) {
+                    stopVpn()
+                    startVpn()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun handlePairingInput(raw: String) {
+        val ctx = requireContext()
         val info = DesktopPairingManager.parsePairingString(raw)
         if (info != null) {
             desktopHost = info.host
             desktopPort = info.port
             updateDesktopStatus(connected = false, label = "Testing…")
 
+            DesktopPairingHistoryManager.saveConnection(ctx, info)
+
             lifecycleScope.launch {
                 val (ok, latency) = DesktopPairingManager.testConnection(info.host, info.port)
                 if (ok) {
                     updateDesktopStatus(connected = true, label = "${info.host} (${latency}ms)")
-                    LottieToast.showSuccess(requireContext(), "Paired with Desktop! ${latency}ms latency")
+                    LottieToast.showSuccess(ctx, "Paired with Desktop! ${latency}ms latency")
                 } else {
                     updateDesktopStatus(connected = false, label = "${info.host}:${info.port}")
-                    LottieToast.showShield(requireContext(), "Desktop saved — connect when on same network")
+                    LottieToast.showShield(ctx, "Desktop saved — connect when on same Wi-Fi")
                 }
             }
 
             if (isVpnRunning) stopVpn()
             startVpn()
         } else {
-            LottieToast.showError(requireContext(), "Could not parse pairing info: $raw")
+            LottieToast.showError(ctx, "Could not parse pairing info: $raw")
         }
     }
 

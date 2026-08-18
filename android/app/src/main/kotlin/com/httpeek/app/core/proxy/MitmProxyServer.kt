@@ -330,10 +330,11 @@ class MitmProxyServer(
         // 1. Evaluate Mock Rules
         val mockResp = rulesEngine.evaluateMockRule(reqModel)
         if (mockResp != null) {
-            reqModel.response = mockResp
+            val finalMockResp = mockResp.copy(id = requestId)
+            reqModel.response = finalMockResp
             onRequest(reqModel)
-            onResponse(mockResp)
-            writeResponseToClient(output, mockResp, mockResp.bodyString?.toByteArray() ?: ByteArray(0))
+            onResponse(finalMockResp)
+            writeResponseToClient(output, finalMockResp, finalMockResp.bodyString?.toByteArray() ?: ByteArray(0))
             return
         }
 
@@ -385,7 +386,7 @@ class MitmProxyServer(
             }
 
             val respModel = HttpResponseModel(
-                id = "resp_$requestId",
+                id = requestId,
                 statusCode = upstreamResp.code,
                 statusText = upstreamResp.message.ifEmpty { "OK" },
                 headers = respHeaders,
@@ -400,7 +401,7 @@ class MitmProxyServer(
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startTimeMs
             val errModel = HttpResponseModel(
-                id = "resp_$requestId",
+                id = requestId,
                 statusCode = 502,
                 statusText = "Bad Gateway: ${e.message}",
                 durationMs = durationMs

@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DesktopBridgeClient(
     private val host: String,
     private val port: Int = 9099,
+    private val context: android.content.Context? = null,
     private val onConnectionChange: ((Boolean) -> Unit)? = null
 ) {
     companion object {
@@ -53,31 +54,43 @@ class DesktopBridgeClient(
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
-                Log.i(TAG, "Connected to HTTPeek Desktop! Sending device handshake...")
-                isConnected.set(true)
-                onConnectionChange?.invoke(true)
+                try {
+                    Log.i(TAG, "Connected to HTTPeek Desktop! Sending device handshake...")
+                    isConnected.set(true)
+                    onConnectionChange?.invoke(true)
 
-                // 1. Send Handshake
-                val deviceName = "${Build.MANUFACTURER.capitalize()} ${Build.MODEL}".trim()
-                val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
-                val isRooted = RootCAInstaller.isDeviceRooted()
+                    // 1. Send Handshake
+                    val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+                    val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+                    val isRooted = RootCAInstaller.isDeviceRooted()
 
-                val helloPayload = mapOf(
-                    "event" to "mobile:hello",
-                    "data" to mapOf(
-                        "deviceId" to (Build.SERIAL.takeIf { it != "unknown" } ?: Build.MODEL),
-                        "deviceName" to deviceName,
-                        "osVersion" to osVersion,
-                        "isRooted" to isRooted
+                    val safeDeviceId = try {
+                        context?.let { ctx ->
+                            android.provider.Settings.Secure.getString(ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+                        } ?: "${Build.MANUFACTURER}_${Build.MODEL}_${Build.ID}"
+                    } catch (e: Exception) {
+                        "${Build.MANUFACTURER}_${Build.MODEL}"
+                    }
+
+                    val helloPayload = mapOf(
+                        "event" to "mobile:hello",
+                        "data" to mapOf(
+                            "deviceId" to safeDeviceId,
+                            "deviceName" to deviceName,
+                            "osVersion" to osVersion,
+                            "isRooted" to isRooted
+                        )
                     )
-                )
-                ws.send(gson.toJson(helloPayload))
+                    ws.send(gson.toJson(helloPayload))
 
-                // 2. Start 10s Heartbeat
-                startHeartbeat()
+                    // 2. Start 10s Heartbeat
+                    startHeartbeat()
 
-                // 3. Flush pending offline queue
-                flushPendingQueue()
+                    // 3. Flush pending offline queue
+                    flushPendingQueue()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in onOpen handshake", e)
+                }
             }
 
             override fun onMessage(ws: WebSocket, text: String) {

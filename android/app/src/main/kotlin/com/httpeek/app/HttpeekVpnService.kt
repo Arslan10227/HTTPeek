@@ -107,7 +107,7 @@ class HttpeekVpnService : VpnService() {
 
             // Setup Desktop Companion Bridge if host provided
             if (!desktopHost.isNullOrEmpty()) {
-                desktopBridge = DesktopBridgeClient(desktopHost, desktopPort)
+                desktopBridge = DesktopBridgeClient(desktopHost, desktopPort, applicationContext)
                 desktopBridge?.connect()
             }
 
