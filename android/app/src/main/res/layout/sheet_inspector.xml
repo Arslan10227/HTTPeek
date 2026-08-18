@@ -1,82 +1,126 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout 
+<!-- M3 Full-height Inspector Bottom Sheet with ViewPager2 tab panels -->
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@color/surface"
+    android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:background="@color/surface">
 
+    <!-- Drag Handle -->
     <View
         android:layout_width="40dp"
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="12dp"
-        android:background="@color/divider" />
+        android:layout_marginTop="10dp"
+        android:background="@drawable/dot_idle"
+        android:backgroundTint="@color/outline_variant" />
 
+    <!-- Header: Method + Status + Host -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:paddingHorizontal="16dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="8dp">
 
         <TextView
-            android:id="@+id/tvSheetMethod"
+            android:id="@+id/tvInspectorMethod"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/badge_rounded_bg"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
             android:text="GET"
-            android:textColor="@color/primary"
+            android:textColor="@color/method_get_text"
             android:textSize="12sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:background="@drawable/badge_rounded_bg"
+            android:backgroundTint="@color/method_get_bg" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvInspectorHost"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="api.example.com"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvInspectorPath"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="monospace"
+                android:maxLines="1"
+                android:text="/v1/user"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
 
         <TextView
-            android:id="@+id/tvSheetStatus"
+            android:id="@+id/tvInspectorStatus"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/badge_rounded_bg"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
-            android:text="200 OK"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:text="200"
             android:textColor="@color/status_2xx"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:background="@drawable/badge_rounded_bg"
+            android:backgroundTint="@color/method_post_bg" />
 
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <com.google.android.material.button.MaterialButton
+        <!-- Copy cURL -->
+        <ImageButton
             android:id="@+id/btnCopyCurl"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="wrap_content"
+            android:layout_width="36dp"
             android:layout_height="36dp"
-            android:text="Copy cURL"
-            android:textSize="10sp"
-            app:cornerRadius="8dp" />
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_share"
+            android:contentDescription="Copy cURL"
+            app:tint="@color/text_muted" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tvSheetUrl"
+    <!-- Tab Layout -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayoutInspector"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:fontFamily="monospace"
-        android:text="https://api.example.com/v1/resource"
-        android:textColor="@color/text_primary"
-        android:textSize="11sp" />
+        android:layout_height="48dp"
+        android:paddingHorizontal="12dp"
+        app:tabMode="scrollable"
+        app:tabGravity="start"
+        app:tabSelectedTextColor="@color/primary"
+        app:tabTextColor="@color/text_muted"
+        app:tabIndicatorColor="@color/primary"
+        app:tabIndicatorHeight="3dp"
+        app:tabRippleColor="@color/primary_light"
+        style="@style/Widget.Material3.TabLayout" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvInspectorCards"
+    <!-- Divider -->
+    <View
         android:layout_width="match_parent"
-        android:layout_height="320dp"
-        android:layout_marginTop="12dp"
-        android:clipToPadding="false"
-        android:paddingBottom="8dp" />
+        android:layout_height="1dp"
+        android:background="@color/outline_variant" />
+
+    <!-- ViewPager2 for tab content -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPagerInspector"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
 </LinearLayout>

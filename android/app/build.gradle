@@ -71,4 +71,7 @@ dependencies {
 
     // Airbnb Lottie for Animated Faces & Celebrations in Toasts / Notifications
     implementation 'com.airbnb.android:lottie:6.4.0'
+
+    // ZXing for QR Code generation (CA download / pairing)
+    implementation 'com.google.zxing:core:3.5.3'
 }

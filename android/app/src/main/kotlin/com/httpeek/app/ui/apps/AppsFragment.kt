@@ -40,37 +40,33 @@ class AppsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         filterManager = AppFilterManager(requireContext())
 
-        setupModeRadios()
+        setupFilterChips()
         setupRecyclerView()
         setupSearchAndActions()
         loadApps()
     }
 
-    private fun setupModeRadios() {
+    private fun setupFilterChips() {
         when (filterManager.getFilterMode()) {
-            AppFilterMode.ALL_APPS -> binding.radioAllApps.isChecked = true
-            AppFilterMode.ONLY_SELECTED -> binding.radioOnlySelected.isChecked = true
-            AppFilterMode.EXCLUDE_SELECTED -> binding.radioExcludeSelected.isChecked = true
+            AppFilterMode.ALL_APPS -> binding.chipAllApps.isChecked = true
+            AppFilterMode.ONLY_SELECTED -> binding.chipWhitelist.isChecked = true
+            AppFilterMode.EXCLUDE_SELECTED -> binding.chipBlacklist.isChecked = true
         }
 
-        binding.radioAllApps.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                filterManager.setFilterMode(AppFilterMode.ALL_APPS)
-                LottieToast.showSuccess(requireContext(), "🌐 Capture ALL applications globally!")
-            }
-        }
-
-        binding.radioOnlySelected.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                filterManager.setFilterMode(AppFilterMode.ONLY_SELECTED)
-                LottieToast.showShield(requireContext(), "🎯 Intercept ONLY selected apps (Whitelist)!")
-            }
-        }
-
-        binding.radioExcludeSelected.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                filterManager.setFilterMode(AppFilterMode.EXCLUDE_SELECTED)
-                LottieToast.showWink(requireContext(), "🛡️ Exclude selected apps (Blacklist)!")
+        binding.chipGroupFilterMode.setOnCheckedStateChangeListener { _, checkedIds ->
+            when (checkedIds.firstOrNull()) {
+                R.id.chipWhitelist -> {
+                    filterManager.setFilterMode(AppFilterMode.ONLY_SELECTED)
+                    LottieToast.showShield(requireContext(), "🎯 Intercept ONLY selected apps (Whitelist)")
+                }
+                R.id.chipBlacklist -> {
+                    filterManager.setFilterMode(AppFilterMode.EXCLUDE_SELECTED)
+                    LottieToast.showWink(requireContext(), "🛡️ Exclude selected apps from capture (Blacklist)")
+                }
+                else -> {
+                    filterManager.setFilterMode(AppFilterMode.ALL_APPS)
+                    LottieToast.showSuccess(requireContext(), "🌐 Capturing ALL applications globally")
+                }
             }
         }
     }
@@ -79,10 +75,9 @@ class AppsFragment : Fragment() {
         appAdapter = AppAdapter(filteredApps) { item, isChecked ->
             item.isSelected = isChecked
             filterManager.toggleApp(item.packageName, isChecked)
-            updateCountLabel()
         }
 
-        binding.recyclerApps.apply {
+        binding.rvApps.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = appAdapter
         }
@@ -97,53 +92,43 @@ class AppsFragment : Fragment() {
             override fun afterTextChanged(s: Editable?) {}
         })
 
-        binding.btnSelectAllApps.setOnClickListener {
-            filteredApps.forEach {
+        binding.btnSelectAll.setOnClickListener {
+            val selected = mutableSetOf<String>()
+            allApps.forEach {
                 it.isSelected = true
-                filterManager.toggleApp(it.packageName, true)
+                selected.add(it.packageName)
             }
+            filterManager.setSelectedPackages(selected)
             appAdapter.notifyDataSetChanged()
-            updateCountLabel()
-            LottieToast.showRocket(requireContext(), "🎯 Selected all visible applications!")
+            LottieToast.showRocket(requireContext(), "Selected all ${allApps.size} apps")
         }
 
-        binding.btnDeselectAllApps.setOnClickListener {
-            filteredApps.forEach {
-                it.isSelected = false
-                filterManager.toggleApp(it.packageName, false)
-            }
+        binding.btnDeselectAll.setOnClickListener {
+            allApps.forEach { it.isSelected = false }
+            filterManager.setSelectedPackages(emptySet())
             appAdapter.notifyDataSetChanged()
-            updateCountLabel()
-            LottieToast.showWink(requireContext(), "🧹 Cleared selection (0 apps selected)")
+            LottieToast.showWink(requireContext(), "Deselected all apps")
         }
     }
 
     private fun loadApps() {
         lifecycleScope.launch {
-            binding.progressBarApps.visibility = View.VISIBLE
             allApps = filterManager.loadInstalledApps()
-            binding.progressBarApps.visibility = View.GONE
-            filterList(binding.etAppSearch.text.toString())
+            filterList(binding.etAppSearch.text?.toString() ?: "")
         }
     }
 
     private fun filterList(query: String) {
+        val q = query.trim().lowercase()
         filteredApps.clear()
-        if (query.isEmpty()) {
+        if (q.isEmpty()) {
             filteredApps.addAll(allApps)
         } else {
-            val q = query.lowercase()
             filteredApps.addAll(allApps.filter {
                 it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q)
             })
         }
         appAdapter.notifyDataSetChanged()
-        updateCountLabel()
-    }
-
-    private fun updateCountLabel() {
-        val selectedCount = filterManager.getSelectedPackages().size
-        binding.tvAppCount.text = "$selectedCount of ${allApps.size} selected"
     }
 
     override fun onDestroyView() {
@@ -153,7 +138,7 @@ class AppsFragment : Fragment() {
 
     class AppAdapter(
         private val items: List<InstalledAppItem>,
-        private val onCheck: (InstalledAppItem, Boolean) -> Unit
+        private val onCheckChanged: (InstalledAppItem, Boolean) -> Unit
     ) : RecyclerView.Adapter<AppAdapter.ViewHolder>() {
 
         class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
@@ -176,10 +161,15 @@ class AppsFragment : Fragment() {
 
             holder.check.setOnCheckedChangeListener(null)
             holder.check.isChecked = item.isSelected
-            holder.check.setOnCheckedChangeListener { _, isChecked -> onCheck(item, isChecked) }
 
             holder.itemView.setOnClickListener {
-                holder.check.isChecked = !holder.check.isChecked
+                val newChecked = !holder.check.isChecked
+                holder.check.isChecked = newChecked
+                onCheckChanged(item, newChecked)
+            }
+
+            holder.check.setOnCheckedChangeListener { _, isChecked ->
+                onCheckChanged(item, isChecked)
             }
         }
 

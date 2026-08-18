@@ -1,5 +1,7 @@
 package com.httpeek.app.ui.traffic
 
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -10,8 +12,8 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.EditText
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -32,25 +34,28 @@ class TrafficFragment : Fragment() {
 
     private var _binding: FragmentTrafficBinding? = null
     private val binding get() = _binding!!
+
     private lateinit var adapter: RequestAdapter
 
     private val allRequests = mutableListOf<HttpRequestModel>()
     private val requestMap = mutableMapOf<String, HttpRequestModel>()
     private var filterQuery = ""
-    private var selectedMethod = "ALL"
 
     private var desktopHost: String? = null
     private var desktopPort: Int = 9099
     private var isVpnRunning = false
+
+    // Pulse animation for the VPN status dot
+    private var pulseAnimator: ObjectAnimator? = null
 
     private val vpnLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
             isVpnRunning = true
             updateUIState()
-            LottieToast.showRocket(requireContext(), "🚀 Let's Go! HTTPeek VPN Interception is LIVE!")
+            LottieToast.showRocket(requireContext(), "VPN interception is now LIVE!")
         } else {
-            LottieToast.showError(requireContext(), "⚠️ VPN permission required for packet capture!")
+            LottieToast.showError(requireContext(), "VPN permission required for packet capture!")
         }
     }
 
@@ -70,7 +75,6 @@ class TrafficFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         setupRecyclerView()
         setupListeners()
         setupVpnServiceCallbacks()
@@ -88,8 +92,7 @@ class TrafficFragment : Fragment() {
                 applyFilter()
             }
         )
-
-        binding.recyclerViewRequests.apply {
+        binding.rvRequests.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = this@TrafficFragment.adapter
         }
@@ -100,7 +103,8 @@ class TrafficFragment : Fragment() {
             activity?.runOnUiThread {
                 requestMap[req.id] = req
                 allRequests.add(0, req)
-                binding.tvRequestCount.text = "${allRequests.size} reqs"
+                val count = allRequests.size
+                binding.tvPacketCount.text = "$count request${if (count == 1) "" else "s"} captured"
                 applyFilter()
             }
         }
@@ -130,20 +134,20 @@ class TrafficFragment : Fragment() {
         }
 
         binding.btnScanQr.setOnClickListener {
-            val intent = Intent(requireContext(), QrScanActivity::class.java)
-            qrScanLauncher.launch(intent)
+            qrScanLauncher.launch(Intent(requireContext(), QrScanActivity::class.java))
         }
 
-        binding.tvConnectionTarget.setOnClickListener {
+        // Tap desktop chip to open pairing dialog
+        binding.chipDesktopContainer.setOnClickListener {
             showManualPairingDialog()
         }
 
         binding.btnClear.setOnClickListener {
             allRequests.clear()
             requestMap.clear()
-            binding.tvRequestCount.text = "0 reqs"
+            binding.tvPacketCount.text = "Interceptor ready"
             applyFilter()
-            Toast.makeText(requireContext(), "Traffic cleared", Toast.LENGTH_SHORT).show()
+            LottieToast.showWink(requireContext(), "Traffic list cleared!")
         }
 
         binding.etSearch.addTextChangedListener(object : TextWatcher {
@@ -154,17 +158,6 @@ class TrafficFragment : Fragment() {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
-
-        binding.chipGroupMethods.setOnCheckedStateChangeListener { _, checkedIds ->
-            selectedMethod = when (checkedIds.firstOrNull()) {
-                R.id.chipMethodGet -> "GET"
-                R.id.chipMethodPost -> "POST"
-                R.id.chipMethodPut -> "PUT"
-                R.id.chipMethodDelete -> "DELETE"
-                else -> "ALL"
-            }
-            applyFilter()
-        }
     }
 
     private fun showManualPairingDialog() {
@@ -175,17 +168,16 @@ class TrafficFragment : Fragment() {
 
         AlertDialog.Builder(requireContext())
             .setTitle("Connect to HTTPeek Desktop")
-            .setMessage("Enter Desktop IP address and Port:")
+            .setMessage("Enter Desktop IP address or scan QR code:")
             .setView(input)
             .setPositiveButton("Connect") { _, _ ->
                 val str = input.text.toString().trim()
                 if (str.isNotEmpty()) handlePairingInput(str)
             }
-            .setNeutralButton("Standalone Mode") { _, _ ->
+            .setNeutralButton("Standalone") { _, _ ->
                 desktopHost = null
-                binding.tvConnectionTarget.text = "Standalone Mode (127.0.0.1:9099)"
-                binding.chipDesktopStatus.text = "Desktop: Standalone"
-                LottieToast.showWink(requireContext(), "💻 Operating in Standalone Local Mode")
+                updateDesktopStatus(connected = false, label = "Standalone")
+                LottieToast.showWink(requireContext(), "Running in standalone local mode")
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -196,31 +188,29 @@ class TrafficFragment : Fragment() {
         if (info != null) {
             desktopHost = info.host
             desktopPort = info.port
-            binding.tvConnectionTarget.text = "Desktop: ${info.host}:${info.port}"
-            binding.chipDesktopStatus.text = "Desktop: Testing..."
+            updateDesktopStatus(connected = false, label = "Testing…")
 
             lifecycleScope.launch {
                 val (ok, latency) = DesktopPairingManager.testConnection(info.host, info.port)
                 if (ok) {
-                    binding.chipDesktopStatus.text = "Desktop: Connected (${latency}ms)"
-                    binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_connected))
-                    LottieToast.showSuccess(requireContext(), "📱⚡ Paired with Desktop HTTPeek! (${latency}ms)")
+                    updateDesktopStatus(connected = true, label = "${info.host} (${latency}ms)")
+                    LottieToast.showSuccess(requireContext(), "Paired with Desktop! ${latency}ms latency")
                 } else {
-                    binding.chipDesktopStatus.text = "Desktop: Paired (${info.host})"
-                    binding.chipDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_vpn_active))
+                    updateDesktopStatus(connected = false, label = "${info.host}:${info.port}")
+                    LottieToast.showShield(requireContext(), "Desktop saved — connect when on same network")
                 }
             }
 
             if (isVpnRunning) stopVpn()
             startVpn()
         } else {
-            LottieToast.showError(requireContext(), "💥 Could not parse IP or QR Code: $raw")
+            LottieToast.showError(requireContext(), "Could not parse pairing info: $raw")
         }
     }
 
     private fun applyFilter() {
         val filtered = allRequests.filter { req ->
-            val matchesQuery = if (filterQuery.isEmpty()) true else {
+            if (filterQuery.isEmpty()) true else {
                 val q = filterQuery.lowercase()
                 req.url.lowercase().contains(q) ||
                 req.path.lowercase().contains(q) ||
@@ -228,13 +218,14 @@ class TrafficFragment : Fragment() {
                 req.hostPort.host.lowercase().contains(q) ||
                 req.response?.statusCode?.toString()?.contains(q) == true
             }
-
-            val matchesMethod = if (selectedMethod == "ALL") true else req.method.equals(selectedMethod, ignoreCase = true)
-            matchesQuery && matchesMethod
         }
 
         adapter.submitList(filtered)
-        binding.layoutEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
+
+        // Toggle empty state vs list
+        val empty = filtered.isEmpty()
+        binding.emptyState.visibility = if (empty) View.VISIBLE else View.GONE
+        binding.rvRequests.visibility = if (empty) View.GONE else View.VISIBLE
     }
 
     private fun startVpn() {
@@ -245,7 +236,7 @@ class TrafficFragment : Fragment() {
             activity?.startService(HttpeekVpnService.startIntent(requireContext(), desktopHost, desktopPort))
             isVpnRunning = true
             updateUIState()
-            LottieToast.showRocket(requireContext(), "🚀 Let's Go! HTTPeek VPN Interception is LIVE!")
+            LottieToast.showRocket(requireContext(), "VPN interception is now LIVE!")
         }
     }
 
@@ -253,28 +244,72 @@ class TrafficFragment : Fragment() {
         activity?.startService(HttpeekVpnService.stopIntent(requireContext()))
         isVpnRunning = false
         updateUIState()
-        LottieToast.showWink(requireContext(), "🛑 VPN Interception Stopped!")
+        LottieToast.showWink(requireContext(), "VPN interception stopped")
     }
 
     private fun updateUIState() {
         if (_binding == null) return
+
         if (isVpnRunning) {
-            binding.btnToggleProxy.text = "Stop VPN"
+            // VPN Active state
+            binding.btnToggleProxy.text = "Stop"
             binding.btnToggleProxy.backgroundTintList =
-                ContextCompat.getColorStateList(requireContext(), R.color.status_5xx)
-            binding.chipVpnStatus.text = "VPN: Active (9099)"
-            binding.chipVpnStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_vpn_active))
+                ContextCompat.getColorStateList(requireContext(), R.color.error)
+            binding.tvVpnStatus.text = "VPN Active · :9099"
+            binding.tvVpnStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_vpn_active))
+            binding.pulseDot.setBackgroundResource(R.drawable.dot_active)
+            binding.chipVpnContainer.backgroundTintList =
+                ContextCompat.getColorStateList(requireContext(), R.color.status_connected)
+            startPulseAnimation()
         } else {
-            binding.btnToggleProxy.text = "Start VPN"
+            // VPN Off state
+            binding.btnToggleProxy.text = "Start"
             binding.btnToggleProxy.backgroundTintList =
                 ContextCompat.getColorStateList(requireContext(), R.color.primary)
-            binding.chipVpnStatus.text = "VPN: Off"
-            binding.chipVpnStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            binding.tvVpnStatus.text = "VPN Off"
+            binding.tvVpnStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            binding.pulseDot.setBackgroundResource(R.drawable.dot_idle)
+            binding.chipVpnContainer.backgroundTintList = null
+            stopPulseAnimation()
         }
+    }
+
+    private fun updateDesktopStatus(connected: Boolean, label: String) {
+        if (_binding == null) return
+        binding.tvDesktopStatus.text = label
+        if (connected) {
+            binding.tvDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.status_connected))
+            binding.ivDesktopIcon.setColorFilter(ContextCompat.getColor(requireContext(), R.color.status_connected))
+        } else {
+            binding.tvDesktopStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+            binding.ivDesktopIcon.setColorFilter(ContextCompat.getColor(requireContext(), R.color.text_muted))
+        }
+    }
+
+    private fun startPulseAnimation() {
+        pulseAnimator?.cancel()
+        val scaleX = PropertyValuesHolder.ofFloat("scaleX", 1f, 1.4f, 1f)
+        val scaleY = PropertyValuesHolder.ofFloat("scaleY", 1f, 1.4f, 1f)
+        val alpha = PropertyValuesHolder.ofFloat("alpha", 1f, 0.4f, 1f)
+        pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(binding.pulseDot, scaleX, scaleY, alpha).apply {
+            duration = 1200
+            repeatCount = ObjectAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+            start()
+        }
+    }
+
+    private fun stopPulseAnimation() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+        binding.pulseDot.alpha = 1f
+        binding.pulseDot.scaleX = 1f
+        binding.pulseDot.scaleY = 1f
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        stopPulseAnimation()
         _binding = null
     }
 }

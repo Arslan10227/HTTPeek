@@ -106,7 +106,7 @@ func (h *Handler) handleHTTP(ctx *Context, clientConn net.Conn, reader *bufio.Re
 		if isInternal {
 			// Handle Mobile API / WebSocket event stream
 			if h.mobileAPI != nil && (strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ws") || path == "/ca.crt") {
-				if h.mobileAPI.HandleRequest(clientConn, req) {
+				if h.mobileAPI.HandleRequest(clientConn, reader, req) {
 					return
 				}
 			}

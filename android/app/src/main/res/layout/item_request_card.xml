@@ -1,60 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView 
+<!-- M3 Request Card Item — rich layout with method badge, host, path, timing -->
+<com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="12dp"
     android:layout_marginVertical="4dp"
+    app:cardBackgroundColor="@color/surface"
+    app:cardElevation="0dp"
+    app:strokeColor="@color/outline_variant"
+    app:strokeWidth="1dp"
+    app:cardCornerRadius="16dp"
     android:clickable="true"
     android:focusable="true"
-    app:cardBackgroundColor="@color/surface"
-    app:cardCornerRadius="14dp"
-    app:cardElevation="1dp"
-    app:strokeColor="@color/divider"
-    app:strokeWidth="1dp">
+    android:foreground="?attr/selectableItemBackground">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="14dp">
 
-        <!-- Top Line: Method, Status, Host, Time, Favorite -->
+        <!-- Row 1: Method badge + Host + Status -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <!-- Method Badge -->
+            <!-- HTTP Method Badge -->
             <TextView
                 android:id="@+id/tvMethod"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/badge_rounded_bg"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:paddingHorizontal="8dp"
                 android:text="GET"
                 android:textColor="@color/method_get_text"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-
-            <!-- Status Code Badge -->
-            <TextView
-                android:id="@+id/tvStatusCode"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
                 android:background="@drawable/badge_rounded_bg"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
-                android:text="200"
-                android:textColor="@color/status_2xx"
-                android:textSize="10sp"
-                android:textStyle="bold" />
+                android:backgroundTint="@color/method_get_bg" />
 
-            <!-- Hostname -->
+            <!-- Host / Domain -->
             <TextView
                 android:id="@+id/tvHost"
                 android:layout_width="0dp"
@@ -65,94 +54,83 @@
                 android:maxLines="1"
                 android:text="api.example.com"
                 android:textColor="@color/text_primary"
-                android:textSize="12sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
-            <!-- Time -->
+            <!-- Status Code Badge -->
             <TextView
-                android:id="@+id/tvTime"
+                android:id="@+id/tvStatusCode"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:text="14:30:22"
-                android:textColor="@color/text_muted"
-                android:textSize="10sp" />
-
-            <!-- Favorite Star Button -->
-            <ImageButton
-                android:id="@+id/btnFavorite"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:layout_marginStart="4dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/btn_star_big_off"
-                app:tint="@color/text_muted" />
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:paddingHorizontal="8dp"
+                android:text="200"
+                android:textColor="@color/status_2xx"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:background="@drawable/badge_rounded_bg"
+                android:backgroundTint="@color/method_post_bg" />
         </LinearLayout>
 
-        <!-- Middle Line: Path & Query -->
+        <!-- Row 2: Path -->
         <TextView
             android:id="@+id/tvPath"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:ellipsize="end"
             android:fontFamily="monospace"
             android:maxLines="1"
-            android:text="/v1/users?limit=50"
+            android:text="/v1/user/profile"
             android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:textSize="12sp" />
 
-        <!-- Bottom Line: Duration, Size, SSL, Process -->
+        <!-- Row 3: Time + Size + Duration -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
+            <!-- Timestamp -->
+            <TextView
+                android:id="@+id/tvTimestamp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12:34:56"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+
+            <View
+                android:layout_width="4dp"
+                android:layout_height="4dp"
+                android:layout_marginHorizontal="6dp"
+                android:background="@drawable/dot_idle" />
+
+            <!-- Content Type -->
+            <TextView
+                android:id="@+id/tvContentType"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="application/json"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+
+            <!-- Response Duration -->
             <TextView
                 android:id="@+id/tvDuration"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:text="45ms"
-                android:textColor="@color/text_muted"
-                android:textSize="10sp" />
-
-            <TextView
-                android:id="@+id/tvSize"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:fontFamily="monospace"
-                android:text="1.2 KB"
-                android:textColor="@color/text_muted"
-                android:textSize="10sp" />
-
-            <TextView
-                android:id="@+id/tvSsl"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="SSL"
+                android:text="142ms"
                 android:textColor="@color/primary"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/tvProcess"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="Chrome"
-                android:textColor="@color/text_secondary"
-                android:textSize="10sp" />
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
+
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

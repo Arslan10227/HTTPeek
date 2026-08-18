@@ -123,6 +123,13 @@ class DynamicCertAuthority(private val context: Context) {
         }
     }
 
+    fun regenerateRootCA() {
+        val certFile = File(context.filesDir, CA_CERT_FILE)
+        val keyFile = File(context.filesDir, CA_KEY_FILE)
+        leafCertCache.clear()
+        generateRootCA(certFile, keyFile)
+    }
+
     /**
      * Returns raw DER-encoded X.509 Root CA bytes.
      */

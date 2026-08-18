@@ -1,213 +1,358 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- M3 Toolbox Screen — category chips + dynamic content panel -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
-    android:fillViewport="true">
+    android:orientation="vertical"
+    android:background="@color/background">
 
-    <LinearLayout
+    <!-- AppBar -->
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:background="@color/surface"
+        app:elevation="0dp">
 
-        <!-- Title -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Mobile Toolbox"
-            android:textColor="@color/text_primary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="JWT inspection, Cryptography, Encoders, Regex &amp; HTTP Composer"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Toolbox"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <!-- Tool Selection Card -->
-        <com.google.android.material.card.MaterialCardView
+        <!-- Horizontal scrolling category chips -->
+        <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            app:cardBackgroundColor="@color/surface"
-            app:cardCornerRadius="14dp"
-            app:cardElevation="1dp"
-            app:strokeColor="@color/divider"
-            app:strokeWidth="1dp">
+            android:scrollbars="none"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="10dp">
 
-            <LinearLayout
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupTools"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipHttpComposer"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌐 HTTP"
+                    android:checked="true" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipJwt"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔑 JWT" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipCrypto"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔒 Crypto" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipEncoder"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔤 Encoder" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipRegex"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📝 Regex" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipDiff"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="↔ Diff" />
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- Tool selection spinner (fallback / programmatic) -->
+    <Spinner
+        android:id="@+id/spinnerToolboxMode"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- Scrollable tool content -->
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:padding="12dp"
+        android:clipToPadding="false">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Input card -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="14dp">
+                android:layout_marginBottom="10dp"
+                app:cardBackgroundColor="@color/surface"
+                app:cardElevation="0dp"
+                app:cardCornerRadius="16dp"
+                app:strokeColor="@color/outline_variant"
+                app:strokeWidth="1dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Select Utility Tool:"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <Spinner
-                    android:id="@+id/spinnerToolboxMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/search_bg"
-                    android:paddingHorizontal="10dp" />
-
-                <!-- HTTP Method selector (visible only for HTTP Composer) -->
-                <LinearLayout
-                    android:id="@+id/layoutComposerMethod"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:visibility="gone">
-
-                    <Spinner
-                        android:id="@+id/spinnerComposerMethod"
-                        android:layout_width="110dp"
-                        android:layout_height="40dp"
-                        android:background="@drawable/search_bg" />
-
-                    <EditText
-                        android:id="@+id/etComposerUrl"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_marginStart="8dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/search_bg"
-                        android:hint="https://api.example.com/endpoint"
-                        android:paddingHorizontal="10dp"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <!-- Input Text Box -->
-                <TextView
-                    android:id="@+id/tvInputLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="Input Payload / Text:"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <EditText
-                    android:id="@+id/etToolInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="80dp"
-                    android:layout_marginTop="4dp"
-                    android:background="@drawable/search_bg"
-                    android:gravity="top"
-                    android:hint="Paste raw text, JWT token, or payload here..."
-                    android:padding="10dp"
-                    android:textSize="12sp" />
-
-                <!-- Secondary Param Box (Key / IV / Regex Pattern / Headers) -->
-                <TextView
-                    android:id="@+id/tvParamLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Secret Key / Param / Pattern (Optional):"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <EditText
-                    android:id="@+id/etToolParam"
-                    android:layout_width="match_parent"
-                    android:layout_height="40dp"
-                    android:layout_marginTop="4dp"
-                    android:background="@drawable/search_bg"
-                    android:hint="e.g. 16-char AES key, or regex pattern"
-                    android:paddingHorizontal="10dp"
-                    android:textSize="12sp" />
-
-                <!-- Action Buttons -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="horizontal">
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnExecuteTool"
-                        android:layout_width="0dp"
-                        android:layout_height="42dp"
-                        android:layout_weight="1"
-                        android:backgroundTint="@color/primary"
-                        android:text="Execute / Convert"
-                        android:textAllCaps="false"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        app:cornerRadius="10dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnCopyOutput"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                    <TextView
                         android:layout_width="wrap_content"
-                        android:layout_height="42dp"
-                        android:layout_marginStart="8dp"
-                        android:text="Copy Output"
-                        android:textAllCaps="false"
-                        android:textSize="12sp"
-                        app:cornerRadius="10dp"
-                        app:strokeColor="@color/divider" />
+                        android:layout_height="wrap_content"
+                        android:text="Input"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="6dp" />
+
+                    <!-- URL / Input field -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/tilUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        app:boxCornerRadiusBottomEnd="12dp"
+                        app:boxCornerRadiusBottomStart="12dp"
+                        app:boxCornerRadiusTopEnd="12dp"
+                        app:boxCornerRadiusTopStart="12dp"
+                        android:hint="URL / Input">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etUrl"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textUri"
+                            android:textSize="13sp"
+                            android:fontFamily="monospace" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Method selector + body toggle row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <!-- HTTP Method Dropdown -->
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/tilMethod"
+                            android:layout_width="120dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                            app:boxCornerRadiusBottomEnd="12dp"
+                            app:boxCornerRadiusBottomStart="12dp"
+                            app:boxCornerRadiusTopEnd="12dp"
+                            app:boxCornerRadiusTopStart="12dp"
+                            android:hint="Method">
+
+                            <AutoCompleteTextView
+                                android:id="@+id/spinnerMethod"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="none"
+                                android:text="GET"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <!-- Content-Type -->
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/tilContentType"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                            app:boxCornerRadiusBottomEnd="12dp"
+                            app:boxCornerRadiusBottomStart="12dp"
+                            app:boxCornerRadiusTopEnd="12dp"
+                            app:boxCornerRadiusTopStart="12dp"
+                            android:hint="Content-Type">
+
+                            <AutoCompleteTextView
+                                android:id="@+id/spinnerContentType"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="none"
+                                android:text="application/json"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <!-- Headers -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/tilHeaders"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        app:boxCornerRadiusBottomEnd="12dp"
+                        app:boxCornerRadiusBottomStart="12dp"
+                        app:boxCornerRadiusTopEnd="12dp"
+                        app:boxCornerRadiusTopStart="12dp"
+                        android:hint="Headers (one per line: Key: Value)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etHeaders"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="56dp"
+                            android:inputType="textMultiLine"
+                            android:textSize="12sp"
+                            android:fontFamily="monospace" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Body -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/tilBody"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        app:boxCornerRadiusBottomEnd="12dp"
+                        app:boxCornerRadiusBottomStart="12dp"
+                        app:boxCornerRadiusTopEnd="12dp"
+                        app:boxCornerRadiusTopStart="12dp"
+                        android:hint="Request Body (JSON, form-data…)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etBody"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="80dp"
+                            android:inputType="textMultiLine"
+                            android:textSize="12sp"
+                            android:fontFamily="monospace" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
                 </LinearLayout>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+            </com.google.android.material.card.MaterialCardView>
 
-        <!-- Output Result Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:layout_marginBottom="24dp"
-            app:cardBackgroundColor="@color/surface"
-            app:cardCornerRadius="14dp"
-            app:cardElevation="1dp"
-            app:strokeColor="@color/divider"
-            app:strokeWidth="1dp">
-
+            <!-- Action row -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="14dp">
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Result / Decoded Output:"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnExecute"
+                    style="@style/Widget.Material3.Button"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="Send Request"
+                    android:textAllCaps="false"
+                    android:textStyle="bold"
+                    app:cornerRadius="14dp"
+                    app:backgroundTint="@color/primary"
+                    app:icon="@android:drawable/ic_media_play"
+                    app:iconTint="@color/on_primary" />
 
-                <TextView
-                    android:id="@+id/tvToolOutput"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCopyResult"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:padding="0dp"
+                    app:cornerRadius="14dp"
+                    app:strokeColor="@color/outline_variant"
+                    android:contentDescription="Copy"
+                    app:icon="@android:drawable/ic_menu_share"
+                    app:iconTint="@color/text_secondary"
+                    app:iconGravity="textStart"
+                    app:iconSize="20dp" />
+            </LinearLayout>
+
+            <!-- Result card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardResult"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/inverse_surface"
+                app:cardElevation="0dp"
+                app:cardCornerRadius="16dp"
+                app:strokeWidth="0dp"
+                android:visibility="gone">
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/search_bg"
-                    android:fontFamily="monospace"
-                    android:minHeight="140dp"
-                    android:padding="10dp"
-                    android:scrollbars="vertical"
-                    android:text="Results will appear here..."
-                    android:textColor="@color/text_primary"
-                    android:textSize="11sp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
-    </LinearLayout>
-</ScrollView>
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Response"
+                            android:textColor="@color/inverse_on_surface"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvResultStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="200 OK"
+                            android:textColor="@color/inverse_primary"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvResult"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:textColor="@color/inverse_on_surface"
+                        android:textSize="12sp"
+                        android:text="Response body will appear here…" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

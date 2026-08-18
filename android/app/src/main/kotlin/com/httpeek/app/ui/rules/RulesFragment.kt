@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.tabs.TabLayout
 import com.httpeek.app.R
 import com.httpeek.app.core.rules.HostRule
 import com.httpeek.app.core.rules.MockRule
@@ -68,20 +69,24 @@ class RulesFragment : Fragment() {
             }
         )
 
-        binding.recyclerRules.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerRules.adapter = adapter
+        binding.rvRules.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvRules.adapter = adapter
     }
 
     private fun setupListeners() {
-        binding.chipGroupRulesCategory.setOnCheckedStateChangeListener { _, checkedIds ->
-            currentTab = when (checkedIds.firstOrNull()) {
-                R.id.chipTabMock -> RuleTab.MOCK
-                R.id.chipTabWhitelist -> RuleTab.WHITELIST
-                R.id.chipTabBlacklist -> RuleTab.BLACKLIST
-                else -> RuleTab.REWRITE
+        binding.tabLayoutRules.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                currentTab = when (tab?.position) {
+                    1 -> RuleTab.MOCK
+                    2 -> RuleTab.WHITELIST
+                    3 -> RuleTab.BLACKLIST
+                    else -> RuleTab.REWRITE
+                }
+                loadTabRules()
             }
-            loadTabRules()
-        }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
 
         binding.btnAddRule.setOnClickListener {
             showAddRuleDialog()
@@ -99,9 +104,9 @@ class RulesFragment : Fragment() {
                         GenericRuleItem(
                             id = r.id,
                             type = "REWRITE",
-                            name = r.name.ifEmpty { "URL Rewrite" },
-                            pattern = "Pattern: ${r.urlPattern}",
-                            details = "Action: ${r.redirectUrl ?: "Modify Request"}",
+                            name = r.name.ifEmpty { r.urlPattern },
+                            pattern = r.urlPattern,
+                            details = "Redirect: ${r.redirectUrl ?: r.replaceBody ?: "Pass"}",
                             enabled = r.enabled,
                             rawObject = r
                         )
@@ -109,46 +114,46 @@ class RulesFragment : Fragment() {
                 }
             }
             RuleTab.MOCK -> {
-                rulesEngine.mockRules.forEach { m ->
+                rulesEngine.mockRules.forEach { r ->
                     displayRules.add(
                         GenericRuleItem(
-                            id = m.id,
-                            type = "MOCK",
-                            name = m.name.ifEmpty { "Mock ${m.responseStatus}" },
-                            pattern = "Pattern: ${m.urlPattern}",
-                            details = "Status ${m.responseStatus}: ${m.responseBody.take(40)}...",
-                            enabled = m.enabled,
-                            rawObject = m
+                            id = r.id,
+                            type = "MOCK (${r.responseStatus})",
+                            name = r.name.ifEmpty { r.urlPattern },
+                            pattern = r.urlPattern,
+                            details = "Body: ${r.responseBody.take(40)}...",
+                            enabled = r.enabled,
+                            rawObject = r
                         )
                     )
                 }
             }
             RuleTab.WHITELIST -> {
-                rulesEngine.whitelist.forEach { w ->
+                rulesEngine.whitelist.forEach { r ->
                     displayRules.add(
                         GenericRuleItem(
-                            id = w.id,
+                            id = r.id,
                             type = "WHITELIST",
-                            name = w.domain,
-                            pattern = "Domain: ${w.domain}",
-                            details = if (w.isRegex) "Regex Match" else "Wildcard / Subdomain match",
-                            enabled = w.enabled,
-                            rawObject = w
+                            name = r.domain,
+                            pattern = r.domain,
+                            details = "Capture only this domain",
+                            enabled = r.enabled,
+                            rawObject = r
                         )
                     )
                 }
             }
             RuleTab.BLACKLIST -> {
-                rulesEngine.blacklist.forEach { b ->
+                rulesEngine.blacklist.forEach { r ->
                     displayRules.add(
                         GenericRuleItem(
-                            id = b.id,
+                            id = r.id,
                             type = "BLACKLIST",
-                            name = b.domain,
-                            pattern = "Domain: ${b.domain}",
-                            details = if (b.isRegex) "Regex Bypass" else "Wildcard Bypass",
-                            enabled = b.enabled,
-                            rawObject = b
+                            name = r.domain,
+                            pattern = r.domain,
+                            details = "Bypass capture for this domain",
+                            enabled = r.enabled,
+                            rawObject = r
                         )
                     )
                 }
@@ -156,114 +161,131 @@ class RulesFragment : Fragment() {
         }
 
         adapter.notifyDataSetChanged()
-        binding.layoutEmptyRules.visibility = if (displayRules.isEmpty()) View.VISIBLE else View.GONE
+        val empty = displayRules.isEmpty()
+        binding.rulesEmptyState.visibility = if (empty) View.VISIBLE else View.GONE
+        binding.rvRules.visibility = if (empty) View.GONE else View.VISIBLE
     }
 
     private fun updateRuleEnabled(item: GenericRuleItem, enabled: Boolean) {
-        when (currentTab) {
-            RuleTab.REWRITE -> {
-                val idx = rulesEngine.rewriteRules.indexOfFirst { it.id == item.id }
-                if (idx >= 0) {
-                    val r = rulesEngine.rewriteRules[idx]
-                    rulesEngine.rewriteRules[idx] = r.copy(enabled = enabled)
-                }
+        when (val obj = item.rawObject) {
+            is RewriteRule -> {
+                val idx = rulesEngine.rewriteRules.indexOfFirst { it.id == obj.id }
+                if (idx >= 0) rulesEngine.rewriteRules[idx] = obj.copy(enabled = enabled)
             }
-            RuleTab.MOCK -> {
-                val idx = rulesEngine.mockRules.indexOfFirst { it.id == item.id }
-                if (idx >= 0) {
-                    val m = rulesEngine.mockRules[idx]
-                    rulesEngine.mockRules[idx] = m.copy(enabled = enabled)
-                }
+            is MockRule -> {
+                val idx = rulesEngine.mockRules.indexOfFirst { it.id == obj.id }
+                if (idx >= 0) rulesEngine.mockRules[idx] = obj.copy(enabled = enabled)
             }
-            RuleTab.WHITELIST -> {
-                val idx = rulesEngine.whitelist.indexOfFirst { it.id == item.id }
-                if (idx >= 0) {
-                    val w = rulesEngine.whitelist[idx]
-                    rulesEngine.whitelist[idx] = w.copy(enabled = enabled)
-                }
-            }
-            RuleTab.BLACKLIST -> {
-                val idx = rulesEngine.blacklist.indexOfFirst { it.id == item.id }
-                if (idx >= 0) {
-                    val b = rulesEngine.blacklist[idx]
-                    rulesEngine.blacklist[idx] = b.copy(enabled = enabled)
-                }
+            is HostRule -> {
+                val wIdx = rulesEngine.whitelist.indexOfFirst { it.id == obj.id }
+                if (wIdx >= 0) rulesEngine.whitelist[wIdx] = obj.copy(enabled = enabled)
+                val bIdx = rulesEngine.blacklist.indexOfFirst { it.id == obj.id }
+                if (bIdx >= 0) rulesEngine.blacklist[bIdx] = obj.copy(enabled = enabled)
             }
         }
         rulesEngine.saveRules()
     }
 
     private fun deleteRule(item: GenericRuleItem) {
-        when (currentTab) {
-            RuleTab.REWRITE -> rulesEngine.rewriteRules.removeAll { it.id == item.id }
-            RuleTab.MOCK -> rulesEngine.mockRules.removeAll { it.id == item.id }
-            RuleTab.WHITELIST -> rulesEngine.whitelist.removeAll { it.id == item.id }
-            RuleTab.BLACKLIST -> rulesEngine.blacklist.removeAll { it.id == item.id }
+        when (item.rawObject) {
+            is RewriteRule -> rulesEngine.rewriteRules.removeAll { it.id == item.id }
+            is MockRule -> rulesEngine.mockRules.removeAll { it.id == item.id }
+            is HostRule -> {
+                rulesEngine.whitelist.removeAll { it.id == item.id }
+                rulesEngine.blacklist.removeAll { it.id == item.id }
+            }
         }
         rulesEngine.saveRules()
         loadTabRules()
-        LottieToast.showWink(requireContext(), "🗑️ Rule deleted successfully!")
+        LottieToast.showWink(requireContext(), "🗑️ Rule '${item.name}' deleted")
     }
 
     private fun showAddRuleDialog() {
-        val ctx = requireContext()
-        val layout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 20, 40, 20)
+        val view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_rules_manager, null)
+        val etPattern = view.findViewById<EditText>(R.id.etRulePattern)
+        val etAction = view.findViewById<EditText>(R.id.etRuleAction)
+        val btnAdd = view.findViewById<Button>(R.id.btnAddRule)
+        val tvActiveList = view.findViewById<TextView>(R.id.tvActiveRulesList)
+        val spinnerType = view.findViewById<Spinner>(R.id.spinnerRuleType)
+
+        btnAdd.visibility = View.GONE
+        tvActiveList.visibility = View.GONE
+        spinnerType.visibility = View.GONE
+
+        when (currentTab) {
+            RuleTab.REWRITE -> {
+                etPattern.hint = "URL Pattern (e.g. *.api.com/v1/*)"
+                etAction.hint = "Redirect Target URL (e.g. http://10.0.0.2:8080)"
+            }
+            RuleTab.MOCK -> {
+                etPattern.hint = "URL Pattern (e.g. *.api.com/user)"
+                etAction.hint = "Mock Response Body JSON (e.g. {\"status\":\"ok\"})"
+            }
+            RuleTab.WHITELIST -> {
+                etPattern.hint = "Domain Pattern (e.g. *.example.com)"
+                etAction.visibility = View.GONE
+            }
+            RuleTab.BLACKLIST -> {
+                etPattern.hint = "Domain Pattern (e.g. *.adserver.com)"
+                etAction.visibility = View.GONE
+            }
         }
 
-        val etName = EditText(ctx).apply { hint = "Rule Name (e.g. Test Mock / Redirect API)" }
-        val etPattern = EditText(ctx).apply { hint = "URL or Domain Pattern (e.g. *.example.com/api/*)" }
-        val etAction = EditText(ctx).apply { hint = "Action (Redirect URL or Mock JSON body)" }
-
-        layout.addView(etName)
-        layout.addView(etPattern)
-        layout.addView(etAction)
-
-        AlertDialog.Builder(ctx)
+        AlertDialog.Builder(requireContext())
             .setTitle("Add ${currentTab.name} Rule")
-            .setView(layout)
+            .setView(view)
             .setPositiveButton("Create") { _, _ ->
-                val name = etName.text.toString().trim()
                 val pattern = etPattern.text.toString().trim()
                 val action = etAction.text.toString().trim()
 
-                if (pattern.isEmpty()) {
-                    LottieToast.showError(ctx, "💥 Pattern cannot be empty!")
-                    return@setPositiveButton
+                if (pattern.isNotEmpty()) {
+                    when (currentTab) {
+                        RuleTab.REWRITE -> {
+                            rulesEngine.rewriteRules.add(
+                                RewriteRule(
+                                    id = UUID.randomUUID().toString(),
+                                    name = pattern,
+                                    urlPattern = pattern,
+                                    redirectUrl = action.ifEmpty { null },
+                                    enabled = true
+                                )
+                            )
+                        }
+                        RuleTab.MOCK -> {
+                            rulesEngine.mockRules.add(
+                                MockRule(
+                                    id = UUID.randomUUID().toString(),
+                                    name = pattern,
+                                    urlPattern = pattern,
+                                    responseStatus = 200,
+                                    responseBody = action.ifEmpty { "{\"status\": \"mocked\"}" },
+                                    enabled = true
+                                )
+                            )
+                        }
+                        RuleTab.WHITELIST -> {
+                            rulesEngine.whitelist.add(
+                                HostRule(
+                                    id = UUID.randomUUID().toString(),
+                                    domain = pattern,
+                                    enabled = true
+                                )
+                            )
+                        }
+                        RuleTab.BLACKLIST -> {
+                            rulesEngine.blacklist.add(
+                                HostRule(
+                                    id = UUID.randomUUID().toString(),
+                                    domain = pattern,
+                                    enabled = true
+                                )
+                            )
+                        }
+                    }
+                    rulesEngine.saveRules()
+                    loadTabRules()
+                    LottieToast.showRocket(requireContext(), "🚀 Rule '$pattern' active!")
                 }
-
-                val id = UUID.randomUUID().toString()
-                when (currentTab) {
-                    RuleTab.REWRITE -> {
-                        rulesEngine.rewriteRules.add(
-                            0,
-                            RewriteRule(id = id, name = name, urlPattern = pattern, redirectUrl = action.ifEmpty { null })
-                        )
-                    }
-                    RuleTab.MOCK -> {
-                        rulesEngine.mockRules.add(
-                            0,
-                            MockRule(id = id, name = name, urlPattern = pattern, responseBody = action.ifEmpty { "{\"status\":\"ok\"}" })
-                        )
-                    }
-                    RuleTab.WHITELIST -> {
-                        rulesEngine.whitelist.add(
-                            0,
-                            HostRule(id = id, domain = pattern, isRegex = pattern.startsWith("/") && pattern.endsWith("/"))
-                        )
-                    }
-                    RuleTab.BLACKLIST -> {
-                        rulesEngine.blacklist.add(
-                            0,
-                            HostRule(id = id, domain = pattern, isRegex = pattern.startsWith("/") && pattern.endsWith("/"))
-                        )
-                    }
-                }
-
-                rulesEngine.saveRules()
-                loadTabRules()
-                LottieToast.showRocket(ctx, "🪄 Rule Activated! Magic in progress!")
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -281,12 +303,12 @@ class RulesFragment : Fragment() {
     ) : RecyclerView.Adapter<RulesAdapter.ViewHolder>() {
 
         class ViewHolder(v: View) : RecyclerView.ViewHolder(v) {
-            val type: TextView = v.findViewById(R.id.tvRuleTypeBadge)
-            val name: TextView = v.findViewById(R.id.tvRuleName)
-            val pattern: TextView = v.findViewById(R.id.tvRulePattern)
-            val details: TextView = v.findViewById(R.id.tvRuleDetails)
-            val switch: SwitchMaterial = v.findViewById(R.id.switchRuleEnabled)
-            val btnDel: View = v.findViewById(R.id.btnDeleteRule)
+            val tvType: TextView = v.findViewById(R.id.tvRuleTypeBadge)
+            val tvName: TextView = v.findViewById(R.id.tvRuleName)
+            val tvPattern: TextView = v.findViewById(R.id.tvRulePattern)
+            val tvDetails: TextView = v.findViewById(R.id.tvRuleDetails)
+            val switchEnabled: SwitchMaterial = v.findViewById(R.id.switchRuleEnabled)
+            val btnDelete: ImageButton = v.findViewById(R.id.btnDeleteRule)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -296,16 +318,20 @@ class RulesFragment : Fragment() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = items[position]
-            holder.type.text = item.type
-            holder.name.text = item.name
-            holder.pattern.text = item.pattern
-            holder.details.text = item.details
+            holder.tvType.text = item.type
+            holder.tvName.text = item.name
+            holder.tvPattern.text = item.pattern
+            holder.tvDetails.text = item.details
 
-            holder.switch.setOnCheckedChangeListener(null)
-            holder.switch.isChecked = item.enabled
-            holder.switch.setOnCheckedChangeListener { _, isChecked -> onToggle(item, isChecked) }
+            holder.switchEnabled.setOnCheckedChangeListener(null)
+            holder.switchEnabled.isChecked = item.enabled
+            holder.switchEnabled.setOnCheckedChangeListener { _, isChecked ->
+                onToggle(item, isChecked)
+            }
 
-            holder.btnDel.setOnClickListener { onDelete(item) }
+            holder.btnDelete.setOnClickListener {
+                onDelete(item)
+            }
         }
 
         override fun getItemCount(): Int = items.size

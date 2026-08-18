@@ -4,36 +4,53 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.util.Base64
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.httpeek.app.R
 import com.httpeek.app.databinding.FragmentToolboxBinding
 import com.httpeek.app.ui.common.LottieToast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
 class ToolboxFragment : Fragment() {
 
     private var _binding: FragmentToolboxBinding? = null
     private val binding get() = _binding!!
 
-    private val tools = listOf(
-        "1. JWT Token Inspector & Verification",
-        "2. MD5 / SHA-1 / SHA-256 Hash Generator",
-        "3. AES-128/256 Encryption (CBC / ECB)",
-        "4. AES-128/256 Decryption (CBC / ECB)",
-        "5. URL Encoder & Decoder",
-        "6. Base64 & Hex Encoder / Decoder",
-        "7. Timestamp (Epoch <-> Date) Converter",
-        "8. Regex Pattern Matcher & Tester",
-        "9. Certificate Subject Hash Calculator (<hash>.0)",
-        "10. HTTP Request Composer & Client"
-    )
+    enum class ToolMode { HTTP_COMPOSER, JWT, CRYPTO, ENCODER, REGEX, DIFF }
+    private var currentMode = ToolMode.HTTP_COMPOSER
+
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
 
     private val methods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+    private val contentTypes = listOf(
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "text/plain",
+        "text/html",
+        "application/xml"
+    )
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentToolboxBinding.inflate(inflater, container, false)
@@ -42,190 +59,323 @@ class ToolboxFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
-        setupToolSpinner()
+        setupDropdowns()
+        setupChips()
         setupListeners()
+        updateUIMode(ToolMode.HTTP_COMPOSER)
     }
 
-    private fun setupToolSpinner() {
-        val toolAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, tools)
-        binding.spinnerToolboxMode.adapter = toolAdapter
+    private fun setupDropdowns() {
+        val methodAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, methods)
+        binding.spinnerMethod.setAdapter(methodAdapter)
 
-        val methodAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, methods)
-        binding.spinnerComposerMethod.adapter = methodAdapter
+        val ctAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, contentTypes)
+        binding.spinnerContentType.setAdapter(ctAdapter)
+    }
 
-        binding.spinnerToolboxMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                updateFieldsForTool(position)
+    private fun setupChips() {
+        binding.chipGroupTools.setOnCheckedStateChangeListener { _, checkedIds ->
+            val mode = when (checkedIds.firstOrNull()) {
+                R.id.chipJwt -> ToolMode.JWT
+                R.id.chipCrypto -> ToolMode.CRYPTO
+                R.id.chipEncoder -> ToolMode.ENCODER
+                R.id.chipRegex -> ToolMode.REGEX
+                R.id.chipDiff -> ToolMode.DIFF
+                else -> ToolMode.HTTP_COMPOSER
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            updateUIMode(mode)
         }
     }
 
-    private fun updateFieldsForTool(pos: Int) {
-        binding.layoutComposerMethod.visibility = if (pos == 9) View.VISIBLE else View.GONE
+    private fun updateUIMode(mode: ToolMode) {
+        currentMode = mode
+        binding.cardResult.visibility = View.GONE
 
-        when (pos) {
-            0 -> { // JWT
-                binding.tvInputLabel.text = "JWT Token (header.payload.signature):"
-                binding.etToolInput.hint = "Paste JWT token string (e.g. eyJhbGciOi...)"
-                binding.tvParamLabel.visibility = View.GONE
-                binding.etToolParam.visibility = View.GONE
+        when (mode) {
+            ToolMode.HTTP_COMPOSER -> {
+                binding.tilUrl.hint = "URL (https://api.example.com/data)"
+                binding.tilUrl.visibility = View.VISIBLE
+                binding.tilMethod.visibility = View.VISIBLE
+                binding.tilContentType.visibility = View.VISIBLE
+                binding.tilHeaders.visibility = View.VISIBLE
+                binding.tilHeaders.hint = "Headers (Key: Value)"
+                binding.tilBody.visibility = View.VISIBLE
+                binding.tilBody.hint = "Request Body (JSON, form...)"
+                binding.btnExecute.text = "Send Request"
             }
-            1 -> { // Hashes
-                binding.tvInputLabel.text = "Input String to Hash:"
-                binding.etToolInput.hint = "Enter text to compute MD5, SHA-1, SHA-256, SHA-512..."
-                binding.tvParamLabel.visibility = View.GONE
-                binding.etToolParam.visibility = View.GONE
+            ToolMode.JWT -> {
+                binding.tilUrl.hint = "Paste JWT Token (header.payload.sig)"
+                binding.tilUrl.visibility = View.VISIBLE
+                binding.tilMethod.visibility = View.GONE
+                binding.tilContentType.visibility = View.GONE
+                binding.tilHeaders.visibility = View.GONE
+                binding.tilBody.visibility = View.GONE
+                binding.btnExecute.text = "Inspect JWT"
             }
-            2, 3 -> { // AES Encrypt / Decrypt
-                binding.tvInputLabel.text = if (pos == 2) "Plaintext Data:" else "Base64 Ciphertext:"
-                binding.etToolInput.hint = "Enter data..."
-                binding.tvParamLabel.visibility = View.VISIBLE
-                binding.tvParamLabel.text = "AES Key & IV (format: 'Key' or 'Key,IV'):"
-                binding.etToolParam.visibility = View.VISIBLE
-                binding.etToolParam.hint = "e.g. 16/32-byte secret key"
+            ToolMode.CRYPTO -> {
+                binding.tilUrl.hint = "Plaintext / Ciphertext"
+                binding.tilUrl.visibility = View.VISIBLE
+                binding.tilMethod.visibility = View.GONE
+                binding.tilContentType.visibility = View.GONE
+                binding.tilHeaders.visibility = View.VISIBLE
+                binding.tilHeaders.hint = "Secret Key (16 or 32 chars)"
+                binding.tilBody.visibility = View.GONE
+                binding.btnExecute.text = "Encrypt / Decrypt AES"
             }
-            4 -> { // URL Encode/Decode
-                binding.tvInputLabel.text = "URL String:"
-                binding.etToolInput.hint = "Enter text or URL to encode / decode..."
-                binding.tvParamLabel.visibility = View.GONE
-                binding.etToolParam.visibility = View.GONE
+            ToolMode.ENCODER -> {
+                binding.tilUrl.hint = "Input Text or Base64 / URL-Encoded string"
+                binding.tilUrl.visibility = View.VISIBLE
+                binding.tilMethod.visibility = View.GONE
+                binding.tilContentType.visibility = View.GONE
+                binding.tilHeaders.visibility = View.GONE
+                binding.tilBody.visibility = View.GONE
+                binding.btnExecute.text = "Encode & Decode"
             }
-            5 -> { // Base64 & Hex
-                binding.tvInputLabel.text = "Text, Base64, or Hex Data:"
-                binding.etToolInput.hint = "Enter raw text, Base64, or Hex string..."
-                binding.tvParamLabel.visibility = View.GONE
-                binding.etToolParam.visibility = View.GONE
+            ToolMode.REGEX -> {
+                binding.tilUrl.hint = "Regex Pattern (e.g. [a-z0-9]+@[a-z]+\\.[a-z]{2,})"
+                binding.tilUrl.visibility = View.VISIBLE
+                binding.tilMethod.visibility = View.GONE
+                binding.tilContentType.visibility = View.GONE
+                binding.tilHeaders.visibility = View.GONE
+                binding.tilBody.visibility = View.VISIBLE
+                binding.tilBody.hint = "Test String"
+                binding.btnExecute.text = "Test Pattern"
             }
-            6 -> { // Timestamp
-                binding.tvInputLabel.text = "Timestamp (Epoch ms/s) or Date string:"
-                binding.etToolInput.hint = "e.g. 1723938400 or 2026-08-17 14:30:00"
-                binding.tvParamLabel.visibility = View.GONE
-                binding.etToolParam.visibility = View.GONE
-            }
-            7 -> { // Regex
-                binding.tvInputLabel.text = "Target Text to Match:"
-                binding.etToolInput.hint = "Enter text sample to test regex against..."
-                binding.tvParamLabel.visibility = View.VISIBLE
-                binding.tvParamLabel.text = "Regular Expression Pattern:"
-                binding.etToolParam.visibility = View.VISIBLE
-                binding.etToolParam.hint = "e.g. ([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\\.[a-zA-Z0-9._-]+)"
-            }
-            8 -> { // Cert Hash
-                binding.tvInputLabel.text = "Certificate PEM Text:"
-                binding.etToolInput.hint = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
-                binding.tvParamLabel.visibility = View.GONE
-                binding.etToolParam.visibility = View.GONE
-            }
-            9 -> { // HTTP Composer
-                binding.tvInputLabel.text = "Request Body (JSON / Form / Raw Payload):"
-                binding.etToolInput.hint = "{\"name\": \"test\", \"value\": 123}"
-                binding.tvParamLabel.visibility = View.VISIBLE
-                binding.tvParamLabel.text = "Custom Request Headers (one per line, e.g. Authorization: Bearer ...):"
-                binding.etToolParam.visibility = View.VISIBLE
-                binding.etToolParam.hint = "Content-Type: application/json\nAuthorization: Bearer <token>"
+            ToolMode.DIFF -> {
+                binding.tilUrl.hint = "Text A (Original)"
+                binding.tilUrl.visibility = View.VISIBLE
+                binding.tilMethod.visibility = View.GONE
+                binding.tilContentType.visibility = View.GONE
+                binding.tilHeaders.visibility = View.GONE
+                binding.tilBody.visibility = View.VISIBLE
+                binding.tilBody.hint = "Text B (Modified)"
+                binding.btnExecute.text = "Compare Diff"
             }
         }
     }
 
     private fun setupListeners() {
-        binding.btnExecuteTool.setOnClickListener {
+        binding.btnExecute.setOnClickListener {
             executeCurrentTool()
         }
 
-        binding.btnCopyOutput.setOnClickListener {
-            val text = binding.tvToolOutput.text.toString()
-            if (text.isNotBlank()) {
+        binding.btnCopyResult.setOnClickListener {
+            val text = binding.tvResult.text.toString()
+            if (text.isNotEmpty()) {
                 val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Tool Output", text))
-                LottieToast.showSuccess(requireContext(), "📋 Output copied to clipboard!")
+                clipboard.setPrimaryClip(ClipData.newPlainText("Result", text))
+                LottieToast.showSuccess(requireContext(), "Copied to clipboard!")
             }
         }
     }
 
     private fun executeCurrentTool() {
-        val pos = binding.spinnerToolboxMode.selectedItemPosition
-        val input = binding.etToolInput.text.toString()
-        val param = binding.etToolParam.text.toString()
-        LottieToast.showRocket(requireContext(), "⚡ Executing tool...")
+        when (currentMode) {
+            ToolMode.HTTP_COMPOSER -> executeHttpComposer()
+            ToolMode.JWT -> executeJwt()
+            ToolMode.CRYPTO -> executeCrypto()
+            ToolMode.ENCODER -> executeEncoder()
+            ToolMode.REGEX -> executeRegex()
+            ToolMode.DIFF -> executeDiff()
+        }
+    }
 
-        when (pos) {
-            0 -> { // JWT
-                val (header, payload) = ToolboxUtils.decodeJwt(input)
-                binding.tvToolOutput.text = "=== HEADER ===\n$header\n\n=== PAYLOAD ===\n$payload"
-            }
-            1 -> { // Hashes
-                val md5 = ToolboxUtils.hashString(input, "MD5")
-                val sha1 = ToolboxUtils.hashString(input, "SHA-1")
-                val sha256 = ToolboxUtils.hashString(input, "SHA-256")
-                val sha512 = ToolboxUtils.hashString(input, "SHA-512")
-                binding.tvToolOutput.text = "• MD5: $md5\n• SHA-1: $sha1\n• SHA-256: $sha256\n• SHA-512: $sha512"
-            }
-            2 -> { // AES Encrypt
-                val parts = param.split(",")
-                val key = parts.getOrNull(0) ?: "1234567890123456"
-                val iv = parts.getOrNull(1) ?: ""
-                val encrypted = ToolboxUtils.aesEncrypt(input, key, iv)
-                binding.tvToolOutput.text = "AES Encrypted (Base64):\n$encrypted"
-            }
-            3 -> { // AES Decrypt
-                val parts = param.split(",")
-                val key = parts.getOrNull(0) ?: "1234567890123456"
-                val iv = parts.getOrNull(1) ?: ""
-                val decrypted = ToolboxUtils.aesDecrypt(input, key, iv)
-                binding.tvToolOutput.text = "AES Decrypted Plaintext:\n$decrypted"
-            }
-            4 -> { // URL Encode/Decode
-                val enc = ToolboxUtils.urlEncode(input)
-                val dec = ToolboxUtils.urlDecode(input)
-                binding.tvToolOutput.text = "• URL Encoded:\n$enc\n\n• URL Decoded:\n$dec"
-            }
-            5 -> { // Base64 & Hex
-                val b64Enc = ToolboxUtils.base64Encode(input)
-                val b64Dec = ToolboxUtils.base64Decode(input)
-                val hexEnc = ToolboxUtils.hexEncode(input)
-                val hexDec = ToolboxUtils.hexDecode(input)
-                binding.tvToolOutput.text = "• Base64 Encoded: $b64Enc\n• Base64 Decoded: $b64Dec\n• Hex Encoded: $hexEnc\n• Hex Decoded: $hexDec"
-            }
-            6 -> { // Timestamp
-                val epoch = input.trim().toLongOrNull()
-                if (epoch != null) {
-                    val date = ToolboxUtils.convertEpochToDate(epoch)
-                    binding.tvToolOutput.text = "Epoch: $epoch\nFormatted Date:\n$date"
-                } else {
-                    val convertedEpoch = ToolboxUtils.convertDateToEpoch(input.trim())
-                    if (convertedEpoch > 0) {
-                        binding.tvToolOutput.text = "Date: $input\nEpoch Milliseconds: $convertedEpoch\nEpoch Seconds: ${convertedEpoch / 1000}"
-                    } else {
-                        binding.tvToolOutput.text = "Could not parse date or epoch string: $input"
+    private fun executeHttpComposer() {
+        val url = binding.etUrl.text.toString().trim()
+        if (url.isEmpty()) {
+            LottieToast.showError(requireContext(), "Please enter a URL")
+            return
+        }
+
+        val method = binding.spinnerMethod.text.toString().trim().uppercase().ifEmpty { "GET" }
+        val ct = binding.spinnerContentType.text.toString().trim().ifEmpty { "application/json" }
+        val bodyText = binding.etBody.text.toString()
+
+        binding.btnExecute.isEnabled = false
+        binding.cardResult.visibility = View.VISIBLE
+        binding.tvResultStatus.text = "Sending..."
+        binding.tvResult.text = "Connecting to $url..."
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val start = System.currentTimeMillis()
+            try {
+                val reqBuilder = Request.Builder().url(if (url.startsWith("http")) url else "https://$url")
+
+                // Headers
+                val headersStr = binding.etHeaders.text.toString()
+                headersStr.lines().forEach { line ->
+                    val colon = line.indexOf(':')
+                    if (colon > 0) {
+                        val k = line.substring(0, colon).trim()
+                        val v = line.substring(colon + 1).trim()
+                        reqBuilder.addHeader(k, v)
                     }
                 }
-            }
-            7 -> { // Regex
-                val matches = ToolboxUtils.testRegex(param.ifEmpty { ".*" }, input)
-                binding.tvToolOutput.text = matches.joinToString("\n")
-            }
-            8 -> { // Cert Hash
-                val result = ToolboxUtils.calculateCertHash(input)
-                binding.tvToolOutput.text = result
-            }
-            9 -> { // HTTP Composer
-                val method = binding.spinnerComposerMethod.selectedItem.toString()
-                val url = binding.etComposerUrl.text.toString().trim()
-                if (url.isEmpty()) {
-                    LottieToast.showError(requireContext(), "💥 URL cannot be empty!")
-                    return
+
+                // Method + Body
+                if (method in listOf("POST", "PUT", "PATCH", "DELETE")) {
+                    val reqBody = bodyText.toRequestBody(ct.toMediaTypeOrNull())
+                    reqBuilder.method(method, reqBody)
+                } else {
+                    reqBuilder.method(method, null)
                 }
 
-                binding.tvToolOutput.text = "Sending $method $url..."
-                lifecycleScope.launch {
-                    val response = ToolboxUtils.sendHttpRequest(method, url, param, input)
-                    binding.tvToolOutput.text = response
-                    LottieToast.showSuccess(requireContext(), "⚡ HTTP Request Completed!")
+                val response = httpClient.newCall(reqBuilder.build()).execute()
+                val duration = System.currentTimeMillis() - start
+                val code = response.code
+                val body = response.body?.string() ?: ""
+
+                withContext(Dispatchers.Main) {
+                    binding.tvResultStatus.text = "$code ${response.message} (${duration}ms)"
+                    binding.tvResult.text = body
+                    binding.btnExecute.isEnabled = true
+                    LottieToast.showSuccess(requireContext(), "HTTP $code in ${duration}ms")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    binding.tvResultStatus.text = "Error"
+                    binding.tvResult.text = e.localizedMessage ?: e.toString()
+                    binding.btnExecute.isEnabled = true
+                    LottieToast.showError(requireContext(), "Request failed: ${e.message}")
                 }
             }
         }
+    }
+
+    private fun executeJwt() {
+        val raw = binding.etUrl.text.toString().trim()
+        if (raw.isEmpty()) return
+
+        try {
+            val parts = raw.split(".")
+            if (parts.size >= 2) {
+                val header = String(Base64.decode(parts[0], Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP))
+                val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP))
+                val prettyHeader = JSONObject(header).toString(2)
+                val prettyPayload = JSONObject(payload).toString(2)
+
+                binding.cardResult.visibility = View.VISIBLE
+                binding.tvResultStatus.text = "JWT Decoded"
+                binding.tvResult.text = "=== HEADER ===\n$prettyHeader\n\n=== PAYLOAD ===\n$prettyPayload"
+                LottieToast.showSuccess(requireContext(), "JWT Payload decoded!")
+            } else {
+                LottieToast.showError(requireContext(), "Invalid JWT format (requires header.payload.sig)")
+            }
+        } catch (e: Exception) {
+            binding.cardResult.visibility = View.VISIBLE
+            binding.tvResultStatus.text = "Decode Error"
+            binding.tvResult.text = e.message
+        }
+    }
+
+    private fun executeCrypto() {
+        val input = binding.etUrl.text.toString()
+        val keyStr = binding.etHeaders.text.toString().trim()
+        if (input.isEmpty() || keyStr.isEmpty()) {
+            LottieToast.showError(requireContext(), "Enter input data and secret key")
+            return
+        }
+
+        try {
+            val keyBytes = keyStr.toByteArray().copyOf(16)
+            val keySpec = SecretKeySpec(keyBytes, "AES")
+
+            // Encrypt
+            val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec)
+            val encrypted = Base64.encodeToString(cipher.doFinal(input.toByteArray()), Base64.NO_WRAP)
+
+            binding.cardResult.visibility = View.VISIBLE
+            binding.tvResultStatus.text = "AES-128 Encrypted"
+            binding.tvResult.text = "Ciphertext (Base64):\n$encrypted"
+            LottieToast.showShield(requireContext(), "AES-128 encrypted")
+        } catch (e: Exception) {
+            binding.cardResult.visibility = View.VISIBLE
+            binding.tvResultStatus.text = "Crypto Error"
+            binding.tvResult.text = e.message
+        }
+    }
+
+    private fun executeEncoder() {
+        val input = binding.etUrl.text.toString()
+        if (input.isEmpty()) return
+
+        val sb = StringBuilder()
+        // URL Encode / Decode
+        try { sb.append("• URL Encoded: ").append(URLEncoder.encode(input, "UTF-8")).append("\n\n") } catch (e: Exception) {}
+        try { sb.append("• URL Decoded: ").append(URLDecoder.decode(input, "UTF-8")).append("\n\n") } catch (e: Exception) {}
+
+        // Base64 Encode / Decode
+        sb.append("• Base64 Encoded: ").append(Base64.encodeToString(input.toByteArray(), Base64.NO_WRAP)).append("\n\n")
+        try {
+            val b64Dec = String(Base64.decode(input, Base64.DEFAULT))
+            sb.append("• Base64 Decoded: ").append(b64Dec).append("\n\n")
+        } catch (e: Exception) {}
+
+        // Hashes
+        try {
+            val md5 = MessageDigest.getInstance("MD5").digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
+            val sha256 = MessageDigest.getInstance("SHA-256").digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
+            sb.append("• MD5: ").append(md5).append("\n\n")
+            sb.append("• SHA-256: ").append(sha256)
+        } catch (e: Exception) {}
+
+        binding.cardResult.visibility = View.VISIBLE
+        binding.tvResultStatus.text = "En/Decoded"
+        binding.tvResult.text = sb.toString()
+        LottieToast.showWink(requireContext(), "Encoded & Hashes computed")
+    }
+
+    private fun executeRegex() {
+        val patternStr = binding.etUrl.text.toString().trim()
+        val text = binding.etBody.text.toString()
+
+        if (patternStr.isEmpty()) return
+
+        try {
+            val pattern = Pattern.compile(patternStr)
+            val matcher = pattern.matcher(text)
+            val matches = mutableListOf<String>()
+            while (matcher.find()) {
+                matches.add(matcher.group())
+            }
+
+            binding.cardResult.visibility = View.VISIBLE
+            binding.tvResultStatus.text = "${matches.size} Match${if (matches.size == 1) "" else "es"}"
+            binding.tvResult.text = if (matches.isEmpty()) "No matches found." else matches.joinToString("\n\n") { "• $it" }
+            LottieToast.showSuccess(requireContext(), "Found ${matches.size} matches")
+        } catch (e: Exception) {
+            binding.cardResult.visibility = View.VISIBLE
+            binding.tvResultStatus.text = "Regex Error"
+            binding.tvResult.text = e.message
+        }
+    }
+
+    private fun executeDiff() {
+        val textA = binding.etUrl.text.toString()
+        val textB = binding.etBody.text.toString()
+
+        val linesA = textA.lines()
+        val linesB = textB.lines()
+
+        val diffSb = StringBuilder()
+        val maxLines = maxOf(linesA.size, linesB.size)
+        var diffCount = 0
+
+        for (i in 0 until maxLines) {
+            val a = linesA.getOrNull(i)
+            val b = linesB.getOrNull(i)
+            if (a != b) {
+                diffCount++
+                if (a != null) diffSb.append("- [L${i+1}] $a\n")
+                if (b != null) diffSb.append("+ [L${i+1}] $b\n")
+            }
+        }
+
+        binding.cardResult.visibility = View.VISIBLE
+        binding.tvResultStatus.text = "$diffCount Difference${if (diffCount == 1) "" else "s"}"
+        binding.tvResult.text = if (diffCount == 0) "Texts are identical." else diffSb.toString()
+        LottieToast.showWink(requireContext(), "$diffCount line differences found")
     }
 
     override fun onDestroyView() {

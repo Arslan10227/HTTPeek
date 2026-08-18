@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
@@ -154,7 +155,9 @@ func (m *MobileAPIManager) BroadcastEvent(eventType string, data any) {
 }
 
 // HandleRequest routes incoming mobile API and WebSocket requests.
-func (m *MobileAPIManager) HandleRequest(clientConn net.Conn, req *http.Request) bool {
+// reader is the bufio.Reader that already consumed the HTTP request line+headers;
+// any bytes it has buffered must be drained first before reading raw WebSocket frames.
+func (m *MobileAPIManager) HandleRequest(clientConn net.Conn, reader *bufio.Reader, req *http.Request) bool {
 	path := req.URL.Path
 
 	if req.Method == http.MethodOptions {
@@ -189,7 +192,7 @@ func (m *MobileAPIManager) HandleRequest(clientConn net.Conn, req *http.Request)
 			sendJSONResponse(clientConn, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 			return true
 		}
-		m.upgradeWebSocket(clientConn, req)
+		m.upgradeWebSocket(clientConn, reader, req)
 		return true
 	}
 
@@ -800,7 +803,7 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 	}
 }
 
-func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Request) {
+func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, bufReader *bufio.Reader, req *http.Request) {
 	key := req.Header.Get("Sec-WebSocket-Key")
 	if key == "" {
 		sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "Missing Sec-WebSocket-Key"})
@@ -849,6 +852,16 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 		"enableSsl": m.server.Config().EnableSSL,
 	})
 
+	// KEY FIX: Use io.MultiReader to drain any bytes already buffered in bufReader BEFORE
+	// reading raw WebSocket frames from the socket. This ensures the mobile:hello frame
+	// that Android sends immediately after the 101 upgrade is not lost in the bufio buffer.
+	var frameReader io.Reader
+	if bufReader != nil && bufReader.Buffered() > 0 {
+		frameReader = io.MultiReader(bufReader, clientConn)
+	} else {
+		frameReader = clientConn
+	}
+
 	// Read loop with RFC 6455 frame decoding
 	go func() {
 		defer func() {
@@ -860,10 +873,9 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 			_ = clientConn.Close()
 		}()
 
-		reader := io.Reader(clientConn)
 		for {
 			header := make([]byte, 2)
-			if _, err := io.ReadFull(reader, header); err != nil {
+			if _, err := io.ReadFull(frameReader, header); err != nil {
 				break
 			}
 
@@ -877,13 +889,13 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 
 			if payloadLen == 126 {
 				extLen := make([]byte, 2)
-				if _, err := io.ReadFull(reader, extLen); err != nil {
+				if _, err := io.ReadFull(frameReader, extLen); err != nil {
 					break
 				}
 				payloadLen = int(extLen[0])<<8 | int(extLen[1])
 			} else if payloadLen == 127 {
 				extLen := make([]byte, 8)
-				if _, err := io.ReadFull(reader, extLen); err != nil {
+				if _, err := io.ReadFull(frameReader, extLen); err != nil {
 					break
 				}
 				payloadLen = int(extLen[4])<<24 | int(extLen[5])<<16 | int(extLen[6])<<8 | int(extLen[7])
@@ -892,13 +904,13 @@ func (m *MobileAPIManager) upgradeWebSocket(clientConn net.Conn, req *http.Reque
 			var maskKey []byte
 			if isMasked {
 				maskKey = make([]byte, 4)
-				if _, err := io.ReadFull(reader, maskKey); err != nil {
+				if _, err := io.ReadFull(frameReader, maskKey); err != nil {
 					break
 				}
 			}
 
 			payload := make([]byte, payloadLen)
-			if _, err := io.ReadFull(reader, payload); err != nil {
+			if _, err := io.ReadFull(frameReader, payload); err != nil {
 				break
 			}
 

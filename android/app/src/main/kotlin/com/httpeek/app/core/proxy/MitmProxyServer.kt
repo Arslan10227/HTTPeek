@@ -186,13 +186,15 @@ class MitmProxyServer(
             val sslFactory: SSLSocketFactory = sslContext.socketFactory
             val sslSocket = sslFactory.createSocket(
                 rawSocket,
-                rawSocket.inetAddress.hostAddress,
+                rawSocket.inetAddress?.hostAddress ?: host,
                 rawSocket.port,
                 true
             ) as SSLSocket
 
             sslSocket.useClientMode = false
+            sslSocket.soTimeout = 7000 // 7s handshake timeout — fail fast if client rejects cert
             sslSocket.startHandshake()
+            sslSocket.soTimeout = 0 // Reset to infinite for data transfer
 
             val tlsIn = sslSocket.getInputStream()
             val tlsOut = sslSocket.getOutputStream()
@@ -220,8 +222,9 @@ class MitmProxyServer(
                 reader = tlsReader
             )
         } catch (e: Exception) {
-            // If TLS handshake fails (client rejects self-signed cert), fallback to raw tunnel
-            Log.w(TAG, "TLS Interception failed for $host, passing through raw tunnel: ${e.message}")
+            // TLS handshake failed — client rejected our self-signed CA (cert pinning).
+            // Pass through transparently to real server.
+            Log.w(TAG, "TLS intercept failed for $host:$port (${e.message}) — falling back to raw tunnel")
             forwardRawTunnel(rawSocket, host, port)
         }
     }
@@ -437,5 +440,54 @@ class MitmProxyServer(
                 } catch (e: Exception) {}
             }
         } catch (e: Exception) {}
+    }
+
+    /**
+     * Like [forwardRawTunnel] but first replays [replayBytes] to the server before relaying live data.
+     * Used when TLS intercept fails: the client already sent a TLS ClientHello that we captured via
+     * RecordingInputStream. We open a FRESH protected socket to the real server, send the captured
+     * bytes (ClientHello + any subsequent TLS records), then continue relaying bidirectionally.
+     *
+     * This correctly restores internet for apps with certificate pinning (Chrome, Instagram, etc.)
+     * without touching the already-dead client SSL socket.
+     */
+    private fun forwardRawTunnelWithReplay(
+        clientSocket: Socket,
+        clientOut: OutputStream,
+        replayBytes: ByteArray,
+        host: String,
+        port: Int
+    ) {
+        try {
+            val serverSocket = Socket()
+            HttpeekVpnService.protectSocket(serverSocket)
+            serverSocket.connect(InetSocketAddress(host, port), 10000)
+
+            val clientIn = clientSocket.getInputStream()
+            val serverIn = serverSocket.getInputStream()
+            val serverOut = serverSocket.getOutputStream()
+
+            // Replay the captured TLS bytes (ClientHello + any subsequent records)
+            if (replayBytes.isNotEmpty()) {
+                serverOut.write(replayBytes)
+                serverOut.flush()
+            }
+
+            // Bidirectional relay: client ↔ server
+            scope.launch {
+                try {
+                    clientIn.copyTo(serverOut)
+                } catch (e: Exception) {}
+                try { serverSocket.close() } catch (e: Exception) {}
+            }
+            scope.launch {
+                try {
+                    serverIn.copyTo(clientOut)
+                } catch (e: Exception) {}
+                try { clientSocket.close() } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "forwardRawTunnelWithReplay failed for $host:$port — ${e.message}")
+        }
     }
 }

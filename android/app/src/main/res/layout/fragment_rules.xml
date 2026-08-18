@@ -1,154 +1,123 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- M3 Rules Management Screen with TabLayout -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="@color/background">
 
-    <!-- Header Section -->
-    <LinearLayout
+    <!-- AppBar with title + add button -->
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/surface"
-        android:elevation="1dp"
-        android:orientation="vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="14dp"
-        android:paddingBottom="10dp">
+        app:elevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
             android:orientation="horizontal">
 
-            <LinearLayout
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Rules &amp; Interception"
-                    android:textColor="@color/text_primary"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Rewrite requests, mock responses, or filter hosts"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
-            </LinearLayout>
+                android:text="Rules"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnAddRule"
+                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:backgroundTint="@color/primary"
+                android:layout_height="36dp"
                 android:text="+ Add Rule"
                 android:textAllCaps="false"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                app:cornerRadius="10dp" />
+                android:textSize="13sp"
+                app:cornerRadius="18dp"
+                app:backgroundTint="@color/primary_container"
+                android:textColor="@color/on_primary_container" />
         </LinearLayout>
 
-        <!-- Category Selector Chips -->
-        <HorizontalScrollView
+        <!-- Tab strip -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayoutRules"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:scrollbars="none">
+            android:layout_height="48dp"
+            android:paddingHorizontal="8dp"
+            app:tabMode="scrollable"
+            app:tabGravity="start"
+            app:tabSelectedTextColor="@color/primary"
+            app:tabTextColor="@color/text_muted"
+            app:tabIndicatorColor="@color/primary"
+            app:tabIndicatorHeight="3dp"
+            style="@style/Widget.Material3.TabLayout">
 
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/chipGroupRulesCategory"
+            <com.google.android.material.tabs.TabItem
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                app:singleSelection="true">
+                android:text="Rewrite" />
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Block" />
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Delay" />
+        </com.google.android.material.tabs.TabLayout>
 
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipTabRewrite"
-                    style="@style/Widget.Material3.Chip.Filter"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:text="🔄 URL Rewrite"
-                    android:textSize="11sp" />
+    </com.google.android.material.appbar.AppBarLayout>
 
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipTabMock"
-                    style="@style/Widget.Material3.Chip.Filter"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🎭 Mock Response"
-                    android:textSize="11sp" />
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipTabWhitelist"
-                    style="@style/Widget.Material3.Chip.Filter"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🛡️ Whitelist"
-                    android:textSize="11sp" />
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipTabBlacklist"
-                    style="@style/Widget.Material3.Chip.Filter"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🚫 Blacklist"
-                    android:textSize="11sp" />
-            </com.google.android.material.chip.ChipGroup>
-        </HorizontalScrollView>
-    </LinearLayout>
-
-    <!-- Rules List View -->
+    <!-- Rules List -->
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerRules"
+        android:id="@+id/rvRules"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
-        android:paddingVertical="8dp" />
+        android:paddingVertical="8dp"
+        android:overScrollMode="never" />
 
-    <!-- Empty State -->
+    <!-- Empty state -->
     <LinearLayout
-        android:id="@+id/layoutEmptyRules"
+        android:id="@+id/rulesEmptyState"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="32dp"
         android:visibility="gone">
 
-        <ImageView
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:src="@android:drawable/ic_menu_edit"
-            app:tint="@color/text_muted" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📋"
+            android:textSize="48sp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="No Rules Configured"
-            android:textColor="@color/text_primary"
-            android:textSize="16sp"
+            android:text="No rules yet"
+            android:textColor="@color/text_secondary"
+            android:textSize="17sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:gravity="center"
-            android:text="Tap '+ Add Rule' above to create URL rewrites, mock responses, or host filters."
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:paddingHorizontal="32dp"
+            android:text="Add rules to rewrite, block, or delay HTTP requests matching patterns."
+            android:textColor="@color/text_muted"
+            android:textSize="13sp" />
     </LinearLayout>
 
 </LinearLayout>
