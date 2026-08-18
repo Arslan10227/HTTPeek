@@ -38,6 +38,10 @@ export function DetectJavaInstallations() {
   return window['go']['main']['App']['DetectJavaInstallations']();
 }
 
+export function DisconnectMobileDevice(arg1) {
+  return window['go']['main']['App']['DisconnectMobileDevice'](arg1);
+}
+
 export function ExitApp() {
   return window['go']['main']['App']['ExitApp']();
 }
@@ -68,6 +72,10 @@ export function GetBreakpointRules() {
 
 export function GetCADetails() {
   return window['go']['main']['App']['GetCADetails']();
+}
+
+export function GetConnectedMobileDevices() {
+  return window['go']['main']['App']['GetConnectedMobileDevices']();
 }
 
 export function GetCryptoRules() {

@@ -24,6 +24,8 @@ export function DeleteSession(arg1:string):Promise<void>;
 
 export function DetectJavaInstallations():Promise<Array<cert.JavaInstallation>>;
 
+export function DisconnectMobileDevice(arg1:string):Promise<void>;
+
 export function ExitApp():Promise<void>;
 
 export function ExportHAR(arg1:Array<proxy.HttpRequest>):Promise<string>;
@@ -39,6 +41,8 @@ export function GetBlockRules():Promise<Array<interceptor.BlockRule>>;
 export function GetBreakpointRules():Promise<Array<interceptor.BreakpointRule>>;
 
 export function GetCADetails():Promise<Record<string, any>>;
+
+export function GetConnectedMobileDevices():Promise<Array<proxy.MobileDeviceInfo>>;
 
 export function GetCryptoRules():Promise<Array<interceptor.CryptoRule>>;
 

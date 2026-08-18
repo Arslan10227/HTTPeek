@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 )
 
 // TrustInstaller installs or removes the Root CA from operating system trust stores.
@@ -18,15 +17,6 @@ type TrustInstaller struct {
 // NewTrustInstaller creates an installer for the provided CA.
 func NewTrustInstaller(ca *CA) *TrustInstaller {
 	return &TrustInstaller{ca: ca}
-}
-
-func hideExec(cmd *exec.Cmd) {
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-	}
 }
 
 // IsInstalled checks whether the Root CA is currently installed in the OS trust store.
