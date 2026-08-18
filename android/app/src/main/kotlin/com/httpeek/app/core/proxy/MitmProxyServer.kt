@@ -9,6 +9,8 @@ import com.httpeek.app.model.HttpRequestModel
 import com.httpeek.app.model.HttpResponseModel
 import com.httpeek.app.security.DynamicCertAuthority
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -77,6 +79,10 @@ class MitmProxyServer(
 ) {
     companion object {
         private const val TAG = "MitmProxyServer"
+        private const val MAX_CONNECTIONS = 100
+        private const val CLIENT_SOCKET_TIMEOUT_MS = 30_000
+        private const val MAX_REQUEST_BODY_BYTES = 10L * 1024 * 1024
+        private const val MAX_RESPONSE_BODY_BYTES = 10L * 1024 * 1024
     }
 
     var throttleProfile: com.httpeek.app.model.NetworkThrottleProfile = com.httpeek.app.model.NetworkThrottleProfile.UNLIMITED
@@ -84,6 +90,7 @@ class MitmProxyServer(
     private var serverSocket: ServerSocket? = null
     private val isRunning = AtomicBoolean(false)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val connectionSemaphore = Semaphore(MAX_CONNECTIONS)
 
     private val okHttpClient = OkHttpClient.Builder()
         .socketFactory(VpnProtectSocketFactory())
@@ -106,7 +113,12 @@ class MitmProxyServer(
                 while (isRunning.get() && serverSocket?.isClosed == false) {
                     try {
                         val clientSocket = serverSocket!!.accept()
-                        scope.launch { handleClientConnection(clientSocket) }
+                        clientSocket.soTimeout = CLIENT_SOCKET_TIMEOUT_MS
+                        scope.launch {
+                            connectionSemaphore.withPermit {
+                                handleClientConnection(clientSocket)
+                            }
+                        }
                     } catch (e: Exception) {
                         if (!isRunning.get()) break
                     }
@@ -179,6 +191,7 @@ class MitmProxyServer(
 
         // Check Whitelist / Blacklist: if host is bypassed, do transparent raw forwarding
         if (!rulesEngine.shouldInterceptHost(host)) {
+            rawSocket.soTimeout = 0 // long-lived tunnel: no idle timeout
             forwardRawTunnel(rawSocket, host, port)
             return
         }
@@ -228,6 +241,7 @@ class MitmProxyServer(
             // TLS handshake failed — client rejected our self-signed CA (cert pinning).
             // Pass through transparently to real server.
             Log.w(TAG, "TLS intercept failed for $host:$port (${e.message}) — falling back to raw tunnel")
+            rawSocket.soTimeout = 0 // long-lived tunnel: no idle timeout
             forwardRawTunnel(rawSocket, host, port)
         }
     }
@@ -297,17 +311,13 @@ class MitmProxyServer(
             }
         }
 
-        // Read Request Body
+        // Read Request Body (bounded)
         var bodyBytes: ByteArray? = null
-        if (contentLength > 0 && contentLength < 10 * 1024 * 1024) {
-            val buf = ByteArray(contentLength.toInt())
-            var read = 0
-            while (read < contentLength) {
-                val r = input.read(buf, read, (contentLength - read).toInt())
-                if (r < 0) break
-                read += r
+        if (contentLength > 0) {
+            bodyBytes = readBounded(input, MAX_REQUEST_BODY_BYTES)
+            if (contentLength > MAX_REQUEST_BODY_BYTES) {
+                Log.w(TAG, "Request body over ${MAX_REQUEST_BODY_BYTES} bytes truncated for $url")
             }
-            bodyBytes = buf
         }
 
         val reqContentEncoding = headers.entries.find { it.key.equals("content-encoding", ignoreCase = true) }?.value?.firstOrNull()
@@ -321,7 +331,7 @@ class MitmProxyServer(
             return
         }
         if (throttleProfile.latencyMs > 0) {
-            try { Thread.sleep(throttleProfile.latencyMs) } catch (e: Exception) {}
+            delay(throttleProfile.latencyMs)
         }
 
         val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
@@ -386,7 +396,18 @@ class MitmProxyServer(
 
             val upstreamResp = okHttpClient.newCall(reqBuilder.build()).execute()
             val durationMs = System.currentTimeMillis() - startTimeMs
-            val rawBodyBytes = upstreamResp.body?.bytes()
+            val rawBodyBytes = upstreamResp.body?.let { body ->
+                val declaredLength = body.contentLength()
+                val bytes = if (declaredLength in 1..MAX_RESPONSE_BODY_BYTES) {
+                    body.bytes()
+                } else {
+                    readBoundedSource(body.source(), MAX_RESPONSE_BODY_BYTES)
+                }
+                if (declaredLength > MAX_RESPONSE_BODY_BYTES) {
+                    Log.w(TAG, "Response body over ${MAX_RESPONSE_BODY_BYTES} bytes truncated for $url")
+                }
+                bytes
+            }
             val contentEncoding = upstreamResp.header("content-encoding")
             val contentTypeHeader = upstreamResp.header("content-type") ?: ""
 
@@ -446,6 +467,34 @@ class MitmProxyServer(
         }
     }
 
+    /** Reads at most [max] bytes from [input]. */
+    private fun readBounded(input: InputStream, max: Long): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0L
+        while (total < max) {
+            val n = input.read(buf, 0, minOf(buf.size.toLong(), max - total).toInt())
+            if (n < 0) break
+            out.write(buf, 0, n)
+            total += n
+        }
+        return out.toByteArray()
+    }
+
+    /** Reads at most [max] bytes from an OkHttp response source. */
+    private fun readBoundedSource(source: okio.BufferedSource, max: Long): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0L
+        while (total < max) {
+            val n = source.read(buf, 0, minOf(buf.size.toLong(), max - total).toInt())
+            if (n < 0) break
+            out.write(buf, 0, n)
+            total += n
+        }
+        return out.toByteArray()
+    }
+
     private fun writeResponseToClient(out: OutputStream, resp: HttpResponseModel, bodyBytes: ByteArray) {
         val statusLine = "HTTP/1.1 ${resp.statusCode} ${resp.statusText}\r\n"
         out.write(statusLine.toByteArray())
@@ -470,17 +519,28 @@ class MitmProxyServer(
             val serverIn = serverSocket.getInputStream()
             val serverOut = serverSocket.getOutputStream()
 
+            // Propagate half-close: when one direction ends, signal the peer
+            // via shutdownOutput so clean protocol shutdown (e.g. TLS close_notify)
+            // is observed on the other side.
             scope.launch {
                 try {
                     clientIn.copyTo(serverOut)
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                } finally {
+                    try { serverSocket.shutdownOutput() } catch (e: Exception) {}
+                }
             }
             scope.launch {
                 try {
                     serverIn.copyTo(clientOut)
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                } finally {
+                    try { clientSocket.shutdownOutput() } catch (e: Exception) {}
+                }
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "forwardRawTunnel failed for $host:$port — ${e.message}")
+        }
     }
 
     /**

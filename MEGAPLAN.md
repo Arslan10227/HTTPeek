@@ -1029,7 +1029,17 @@ Cross-cutting rule: each phase lands with regression tests, and no phase weakens
 
 - Mobile sync batch item-count/total-size limits (NEWM-005 refinement, with Android).
 - WS fragmentation reassembly + ping/pong lifecycle (moved to Phase 3 with DEEP-008 full scope).
-- Spill-file cleanup policy + 0600 permissions (NEWP-015).
-- Copy-goroutine cancellation in tunnels/WS (NEWP-006/007).
+- Spill-file cleanup policy on session delete + orphan sweep (permissions done — 0600/0700).
+- Copy-goroutine cancellation in tunnels/WS (NEWP-006/007; analysis shows lifetimes are bounded by connection close — revisit with Phase 3 graceful shutdown).
 - Discovery broadcaster lifecycle (NEWP-008).
-- Android: CA key permissions (NEWA-021), chunked bodies (DEEP-025), response limits (NEWA-008), connection semaphore (NEWA-005), socket timeouts (NEWA-002), coroutine cleanup (NEWA-003/004).
+- Android: chunked request bodies (DEEP-025/NEWA-001), Android Keystore key protection (NEWA-021 refinement), failed-MITM replay wiring (DEEP-024 — Phase 7).
+
+### Android Phase 1 slice (completed 2026-08-18)
+
+- NEWA-005: connection semaphore (100) bounds concurrent handler coroutines.
+- NEWA-002: 30 s client socket read timeout at accept; cleared for long-lived raw tunnels.
+- NEWA-008: bounded request and response body reads (10 MiB) with truncation logging; replaced unbounded `body.bytes()`.
+- NEWA-009: throttle latency uses `delay()` instead of `Thread.sleep`.
+- NEWA-003: raw tunnel propagates half-close via `shutdownOutput`; failure logging added.
+- NEWA-021: CA private key file restricted to owner-only on generation.
+- Verification: `gradlew assembleDebug` BUILD SUCCESSFUL (Kotlin compile + package).

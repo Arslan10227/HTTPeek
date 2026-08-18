@@ -118,6 +118,10 @@ class DynamicCertAuthority(private val context: Context) {
 
             FileOutputStream(certFile).use { it.write(cert.encoded) }
             FileOutputStream(keyFile).use { it.write(keyPair.private.encoded) }
+            // Restrict private key file access to this app's owner only.
+            keyFile.setReadable(false, false)
+            keyFile.setReadable(true, true)
+            keyFile.setWritable(true, true)
 
             caCert = cert
             caKeyPair = keyPair
