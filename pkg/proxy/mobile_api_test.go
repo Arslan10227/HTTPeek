@@ -75,6 +75,67 @@ func TestMobileAPIAuthRequiredWhenTokenSet(t *testing.T) {
 	}
 }
 
+func TestValidSessionID(t *testing.T) {
+	valid := []string{"abc", "ABC-123_xyz", "deadbeef-dead-beef-dead-deadbeefdead"}
+	for _, id := range valid {
+		if !validSessionID(id) {
+			t.Errorf("expected %q to be valid", id)
+		}
+	}
+	invalid := []string{"", "../etc/passwd", "a/b", "a b", strings.Repeat("x", 65), "a\x00b", "session\u2028id"}
+	for _, id := range invalid {
+		if validSessionID(id) {
+			t.Errorf("expected %q to be invalid", id)
+		}
+	}
+}
+
+func TestRateLimiter(t *testing.T) {
+	rl := newRateLimiter(3, time.Minute)
+	ip := "192.168.1.10"
+	for i := 0; i < 3; i++ {
+		if !rl.allow(ip) {
+			t.Fatalf("request %d should be allowed", i+1)
+		}
+	}
+	if rl.allow(ip) {
+		t.Fatal("4th request should be rejected")
+	}
+	// A different client is not affected.
+	if !rl.allow("192.168.1.11") {
+		t.Fatal("different client should be allowed")
+	}
+	// Window expiry resets the budget.
+	rl.mu.Lock()
+	rl.clients[ip].reset = time.Now().Add(-time.Second)
+	rl.mu.Unlock()
+	if !rl.allow(ip) {
+		t.Fatal("request after window expiry should be allowed")
+	}
+}
+
+func TestValidLogLevel(t *testing.T) {
+	for _, lvl := range []string{"debug", "INFO", "Warn", "error", "FATAL"} {
+		if !validLogLevel(lvl) {
+			t.Errorf("expected %q to be a valid level", lvl)
+		}
+	}
+	for _, lvl := range []string{"", "verbose", "fatal\nX-Injected: 1", "INFO; DROP TABLE logs"} {
+		if validLogLevel(lvl) {
+			t.Errorf("expected %q to be rejected", lvl)
+		}
+	}
+}
+
+func TestTruncateString(t *testing.T) {
+	if got := truncateString("hello", 3); got != "hel" {
+		t.Errorf("expected truncation, got %q", got)
+	}
+	if got := truncateString("hi", 10); got != "hi" {
+		t.Errorf("expected passthrough, got %q", got)
+	}
+}
+
 func TestLocalOriginValidation(t *testing.T) {
 	cases := []struct {
 		origin string

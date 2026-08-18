@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,21 +34,104 @@ type MobileDeviceInfo struct {
 	PacketCount int64     `json:"packetCount"`
 }
 
+// rateEntry tracks request counts within a fixed window for one client.
+type rateEntry struct {
+	count int
+	reset time.Time
+}
+
+// rateLimiter is a simple per-client fixed-window limiter.
+type rateLimiter struct {
+	mu        sync.Mutex
+	window    time.Duration
+	limit     int
+	clients   map[string]*rateEntry
+	lastSweep time.Time
+}
+
+func newRateLimiter(limit int, window time.Duration) *rateLimiter {
+	return &rateLimiter{
+		window:    window,
+		limit:     limit,
+		clients:   make(map[string]*rateEntry),
+		lastSweep: time.Now(),
+	}
+}
+
+func (rl *rateLimiter) allow(client string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+
+	// Opportunistically drop expired entries at most once per window.
+	if now.Sub(rl.lastSweep) >= rl.window {
+		for k, e := range rl.clients {
+			if now.After(e.reset) {
+				delete(rl.clients, k)
+			}
+		}
+		rl.lastSweep = now
+	}
+
+	e, ok := rl.clients[client]
+	if !ok || now.After(e.reset) {
+		rl.clients[client] = &rateEntry{count: 1, reset: now.Add(rl.window)}
+		return true
+	}
+	e.count++
+	return e.count <= rl.limit
+}
+
+// remoteIP extracts the host part of a RemoteAddr string.
+func remoteIP(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
+}
+
+// sessionIDPattern bounds accepted session identifiers.
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+func validSessionID(id string) bool {
+	return sessionIDPattern.MatchString(id)
+}
+
+// validLogLevel restricts client-supplied log levels to the known set.
+func validLogLevel(lvl string) bool {
+	switch strings.ToUpper(strings.TrimSpace(lvl)) {
+	case "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL":
+		return true
+	}
+	return false
+}
+
+// truncateString caps a client-supplied string at max runes.
+func truncateString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
+}
+
 // MobileAPIManager handles embedded REST endpoints and WebSocket event streams for mobile clients.
 type MobileAPIManager struct {
 	server         *Server
 	wsConns        map[string]net.Conn
 	devices        map[string]*MobileDeviceInfo
 	onDeviceChange func([]MobileDeviceInfo)
+	apiLimiter     *rateLimiter
 	mu             sync.RWMutex
 }
 
 // NewMobileAPIManager initializes a mobile API manager.
 func NewMobileAPIManager(s *Server) *MobileAPIManager {
 	m := &MobileAPIManager{
-		server:  s,
-		wsConns: make(map[string]net.Conn),
-		devices: make(map[string]*MobileDeviceInfo),
+		server:     s,
+		wsConns:    make(map[string]net.Conn),
+		devices:    make(map[string]*MobileDeviceInfo),
+		apiLimiter: newRateLimiter(300, time.Minute),
 	}
 
 	// Hook server event listener to broadcast to all connected mobile WebSockets
@@ -196,6 +280,12 @@ func (m *MobileAPIManager) HandleRequest(clientConn net.Conn, reader *bufio.Read
 		return true
 	}
 
+	// Bound per-client request rate to blunt floods and auth brute force.
+	if m.apiLimiter != nil && !m.apiLimiter.allow(remoteIP(clientConn.RemoteAddr().String())) {
+		sendJSONResponse(clientConn, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+		return true
+	}
+
 	// CA certificate download — served without auth for mobile browser installs
 	if (path == "/ca.crt" || path == "/ssl" || path == "/api/ca/cert") && req.Method == http.MethodGet {
 		if m.server.CertManager() == nil || m.server.CertManager().CA() == nil {
@@ -221,6 +311,12 @@ func (m *MobileAPIManager) HandleRequest(clientConn net.Conn, reader *bufio.Read
 	if strings.HasPrefix(path, "/ws") || strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
 		if !m.checkAuth(req) {
 			sendJSONResponse(clientConn, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+			return true
+		}
+		// Browsers always send Origin; native clients (OkHttp) do not. Reject
+		// non-local browser origins to prevent cross-site WebSocket hijacking.
+		if !isLocalOrigin(req) {
+			sendJSONResponse(clientConn, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
 			return true
 		}
 		m.upgradeWebSocket(clientConn, reader, req)
@@ -505,6 +601,10 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		}
 		sessionID := strings.TrimPrefix(path, "/sessions/")
 		sessionID = strings.TrimSuffix(sessionID, "/requests")
+		if !validSessionID(sessionID) {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid session id"})
+			return
+		}
 		requests, err := bridge.GetSessionRequests(sessionID)
 		if err != nil {
 			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -519,6 +619,10 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			return
 		}
 		sessionID := strings.TrimPrefix(path, "/sessions/")
+		if !validSessionID(sessionID) {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid session id"})
+			return
+		}
 		if err := bridge.DeleteSession(sessionID); err != nil {
 			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -793,16 +897,22 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 			Fields   map[string]interface{} `json:"fields"`
 		}
 		_ = json.Unmarshal(bodyBytes, &payload)
+		// Sanitize client-supplied log fields to prevent log spoofing/injection.
+		if !validLogLevel(payload.Level) {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid log level"})
+			return
+		}
 		lvl := logger.ParseLevel(payload.Level)
-		cat := payload.Category
+		cat := truncateString(payload.Category, 32)
 		if cat == "" {
 			cat = "UI"
 		}
-		caller := payload.Caller
+		caller := truncateString(payload.Caller, 64)
 		if caller == "" {
 			caller = "REST:Client"
 		}
-		logger.LogExplicit(lvl, cat, caller, payload.Message, payload.Fields)
+		message := truncateString(payload.Message, 4096)
+		logger.LogExplicit(lvl, cat, caller, message, payload.Fields)
 		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"ok": "true"})
 
 	case path == "/logs/clear" && req.Method == http.MethodPost:
@@ -822,6 +932,11 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		bodyBytes, _ := readJSONBody(req)
 		if err := json.Unmarshal(bodyBytes, &syncPayload); err != nil {
 			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		const maxSyncBatch = 1000
+		if len(syncPayload.Requests) > maxSyncBatch || len(syncPayload.Responses) > maxSyncBatch {
+			sendJSONResponse(clientConn, http.StatusRequestEntityTooLarge, map[string]string{"error": "sync batch too large"})
 			return
 		}
 		if m.server != nil {

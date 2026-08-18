@@ -1043,3 +1043,15 @@ Cross-cutting rule: each phase lands with regression tests, and no phase weakens
 - NEWA-003: raw tunnel propagates half-close via `shutdownOutput`; failure logging added.
 - NEWA-021: CA private key file restricted to owner-only on generation.
 - Verification: `gradlew assembleDebug` BUILD SUCCESSFUL (Kotlin compile + package).
+
+## 7. Phase 2 slice A — control-plane hardening (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| NEWM-008 | WebSocket upgrade now rejects non-local browser `Origin` (native clients without Origin unaffected; empty Origin allowed). | `TestLocalOriginValidation` + WS path |
+| NEWM-007 | Session IDs validated against `^[A-Za-z0-9_-]{1,64}$` on `/sessions/` GET/DELETE (400 on invalid). | `TestValidSessionID` (new) |
+| NEWM-013 | Per-client fixed-window rate limiter (300 req/min/IP) applied to all mobile API + WS entry points; opportunistic stale-entry sweep. | `TestRateLimiter` (new) |
+| NEWM-012 | `/logs/write` restricts levels to TRACE/DEBUG/INFO/WARN/ERROR/FATAL and caps category (32), caller (64), message (4096). | `TestValidLogLevel`, `TestTruncateString` (new) |
+| NEWM-005 (slice) | `/mobile/sync` batch capped at 1000 requests + 1000 responses (413). Per-item body limits remain with the Android queue contract. | Existing suite |
+
+Still open in Phase 2 (design-dependent, need product decisions before implementation): mandatory-auth/local-only mode with warnings (DEEP-016), expiring one-time pairing credentials replacing long-lived QR tokens (DEEP-017), token removal from WS query strings (NEWM-009 — coordinated frontend+Android change), CA download one-time URLs (NEWM-002), composer/upstream-proxy SSRF controls (NEWM-004/014), typed error envelope (NEWM-016), script sandbox budgets (NEWI-040-043), report webhook redaction (NEWI-050), Android backup rules + network security config (NEWB-015/016/018).
