@@ -85,6 +85,7 @@ class MitmProxyServer(
 
     private val okHttpClient = OkHttpClient.Builder()
         .socketFactory(VpnProtectSocketFactory())
+        .addInterceptor(okhttp3.brotli.BrotliInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -307,7 +308,10 @@ class MitmProxyServer(
             bodyBytes = buf
         }
 
-        val bodyString = bodyBytes?.let { String(it, Charsets.UTF_8) }
+        val reqContentEncoding = headers.entries.find { it.key.equals("content-encoding", ignoreCase = true) }?.value?.firstOrNull()
+        val decompressedReqBody = DecompressUtils.decompress(bodyBytes, reqContentEncoding)
+        val bodyString = DecompressUtils.decodeToString(decompressedReqBody ?: bodyBytes, contentType)
+
         val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date())
@@ -337,14 +341,16 @@ class MitmProxyServer(
         reqModel = rulesEngine.evaluateRewriteRequest(reqModel)
         onRequest(reqModel)
 
-        // 3. Forward to Upstream Server via Protected OkHttp Client
+        // 3. Forward to Upstream Server via Protected OkHttp Client (with transparent Brotli/Gzip decompression)
         val startTimeMs = System.currentTimeMillis()
         try {
             val forwardUrl = reqModel.url
             val reqBuilder = Request.Builder().url(forwardUrl)
 
             reqModel.headers?.forEach { (k, vals) ->
-                if (!k.equals("host", ignoreCase = true) && !k.equals("content-length", ignoreCase = true)) {
+                if (!k.equals("host", ignoreCase = true) &&
+                    !k.equals("content-length", ignoreCase = true) &&
+                    !k.equals("accept-encoding", ignoreCase = true)) {
                     vals.forEach { v -> reqBuilder.addHeader(k, v) }
                 }
             }
@@ -363,13 +369,14 @@ class MitmProxyServer(
             val contentEncoding = upstreamResp.header("content-encoding")
             val contentTypeHeader = upstreamResp.header("content-type") ?: ""
 
-            // Decompress compressed response bodies (GZIP / Deflate)
+            // Decompress compressed response bodies (GZIP / Deflate / Brotli)
             val decompressedBytes = DecompressUtils.decompress(rawBodyBytes, contentEncoding)
-            val respBodyStr = DecompressUtils.decodeToString(decompressedBytes, contentTypeHeader)
+            val finalBodyBytes = decompressedBytes ?: rawBodyBytes ?: ByteArray(0)
+            val respBodyStr = DecompressUtils.decodeToString(finalBodyBytes, contentTypeHeader)
 
             val respHeaders = mutableMapOf<String, List<String>>()
             upstreamResp.headers.names().forEach { name ->
-                // If decompressed, strip Content-Encoding and Content-Length so client receives plaintext cleanly
+                // Strip Content-Encoding and Content-Length since body is sent as clean decompressed data to client
                 if (!name.equals("content-encoding", ignoreCase = true) &&
                     !name.equals("content-length", ignoreCase = true) &&
                     !name.equals("transfer-encoding", ignoreCase = true)) {
@@ -377,7 +384,6 @@ class MitmProxyServer(
                 }
             }
 
-            val finalBodyBytes = decompressedBytes ?: rawBodyBytes ?: ByteArray(0)
             val respModel = HttpResponseModel(
                 id = "resp_$requestId",
                 statusCode = upstreamResp.code,
