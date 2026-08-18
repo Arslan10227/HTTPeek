@@ -19,9 +19,10 @@ func PrepareBodyForStorage(storageDir, exchangeID, kind string, data []byte, dec
 	}
 
 	spillDir := filepath.Join(storageDir, "bodies")
-	_ = os.MkdirAll(spillDir, 0755)
+	_ = os.MkdirAll(spillDir, 0700)
 	spillPath := filepath.Join(spillDir, fmt.Sprintf("%s-%s.bin", exchangeID, kind))
-	if err := os.WriteFile(spillPath, data, 0644); err != nil {
+	// Captured bodies can contain credentials; restrict file access to the owner.
+	if err := os.WriteFile(spillPath, data, 0600); err != nil {
 		if decoded == "" {
 			decoded = string(data)
 		}
