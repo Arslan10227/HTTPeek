@@ -35,6 +35,7 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
   const { t, language } = useTranslation();
   const { status, connectedMobileDevices, setConnectedMobileDevices } = useProxyStore();
   const { getActiveColorPreset } = useAppConfig();
+  const activeColor = getActiveColorPreset();
   const [localIps, setLocalIps] = useState<string[]>([]);
   const [selectedIp, setSelectedIp] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -298,8 +299,19 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
             </div>
 
             {/* QR Box */}
-            <div className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
-              <QRCodeSVG value={appPairingPayload} size={160} level="M" />
+            <div
+              className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-950 rounded-2xl border shadow-sm transition-all duration-300"
+              style={{
+                borderColor: `${activeColor.hex}50`,
+                boxShadow: `0 0 20px ${activeColor.hex}15`,
+              }}
+            >
+              <QRCodeSVG
+                value={appPairingPayload}
+                size={160}
+                level="M"
+                fgColor={activeColor.hex}
+              />
               <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 mt-2.5 text-center">
                 Scan with HTTPeek Android Camera to pair instantly
               </span>
@@ -309,14 +321,25 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
             </div>
 
             {/* Quick IP & Port Copy */}
-            <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-xs">
-              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+            <div
+              className="flex items-center justify-between px-3 py-2 rounded-xl border text-xs"
+              style={{
+                borderColor: `${activeColor.hex}40`,
+                backgroundColor: `${activeColor.hex}0D`,
+              }}
+            >
+              <span className="font-mono font-bold" style={{ color: activeColor.hex }}>
                 {selectedIp}:{proxyPort}
               </span>
               <button
                 type="button"
                 onClick={() => handleCopyUrl(`${selectedIp}:${proxyPort}`)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 cursor-pointer text-[11px] font-bold"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  borderColor: activeColor.hex,
+                  color: activeColor.hex,
+                }}
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copied ? 'Copied' : 'Copy IP:Port'}</span>
@@ -517,8 +540,19 @@ export const PhoneConnectDialog: React.FC<PhoneConnectDialogProps> = ({ onClose 
         {/* Tab 4: CA Certificate URL */}
         {tabMode === 'cert' && (
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
-              <QRCodeSVG value={certDownloadUrl} size={160} level="M" />
+            <div
+              className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-950 rounded-2xl border shadow-sm transition-all duration-300"
+              style={{
+                borderColor: `${activeColor.hex}50`,
+                boxShadow: `0 0 20px ${activeColor.hex}15`,
+              }}
+            >
+              <QRCodeSVG
+                value={certDownloadUrl}
+                size={160}
+                level="M"
+                fgColor={activeColor.hex}
+              />
               <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 mt-2.5 text-center">
                 Scan with mobile browser to download Root CA certificate
               </span>

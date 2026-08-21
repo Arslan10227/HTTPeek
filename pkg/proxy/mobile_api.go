@@ -117,12 +117,13 @@ func truncateString(s string, max int) string {
 
 // MobileAPIManager handles embedded REST endpoints and WebSocket event streams for mobile clients.
 type MobileAPIManager struct {
-	server         *Server
-	wsConns        map[string]net.Conn
-	devices        map[string]*MobileDeviceInfo
-	onDeviceChange func([]MobileDeviceInfo)
-	apiLimiter     *rateLimiter
-	mu             sync.RWMutex
+	server          *Server
+	wsConns         map[string]net.Conn
+	devices         map[string]*MobileDeviceInfo
+	onDeviceChange  func([]MobileDeviceInfo)
+	apiLimiter      *rateLimiter
+	lastAuthProfile any
+	mu              sync.RWMutex
 }
 
 // NewMobileAPIManager initializes a mobile API manager.
@@ -379,6 +380,33 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 	path := strings.TrimPrefix(req.URL.Path, "/api")
 
 	switch {
+	case path == "/auth/session":
+		if req.Method == http.MethodPost {
+			var profile struct {
+				UID         string `json:"uid"`
+				Email       string `json:"email"`
+				DisplayName string `json:"displayName"`
+				PhotoURL    string `json:"photoURL"`
+			}
+			bodyBytes, _ := readJSONBody(req)
+			if err := json.Unmarshal(bodyBytes, &profile); err == nil && profile.UID != "" {
+				m.mu.Lock()
+				m.lastAuthProfile = profile
+				m.mu.Unlock()
+				m.BroadcastEvent("auth:session", profile)
+				logger.Info("Auth", fmt.Sprintf("Authenticated user session synced: %s (%s)", profile.DisplayName, profile.Email))
+			}
+			sendJSONResponse(clientConn, http.StatusOK, map[string]any{"success": true})
+			return
+		}
+		if req.Method == http.MethodGet {
+			m.mu.RLock()
+			profile := m.lastAuthProfile
+			m.mu.RUnlock()
+			sendJSONResponse(clientConn, http.StatusOK, profile)
+			return
+		}
+
 	case (path == "/status" || path == "/proxy/status") && req.Method == http.MethodGet:
 		cfg := m.server.Config()
 		sendJSONResponse(clientConn, http.StatusOK, map[string]any{

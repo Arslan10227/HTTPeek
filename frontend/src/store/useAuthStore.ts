@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User } from 'firebase/auth';
 import { auth, loginWithGoogle, logoutUser, logAnalyticsEvent } from '../services/firebase';
 import { toast } from './useToastStore';
+import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime';
 
 export interface AuthUserProfile {
   uid: string;
@@ -37,7 +38,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      // If we are on the hosted website (https://httpeek.web.app), direct popup is supported
+      // 1. If running on the hosted web app (https://httpeek.web.app), direct popup works natively
       if (typeof window !== 'undefined' && window.location.hostname.includes('httpeek.web.app')) {
         const user = await loginWithGoogle();
         const profile: AuthUserProfile = {
@@ -52,32 +53,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      // In Desktop / Wails WebView environment:
-      // Open the authorized hosted relay popup at https://httpeek.web.app/auth-callback.html
-      const width = 500;
-      const height = 620;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
+      // 2. In Desktop / Wails environment:
+      // Open the browser with the authorized relay URL
+      const authUrl = 'https://httpeek.web.app/auth-callback.html?auto=true';
 
-      const popup = window.open(
-        'https://httpeek.web.app/auth-callback.html?auto=true',
-        'HTTPeek Google Sign In',
-        `width=${width},height=${height},top=${top},left=${left},status=no,menubar=no,toolbar=no`
-      );
-
-      // Handle cases where popup might be blocked
-      if (!popup) {
-        window.open('https://httpeek.web.app/auth-callback.html', '_blank');
+      try {
+        if (typeof BrowserOpenURL === 'function') {
+          BrowserOpenURL(authUrl);
+        } else if ((window as any).runtime?.BrowserOpenURL) {
+          (window as any).runtime.BrowserOpenURL(authUrl);
+        } else {
+          window.open(authUrl, '_blank');
+        }
+      } catch (e) {
+        window.open(authUrl, '_blank');
       }
 
-      // Timer to reset loading if user closes popup without logging in
-      const pollTimer = setInterval(() => {
-        if (popup && popup.closed) {
+      toast.info('Browser Opened', 'Complete Google Sign In in your browser window to log in.');
+
+      // 3. Poll local proxy auth session endpoint (http://127.0.0.1:9099/api/auth/session)
+      let pollCount = 0;
+      const pollTimer = setInterval(async () => {
+        pollCount++;
+        if (pollCount > 60 || get().user) {
           clearInterval(pollTimer);
-          if (!get().user) {
-            set({ isLoading: false });
-          }
+          if (!get().user) set({ isLoading: false });
+          return;
         }
+
+        try {
+          const res = await fetch('http://127.0.0.1:9099/api/auth/session');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.uid) {
+              clearInterval(pollTimer);
+              const profile: AuthUserProfile = data;
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+              set({ user: profile, isLoading: false, isAuthModalOpen: false });
+              toast.success('Welcome!', `Signed in as ${profile.displayName || profile.email}`);
+              logAnalyticsEvent('login', { method: 'google_browser_sync' });
+            }
+          }
+        } catch (e) {}
       }, 1000);
 
     } catch (error: any) {
@@ -115,7 +132,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (e) {}
 
-    // 2. Listen for postMessage from the hosted auth relay popup
+    // 2. Listen for postMessage from any popup window
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'HTTPEEK_AUTH_SUCCESS' && event.data?.user) {
         const profile: AuthUserProfile = event.data.user;
@@ -125,7 +142,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         logAnalyticsEvent('login', { method: 'google_relay' });
       }
     };
-
     window.addEventListener('message', handleMessage);
 
     // 3. BroadcastChannel listener
@@ -140,6 +156,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           toast.success('Welcome!', `Signed in as ${profile.displayName || profile.email}`);
         }
       };
+    } catch (e) {}
+
+    // 4. Wails backend event listener
+    try {
+      if (typeof EventsOn === 'function') {
+        EventsOn('auth:session', (profile: AuthUserProfile) => {
+          if (profile && profile.uid) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+            set({ user: profile, isLoading: false, isAuthModalOpen: false });
+            toast.success('Welcome!', `Signed in as ${profile.displayName || profile.email}`);
+          }
+        });
+      }
     } catch (e) {}
 
     return () => {

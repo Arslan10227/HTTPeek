@@ -5,6 +5,7 @@ import {
   Monitor, Download, RefreshCw, AlertCircle, CheckCircle2, Loader2
 } from 'lucide-react';
 import { useProxyStore } from '../../store/useProxyStore';
+import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
 import { ADBDeviceInfo, AndroidInstallResult, InstallStepResult } from '../../types/androidCert';
@@ -38,6 +39,8 @@ const StepIcon: React.FC<{ status: InstallStepResult['status'] }> = ({ status })
 
 export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({ isOpen, onClose }) => {
   const { status } = useProxyStore();
+  const { getActiveColorPreset } = useAppConfig();
+  const activeColor = getActiveColorPreset();
   const [localIps, setLocalIps] = useState<string[]>([]);
   const [selectedIp, setSelectedIp] = useState('');
   const [apiToken, setApiToken] = useState('');
@@ -201,12 +204,33 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({ isOpen, onClos
             <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               <QrCode className="w-3.5 h-3.5" /> 1. Pair Android App
             </h3>
-            <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-5">
-              <div className="bg-white p-3 rounded-2xl border border-emerald-200/80 shadow-md shrink-0">
-                <QRCodeSVG value={pairingPayload} size={140} level="M" includeMargin={false} />
+            <div
+              className="border rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-5 transition-all duration-300"
+              style={{
+                borderColor: `${activeColor.hex}40`,
+                backgroundColor: `${activeColor.hex}0A`,
+              }}
+            >
+              <div
+                className="bg-white dark:bg-gray-950 p-3 rounded-2xl border shadow-md shrink-0 transition-all duration-300"
+                style={{ borderColor: activeColor.hex }}
+              >
+                <QRCodeSVG
+                  value={pairingPayload}
+                  size={140}
+                  level="M"
+                  includeMargin={false}
+                  fgColor={activeColor.hex}
+                />
               </div>
               <div className="space-y-2 flex-1 min-w-0">
-                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">
+                <div
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{
+                    backgroundColor: `${activeColor.hex}25`,
+                    color: activeColor.hex,
+                  }}
+                >
                   <Wifi className="w-3 h-3" /><span>Same Wi-Fi required</span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">

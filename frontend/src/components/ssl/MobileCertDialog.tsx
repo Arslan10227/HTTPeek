@@ -88,10 +88,18 @@ export const MobileCertDialog: React.FC<MobileCertDialogProps> = ({
 
         {/* QR Code */}
         <div
-          className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border shadow-inner"
-          style={{ borderColor: 'var(--color-border)' }}
+          className="flex flex-col items-center justify-center p-4 bg-white dark:bg-gray-950 rounded-2xl border shadow-sm transition-all duration-300"
+          style={{
+            borderColor: `${activeColor.hex}50`,
+            boxShadow: `0 0 20px ${activeColor.hex}15`,
+          }}
         >
-          <QRCodeSVG value={downloadUrl} size={150} level="M" />
+          <QRCodeSVG
+            value={downloadUrl}
+            size={150}
+            level="M"
+            fgColor={activeColor.hex}
+          />
           <span className="text-[11px] text-neutral-500 mt-2 text-center">
             {isZh
               ? '使用 Safari 或手机自带浏览器扫描下载证书'

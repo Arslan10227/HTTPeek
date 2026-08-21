@@ -12,14 +12,14 @@ import {
   Sun,
   Moon,
   ChevronRight,
+  User,
+  Bell,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { PreferenceDialog } from './PreferenceDialog';
 import { useAppConfig } from '../../theme/useAppConfig';
-
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { User, Bell } from 'lucide-react';
 
 export type LeftNavTab = 'interceptors' | 'requests' | 'rules' | 'favorites' | 'history' | 'toolbox';
 
@@ -36,7 +36,7 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
   requestCount = 0,
   onOpenDocs,
 }) => {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const { getActiveColorPreset, themeMode, setThemeMode, getEffectiveIsDark } = useAppConfig();
   const { toggleDrawer, unreadCount } = useNotificationStore();
   const { user, openAuthModal } = useAuthStore();
@@ -45,67 +45,132 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
   const activeColor = getActiveColorPreset();
   const isDark = getEffectiveIsDark();
 
-  const navItems: { id: LeftNavTab; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: 'interceptors', label: 'Intercept', icon: <Rocket className="w-[18px] h-[18px]" /> },
-    { id: 'requests', label: 'View', icon: <LayoutGrid className="w-[18px] h-[18px]" />, badge: requestCount > 0 ? requestCount : undefined },
-    { id: 'rules', label: 'Mock', icon: <Sliders className="w-[18px] h-[18px]" /> },
-    { id: 'favorites', label: t.favorites, icon: <Heart className="w-[18px] h-[18px]" /> },
-    { id: 'history', label: t.history, icon: <HistoryIcon className="w-[18px] h-[18px]" /> },
-    { id: 'toolbox', label: t.toolbox, icon: <Wrench className="w-[18px] h-[18px]" /> },
+  const navItems: {
+    id: LeftNavTab;
+    label: string;
+    icon: React.ReactNode;
+    color: string;
+    badge?: number;
+  }[] = [
+    {
+      id: 'interceptors',
+      label: 'Intercept',
+      icon: (
+        <Rocket className="w-[19px] h-[19px] text-amber-500 transition-all duration-300 group-hover:-translate-y-1 group-hover:rotate-12 group-hover:scale-110 drop-shadow-[0_2px_8px_rgba(245,158,11,0.4)]" />
+      ),
+      color: '#F59E0B',
+    },
+    {
+      id: 'requests',
+      label: 'View',
+      icon: (
+        <LayoutGrid className="w-[19px] h-[19px] text-emerald-500 transition-all duration-300 group-hover:scale-115 group-hover:rotate-3 drop-shadow-[0_2px_8px_rgba(16,185,129,0.4)]" />
+      ),
+      color: '#10B981',
+      badge: requestCount > 0 ? requestCount : undefined,
+    },
+    {
+      id: 'rules',
+      label: 'Mock',
+      icon: (
+        <Sliders className="w-[19px] h-[19px] text-cyan-500 transition-all duration-300 group-hover:rotate-12 group-hover:scale-110 drop-shadow-[0_2px_8px_rgba(6,182,212,0.4)]" />
+      ),
+      color: '#06B6D4',
+    },
+    {
+      id: 'favorites',
+      label: t.favorites,
+      icon: (
+        <Heart className="w-[19px] h-[19px] text-rose-500 transition-all duration-300 group-hover:scale-125 group-hover:animate-pulse drop-shadow-[0_2px_8px_rgba(244,63,94,0.4)]" />
+      ),
+      color: '#F43F5E',
+    },
+    {
+      id: 'history',
+      label: t.history,
+      icon: (
+        <HistoryIcon className="w-[19px] h-[19px] text-purple-500 transition-all duration-300 group-hover:-rotate-45 group-hover:scale-110 drop-shadow-[0_2px_8px_rgba(168,85,247,0.4)]" />
+      ),
+      color: '#A855F7',
+    },
+    {
+      id: 'toolbox',
+      label: t.toolbox,
+      icon: (
+        <Wrench className="w-[19px] h-[19px] text-indigo-500 transition-all duration-300 group-hover:rotate-45 group-hover:scale-110 drop-shadow-[0_2px_8px_rgba(99,102,241,0.4)]" />
+      ),
+      color: '#6366F1',
+    },
   ];
 
   const bottomActions = [
     {
       key: 'auth',
       icon: user?.photoURL ? (
-        <img src={user.photoURL} alt="Avatar" className="w-5 h-5 rounded-full border border-emerald-500 shadow-xs" />
+        <img
+          src={user.photoURL}
+          alt="Avatar"
+          className="w-5 h-5 rounded-full border-2 border-emerald-500 shadow-sm transition-transform duration-300 hover:scale-115"
+        />
       ) : (
-        <User className="w-4 h-4" />
+        <div className="p-1 rounded-lg bg-blue-500/15 text-blue-500 border border-blue-500/30 transition-transform duration-300 group-hover:scale-115">
+          <User className="w-3.5 h-3.5" />
+        </div>
       ),
       label: user ? user.displayName || 'Google Account' : 'Sign In with Google',
       onClick: openAuthModal,
-      colorClass: user ? 'text-emerald-500' : 'text-gray-400',
+      colorClass: '',
     },
     {
       key: 'notifications',
       icon: (
-        <div className="relative flex items-center justify-center">
-          <Bell className="w-4 h-4" />
+        <div className="relative flex items-center justify-center transition-transform duration-300 group-hover:rotate-12 group-hover:scale-115">
+          <Bell className="w-4 h-4 text-amber-500" />
           {unreadCount() > 0 && (
-            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse ring-2 ring-white dark:ring-gray-900" />
           )}
         </div>
       ),
       label: `Notifications ${unreadCount() > 0 ? `(${unreadCount()})` : ''}`,
       onClick: toggleDrawer,
-      colorClass: unreadCount() > 0 ? 'text-emerald-500' : '',
+      colorClass: '',
     },
     {
       key: 'theme',
-      icon: isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />,
+      icon: isDark ? (
+        <Sun className="w-4 h-4 text-amber-400 transition-all duration-500 group-hover:rotate-90 group-hover:scale-115 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
+      ) : (
+        <Moon className="w-4 h-4 text-indigo-400 transition-all duration-500 group-hover:-rotate-12 group-hover:scale-115 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+      ),
       label: isDark ? 'Light Mode' : 'Dark Mode',
       onClick: () => setThemeMode(isDark ? 'light' : 'dark'),
-      colorClass: 'text-amber-500',
+      colorClass: '',
     },
     ...(onOpenDocs
-      ? [{
-          key: 'docs',
-          icon: <BookOpen className="w-4 h-4" />,
-          label: 'Docs (F1)',
-          onClick: onOpenDocs,
-          colorClass: 'text-blue-400',
-        }]
+      ? [
+          {
+            key: 'docs',
+            icon: <BookOpen className="w-4 h-4 text-sky-400 transition-all duration-300 group-hover:scale-115" />,
+            label: 'Docs (F1)',
+            onClick: onOpenDocs,
+            colorClass: '',
+          },
+        ]
       : []),
     {
       key: 'settings',
-      icon: <SettingsIcon className="w-4 h-4" />,
+      icon: (
+        <SettingsIcon className="w-4 h-4 text-slate-400 dark:text-slate-300 transition-all duration-500 group-hover:rotate-180 group-hover:scale-115" />
+      ),
       label: 'Settings',
       onClick: () => setIsPreferenceOpen(true),
       colorClass: '',
     },
     {
       key: 'feedback',
-      icon: <MessageSquare className="w-4 h-4" />,
+      icon: (
+        <MessageSquare className="w-4 h-4 text-fuchsia-400 transition-all duration-300 group-hover:scale-115 group-hover:-translate-y-0.5" />
+      ),
       label: 'Feedback',
       onClick: () => window.open('https://github.com/Arslan10227/HTTPeek/issues', '_blank'),
       colorClass: '',
@@ -136,7 +201,8 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
                     ${collapsed ? 'w-9 h-9' : 'w-[58px] py-2'}`}
                   style={{
                     color: isActive ? activeColor.hex : 'var(--color-text-muted)',
-                    backgroundColor: isActive ? 'rgba(0, 229, 163, 0.12)' : 'transparent',
+                    backgroundColor: isActive ? `${activeColor.hex}18` : 'transparent',
+                    boxShadow: isActive ? `0 0 12px ${activeColor.hex}25` : undefined,
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)';
@@ -151,7 +217,7 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
                   {/* Active left bar */}
                   {isActive && (
                     <span
-                      className="absolute left-0 inset-y-1/4 w-[3px] rounded-r-full animate-nav-indicator"
+                      className="absolute left-0 inset-y-1/4 w-[3px] rounded-r-full animate-nav-indicator shadow-sm"
                       style={{ backgroundColor: activeColor.hex, height: '50%', top: '25%' }}
                     />
                   )}
@@ -170,17 +236,14 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
                   )}
 
                   {/* Badge */}
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span
-                      className="absolute top-0.5 right-0.5 text-[9px] font-bold px-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full text-white"
-                      style={{ backgroundColor: activeColor.hex, color: '#0a2e1e' }}
-                    >
-                      {item.badge > 999 ? '999+' : item.badge}
+                  {item.badge !== undefined && (
+                    <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-extrabold flex items-center justify-center leading-none shadow-xs">
+                      {item.badge > 99 ? '99+' : item.badge}
                     </span>
                   )}
                 </button>
 
-                {/* Collapsed tooltip */}
+                {/* Tooltip on collapse */}
                 {collapsed && (
                   <div
                     className="absolute left-full ml-2.5 top-1/2 -translate-y-1/2 z-50 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150"
@@ -192,14 +255,7 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
                     }}
                   >
                     {item.label}
-                    {item.badge !== undefined && item.badge > 0 && (
-                      <span
-                        className="ml-1.5 px-1 rounded-full text-[9px]"
-                        style={{ backgroundColor: activeColor.hex, color: '#0a2e1e' }}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
+                    {item.badge !== undefined && ` (${item.badge})`}
                   </div>
                 )}
               </div>
@@ -207,7 +263,7 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
           })}
         </div>
 
-        {/* ── Collapse / Expand Toggle ─────────────────────────── */}
+        {/* ── Collapse Toggle ─────────────────────────────────── */}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
@@ -222,17 +278,17 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
         </button>
 
         {/* ── Bottom Actions ───────────────────────────────────── */}
-        <div className="flex flex-col items-center gap-0.5 pb-1 w-full">
+        <div className="flex flex-col items-center gap-1 pb-1 w-full">
           {bottomActions.map((action) => (
             <div key={action.key} className="group relative w-full flex justify-center">
               <button
                 type="button"
                 onClick={action.onClick}
-                className="btn-icon"
+                className="btn-icon transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800/60"
                 title={action.label}
                 style={{ color: action.colorClass ? undefined : 'var(--color-text-subtle)' }}
               >
-                <span className={action.colorClass}>{action.icon}</span>
+                <span>{action.icon}</span>
               </button>
 
               {collapsed && (
