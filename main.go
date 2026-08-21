@@ -3,14 +3,9 @@ package main
 import (
 	"embed"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/signal"
-	"strings"
-	"sync"
 	"syscall"
-	"time"
 
 	"httpeek/pkg/logger"
 	"httpeek/pkg/system"
@@ -23,100 +18,6 @@ import (
 
 //go:embed all:frontend/dist
 var assets embed.FS
-
-var (
-	hostedCandidateURLs = []string{
-		"https://httpeek.onemanbyte.cc",
-	}
-	activeHostedURL = ""
-	hostedClient    = &http.Client{
-		Timeout: 3 * time.Second,
-	}
-	isHostedAvailable = false
-	hostedCheckOnce   sync.Once
-)
-
-func checkHostedAvailability() (string, bool) {
-	for _, baseURL := range hostedCandidateURLs {
-		req, err := http.NewRequest("GET", baseURL+"/index.html", nil)
-		if err != nil {
-			continue
-		}
-		req.Header.Set("Cache-Control", "no-cache")
-		resp, err := hostedClient.Do(req)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 16384))
-			resp.Body.Close()
-			if readErr == nil && strings.Contains(string(bodyBytes), "id=\"root\"") && strings.Contains(string(bodyBytes), "HTTPeek") {
-				return baseURL, true
-			}
-		} else if resp != nil && resp.Body != nil {
-			resp.Body.Close()
-		}
-	}
-	return "", false
-}
-
-func dynamicAssetMiddleware(next http.Handler) http.Handler {
-	hostedCheckOnce.Do(func() {
-		url, ok := checkHostedAvailability()
-		if ok {
-			activeHostedURL = url
-			isHostedAvailable = true
-			logger.Info("AssetServer", fmt.Sprintf("Using Hosted WebUI from %s (Online Mode)", activeHostedURL))
-		} else {
-			isHostedAvailable = false
-			logger.Info("AssetServer", "Hosted WebUI unavailable or offline. Using Embedded Local Assets (Offline Fallback)")
-		}
-	})
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-
-		// Always delegate internal Wails runtime and IPC routes to local handler
-		if strings.HasPrefix(path, "/wails/") || strings.HasPrefix(path, "/wails/runtime") {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		if isHostedAvailable && activeHostedURL != "" {
-			targetURL := activeHostedURL + path
-			req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
-			if err == nil {
-				for k, v := range r.Header {
-					req.Header[k] = v
-				}
-				resp, fetchErr := hostedClient.Do(req)
-				if fetchErr == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotModified) {
-					contentType := resp.Header.Get("Content-Type")
-					// Guard against SPA 404 HTML fallback rewrite when JS/CSS is requested
-					isJs := strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".mjs")
-					isCss := strings.HasSuffix(path, ".css")
-					if (isJs && !strings.Contains(contentType, "javascript")) || (isCss && !strings.Contains(contentType, "css")) {
-						resp.Body.Close()
-						// Remote is out of sync with requested assets. Fall back to local embedded assets!
-						next.ServeHTTP(w, r)
-						return
-					}
-
-					defer resp.Body.Close()
-					for k, v := range resp.Header {
-						w.Header()[k] = v
-					}
-					w.WriteHeader(resp.StatusCode)
-					_, _ = io.Copy(w, resp.Body)
-					return
-				}
-				if resp != nil && resp.Body != nil {
-					resp.Body.Close()
-				}
-			}
-		}
-
-		// Seamless fallback to local embedded assets
-		next.ServeHTTP(w, r)
-	})
-}
 
 func main() {
 	// 1. Initialize Centralized Logger immediately
@@ -137,7 +38,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	logger.Info("Main", "Starting HTTPeek - Next Gen HTTP Debugging Tool by OneManByte...")
+	logger.Info("Main", "Starting HTTPeek - Next Gen HTTP Debugging Tool by OneManByte (Local Embedded UI)...")
 
 	app := NewApp()
 
@@ -149,10 +50,9 @@ func main() {
 		MinHeight:        700,
 		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
-			Assets:     assets,
-			Middleware: dynamicAssetMiddleware,
+			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 255},
+		BackgroundColour: &options.RGBA{R: 8, G: 11, B: 16, A: 255},
 		OnStartup:        app.startup,
 		OnBeforeClose:    app.beforeClose,
 		OnShutdown:       app.shutdown,
