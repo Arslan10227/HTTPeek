@@ -45,7 +45,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       toast.success('Welcome!', `Signed in as ${user.displayName || user.email}`);
     } catch (error: any) {
       set({ isLoading: false });
-      if (error?.code !== 'auth/popup-closed-by-user') {
+      if (error?.code === 'auth/unauthorized-domain') {
+        const currentDomain = window.location.hostname || 'wails.localhost';
+        toast.error(
+          'Unauthorized Domain',
+          `Add "${currentDomain}" to Firebase Console -> Authentication -> Settings -> Authorized Domains.`
+        );
+      } else if (error?.code !== 'auth/popup-closed-by-user') {
         toast.error('Google Sign-In Failed', error?.message || 'Authentication error');
       }
     }

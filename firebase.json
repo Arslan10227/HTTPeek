@@ -33,6 +33,13 @@
     ]
   },
   "auth": {
+    "authorizedDomains": [
+      "httpeek.web.app",
+      "httpeek.firebaseapp.com",
+      "localhost",
+      "wails.localhost",
+      "127.0.0.1"
+    ],
     "providers": {
       "googleSignIn": {
         "oAuthBrandDisplayName": "HTTPeek",
