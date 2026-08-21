@@ -17,6 +17,10 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { PreferenceDialog } from './PreferenceDialog';
 import { useAppConfig } from '../../theme/useAppConfig';
 
+import { useNotificationStore } from '../../store/useNotificationStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { User, Bell } from 'lucide-react';
+
 export type LeftNavTab = 'interceptors' | 'requests' | 'rules' | 'favorites' | 'history' | 'toolbox';
 
 interface LeftNavigationBarProps {
@@ -34,6 +38,8 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
 }) => {
   const { t, language } = useTranslation();
   const { getActiveColorPreset, themeMode, setThemeMode, getEffectiveIsDark } = useAppConfig();
+  const { toggleDrawer, unreadCount } = useNotificationStore();
+  const { user, openAuthModal } = useAuthStore();
   const [isPreferenceOpen, setIsPreferenceOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const activeColor = getActiveColorPreset();
@@ -49,6 +55,31 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
   ];
 
   const bottomActions = [
+    {
+      key: 'auth',
+      icon: user?.photoURL ? (
+        <img src={user.photoURL} alt="Avatar" className="w-5 h-5 rounded-full border border-emerald-500 shadow-xs" />
+      ) : (
+        <User className="w-4 h-4" />
+      ),
+      label: user ? user.displayName || 'Google Account' : 'Sign In with Google',
+      onClick: openAuthModal,
+      colorClass: user ? 'text-emerald-500' : 'text-gray-400',
+    },
+    {
+      key: 'notifications',
+      icon: (
+        <div className="relative flex items-center justify-center">
+          <Bell className="w-4 h-4" />
+          {unreadCount() > 0 && (
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+          )}
+        </div>
+      ),
+      label: `Notifications ${unreadCount() > 0 ? `(${unreadCount()})` : ''}`,
+      onClick: toggleDrawer,
+      colorClass: unreadCount() > 0 ? 'text-emerald-500' : '',
+    },
     {
       key: 'theme',
       icon: isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />,

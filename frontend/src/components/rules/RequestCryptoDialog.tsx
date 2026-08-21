@@ -1,30 +1,45 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, KeyRound } from 'lucide-react';
+import { X, Plus, Trash2, KeyRound, Lock, Unlock, ShieldCheck, Sparkles, Save } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
 import { CryptoRule } from '../../types';
+import { VisualMatchBuilder } from '../common/VisualMatchBuilder';
 
 interface RequestCryptoDialogProps {
   onClose: () => void;
 }
 
+const ALGORITHMS = ['AES-CBC', 'AES-ECB', 'AES-GCM', 'AES-CTR', 'DES-CBC', '3DES-CBC'];
+const ENCODINGS = ['base64', 'hex', 'raw'];
+
 export const RequestCryptoDialog: React.FC<RequestCryptoDialogProps> = ({ onClose }) => {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const { cryptoRules, setCryptoRules } = useProxyStore();
-  const { getActiveColorPreset } = useAppConfig();
-  const activeColor = getActiveColorPreset();
 
   const [rules, setRules] = useState<CryptoRule[]>(cryptoRules || []);
   const [name, setName] = useState('');
   const [urlPattern, setUrlPattern] = useState('');
-  const [algorithm, setAlgorithm] = useState<'AES-CBC' | 'AES-ECB' | 'AES-GCM'>('AES-CBC');
+  const [algorithm, setAlgorithm] = useState<any>('AES-CBC');
+  const [encoding, setEncoding] = useState<any>('base64');
   const [secretKey, setSecretKey] = useState('');
   const [iv, setIv] = useState('');
+  const [targetStage, setTargetStage] = useState<'both' | 'request' | 'response'>('response');
 
-  const isZh = language.startsWith('zh');
+  const generateRandomKey = (bits = 256) => {
+    const bytes = new Uint8Array(bits / 8);
+    crypto.getRandomValues(bytes);
+    if (encoding === 'hex') {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
 
   const handleAdd = () => {
     if (!urlPattern.trim() || !secretKey.trim()) {
@@ -33,12 +48,13 @@ export const RequestCryptoDialog: React.FC<RequestCryptoDialogProps> = ({ onClos
     }
     const newRule: CryptoRule = {
       id: `crypto-${Date.now()}`,
-      name: name.trim() || 'Crypto Rule',
+      name: name.trim() || `${algorithm} Decryption`,
       urlPattern: urlPattern.trim(),
       algorithm,
+      encoding,
       key: secretKey.trim(),
       iv: iv.trim(),
-      target: 'response',
+      target: targetStage,
       enabled: true,
     };
     setRules([...rules, newRule]);
@@ -46,6 +62,17 @@ export const RequestCryptoDialog: React.FC<RequestCryptoDialogProps> = ({ onClos
     setUrlPattern('');
     setSecretKey('');
     setIv('');
+    toast.success('Crypto Rule Added', `${newRule.name} (${newRule.algorithm})`);
+  };
+
+  const handleToggle = (index: number) => {
+    const updated = [...rules];
+    updated[index].enabled = !updated[index].enabled;
+    setRules(updated);
+  };
+
+  const handleDelete = (index: number) => {
+    setRules(rules.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
@@ -62,155 +89,218 @@ export const RequestCryptoDialog: React.FC<RequestCryptoDialogProps> = ({ onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs select-none p-4 font-sans">
       <div
-        className="w-[620px] max-h-[85vh] rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-xs"
-        style={{
-          backgroundColor: 'var(--md-dialog-bg)',
-          borderColor: 'var(--md-sys-color-divider)',
-          color: 'var(--md-sys-color-on-surface)',
-        }}
+        className="w-[680px] max-h-[90vh] rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-xs bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-5 h-5" style={{ color: activeColor.hex }} />
-            <h2 className="text-sm font-semibold">{t.requestCrypto}</h2>
+        <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-cyan-500/15 text-cyan-500 border border-cyan-500/30">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold">{t.requestCrypto} (Crypto Decryption &amp; Encryption Studio)</h2>
+              <p className="text-[11px] text-gray-500">Automatically decrypt encrypted API payload bodies for live viewing and rewriting</p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-gray-500 hover:text-gray-900 dark:hover:text-white"
+            className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-gray-500 hover:text-gray-900 dark:hover:text-white"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Form Inputs */}
-        <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-3 gap-2">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Rule Name"
-              className="px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            />
-            <input
-              type="text"
-              value={urlPattern}
-              onChange={(e) => setUrlPattern(e.target.value)}
-              placeholder="URL pattern (e.g. api.test.com/*)"
-              className="px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            />
-            <select
-              value={algorithm}
-              onChange={(e) => setAlgorithm(e.target.value as any)}
-              className="px-2 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none cursor-pointer"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            >
-              <option value="AES-CBC">AES-CBC</option>
-              <option value="AES-ECB">AES-ECB</option>
-              <option value="AES-GCM">AES-GCM</option>
-            </select>
-          </div>
+        {/* Visual Match Builder */}
+        <VisualMatchBuilder
+          urlPattern={urlPattern}
+          onChangeUrlPattern={setUrlPattern}
+          title="Encrypted Endpoint Condition"
+        />
 
-          <div className="grid grid-cols-5 gap-2">
-            <input
-              type="text"
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
-              placeholder="AES Key (Hex or Base64)"
-              className="col-span-2 px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            />
-            <input
-              type="text"
-              value={iv}
-              onChange={(e) => setIv(e.target.value)}
-              placeholder="IV (Optional for CBC/GCM)"
-              className="col-span-2 px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            />
-            <button
-              type="button"
-              onClick={handleAdd}
-              className="col-span-1 flex items-center justify-center gap-1 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
-              style={{ backgroundColor: activeColor.hex }}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t.add}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Rules Table */}
-        <div
-          className="flex-1 max-h-[300px] overflow-y-auto border rounded-xl overflow-hidden font-mono text-[11px]"
-          style={{ borderColor: 'var(--md-sys-color-divider)' }}
-        >
-          {rules.length === 0 ? (
-            <div className="text-center text-gray-400 py-12 italic">
-              {isZh ? '暂无加解密规则' : 'No crypto rules defined'}
+        {/* Algorithm & Cipher Configuration */}
+        <div className="p-4 rounded-xl border bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700/70 space-y-3.5">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 block mb-1">Cipher Algorithm:</label>
+              <div className="flex items-center gap-1 flex-wrap">
+                {ALGORITHMS.map((algo) => (
+                  <button
+                    key={algo}
+                    type="button"
+                    onClick={() => setAlgorithm(algo)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                      algorithm === algo
+                        ? 'bg-cyan-500/15 border-cyan-500 text-cyan-600 dark:text-cyan-400 ring-1 ring-cyan-500'
+                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    {algo}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            rules.map((rule, idx) => (
-              <div
-                key={rule.id || idx}
-                className="flex items-center justify-between px-3 py-2 border-b last:border-b-0 border-gray-100 dark:border-gray-800 hover:bg-black/5 dark:hover:bg-white/5"
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={rule.enabled}
-                    onChange={(e) => {
-                      const next = [...rules];
-                      next[idx].enabled = e.target.checked;
-                      setRules(next);
-                    }}
-                    className="rounded"
-                  />
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-blue-600 dark:text-blue-400 truncate w-72">
-                      {rule.name} ({rule.algorithm})
-                    </span>
-                    <span className="text-[10px] text-gray-500 truncate w-72">
-                      {rule.urlPattern}
-                    </span>
-                  </div>
-                </div>
 
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 block mb-1">Payload Encoding:</label>
+              <div className="flex items-center gap-1.5">
+                {ENCODINGS.map((enc) => (
+                  <button
+                    key={enc}
+                    type="button"
+                    onClick={() => setEncoding(enc)}
+                    className={`px-3 py-1 rounded-lg text-xs font-mono font-bold uppercase border transition-all cursor-pointer ${
+                      encoding === enc
+                        ? 'bg-purple-500/15 border-purple-500 text-purple-600 dark:text-purple-400 ring-1 ring-purple-500'
+                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    {enc}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Key & IV Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-gray-500">Secret Key:</label>
                 <button
                   type="button"
-                  onClick={() => setRules(rules.filter((_, i) => i !== idx))}
-                  className="p-1 text-gray-400 hover:text-red-500 cursor-pointer"
+                  onClick={() => setSecretKey(generateRandomKey(256))}
+                  className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  Generate 256-bit
                 </button>
               </div>
-            ))
-          )}
+              <input
+                type="text"
+                value={secretKey}
+                onChange={(e) => setSecretKey(e.target.value)}
+                placeholder="Secret Key (Base64/Hex)"
+                className="w-full px-3 py-2 rounded-lg border font-mono text-xs bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-gray-500">IV Initialization Vector (Optional):</label>
+                <button
+                  type="button"
+                  onClick={() => setIv(generateRandomKey(128))}
+                  className="text-[10px] text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                >
+                  Generate 128-bit
+                </button>
+              </div>
+              <input
+                type="text"
+                value={iv}
+                onChange={(e) => setIv(e.target.value)}
+                placeholder="IV Vector (Base64/Hex)"
+                className="w-full px-3 py-2 rounded-lg border font-mono text-xs bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+          </div>
+
+          {/* Target Stage */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Decrypt Target:</span>
+            <div className="flex items-center gap-1.5">
+              {[
+                { stage: 'response', label: 'Response Body' },
+                { stage: 'request', label: 'Request Body' },
+                { stage: 'both', label: 'Both Directions' },
+              ].map(({ stage, label }) => (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => setTargetStage(stage as any)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                    targetStage === stage
+                      ? 'bg-cyan-500/15 border-cyan-500 text-cyan-600 dark:text-cyan-400 ring-1 ring-cyan-500'
+                      : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-xs bg-cyan-600 text-white hover:bg-cyan-700 transition-all cursor-pointer shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            Add Crypto Decryption Rule
+          </button>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+        {/* Active Rules List */}
+        <div className="flex-1 flex flex-col gap-2 min-h-0">
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <span>Configured Crypto Decryption Rules ({rules.length})</span>
+            <span className="text-[11px] text-gray-400">Toggle switch to activate</span>
+          </div>
+
+          <div className="max-h-36 overflow-y-auto space-y-2 pr-1">
+            {rules.length === 0 ? (
+              <div className="p-6 text-center text-xs text-gray-400 border border-dashed rounded-xl">
+                No active decryption rules. Configure keys and endpoints above.
+              </div>
+            ) : (
+              rules.map((r, idx) => (
+                <div
+                  key={r.id || idx}
+                  className="flex items-center justify-between p-2.5 rounded-xl border bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 hover:border-gray-400 transition-all"
+                >
+                  <div className="flex items-center gap-2.5 font-mono text-xs truncate">
+                    <input
+                      type="checkbox"
+                      checked={r.enabled}
+                      onChange={() => handleToggle(idx)}
+                      className="w-4 h-4 rounded text-cyan-500 cursor-pointer accent-cyan-500"
+                    />
+                    <span className="font-bold text-gray-900 dark:text-gray-100 truncate">{r.urlPattern}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                      {r.algorithm} ({r.encoding || 'base64'})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(idx)}
+                    className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg border text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
-            style={{ borderColor: 'var(--md-sys-color-divider)' }}
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
           >
-            {t.cancel}
+            Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="px-5 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
-            style={{ backgroundColor: activeColor.hex }}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer shadow-md transition-all"
           >
-            {t.save}
+            <Save className="w-3.5 h-3.5" />
+            Save &amp; Apply Crypto Rules
           </button>
         </div>
       </div>

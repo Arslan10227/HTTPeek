@@ -12,6 +12,10 @@ import { toast } from './store/useToastStore';
 import { api } from './store/apiAdapter';
 import { HttpRequest, HttpResponse, WsFrame, SSEEvent, BreakpointEvent } from './types';
 import { parseHarOrJsonContent } from './utils/exportHelper';
+import { useAuthStore } from './store/useAuthStore';
+import { NotificationDrawer } from './components/notifications/NotificationDrawer';
+import { AuthModal } from './components/auth/AuthModal';
+import { logAnalyticsEvent } from './services/firebase';
 
 export const App: React.FC = () => {
   const {
@@ -27,6 +31,15 @@ export const App: React.FC = () => {
   const { themeMode, themeColor, useMaterial3, autoStartup, getActiveColorPreset, getEffectiveIsDark } = useAppConfig();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768 || api.isMobile());
   const [activeBreakpoint, setActiveBreakpoint] = useState<BreakpointEvent | null>(null);
+
+  const { initAuthListener } = useAuthStore();
+
+  // Firebase Auth initialization & Analytics
+  useEffect(() => {
+    const unsub = initAuthListener();
+    logAnalyticsEvent('app_opened', { platform: isMobile ? 'mobile' : 'desktop' });
+    return () => unsub();
+  }, [initAuthListener, isMobile]);
 
   // Responsive listener
   useEffect(() => {
@@ -301,6 +314,8 @@ export const App: React.FC = () => {
         />
       )}
 
+      <NotificationDrawer />
+      <AuthModal />
       <ToastContainer />
       <ConfirmModal />
     </>
