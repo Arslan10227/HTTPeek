@@ -43,11 +43,12 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "HTTPeek - Next Gen HTTP Debugging Tool",
-		Width:     1360,
-		Height:    860,
-		MinWidth:  1024,
-		MinHeight: 700,
+		Title:            "HTTPeek - Next Gen HTTP Debugging Tool",
+		Width:            1360,
+		Height:           860,
+		MinWidth:         1024,
+		MinHeight:        700,
+		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

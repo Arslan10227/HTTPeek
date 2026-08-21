@@ -191,7 +191,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <>
       <header
-        className="flex items-center justify-between px-3 h-14 border-b select-none shrink-0 overflow-x-auto no-scrollbar gap-2"
+        className="flex items-center justify-between px-3 h-14 border-b select-none shrink-0 overflow-visible relative z-30 gap-2"
         style={{
           backgroundColor: 'var(--color-surface)',
           borderColor: 'var(--color-border)',

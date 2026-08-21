@@ -22,33 +22,22 @@ export async function exportRequests(
     let mimeType = 'application/json';
     const extension = format === 'curl' || format === 'sh' ? 'sh' : format;
 
-    // Check if Wails backend ExportRequestsAs bridge exists
-    if ((window as any).go?.main?.App?.ExportRequestsAs) {
-      data = await (window as any).go.main.App.ExportRequestsAs(requests, format === 'curl' ? 'sh' : format);
-    } else if (format === 'har' && (window as any).go?.main?.App?.ExportHAR) {
-      data = await (window as any).go.main.App.ExportHAR(requests);
+    // Generate output with robust client-side serializer
+    if (format === 'har') {
+      data = generateHarJson(requests);
+      mimeType = 'application/json';
+    } else if (format === 'json') {
+      data = JSON.stringify(requests, null, 2);
+      mimeType = 'application/json';
+    } else if (format === 'csv') {
+      data = generateCSV(requests);
+      mimeType = 'text/csv';
     } else {
-      // Client-side fallback generator
-      if (format === 'har') {
-        data = generateHarJson(requests);
-        mimeType = 'application/json';
-      } else if (format === 'json') {
-        data = JSON.stringify(requests, null, 2);
-        mimeType = 'application/json';
-      } else if (format === 'csv') {
-        data = generateCSV(requests);
-        mimeType = 'text/csv';
-      } else {
-        data = generateCurlScript(requests);
-        mimeType = 'text/x-shellscript';
-      }
+      data = generateCurlScript(requests);
+      mimeType = 'text/x-shellscript';
     }
 
-    if (format === 'csv') mimeType = 'text/csv';
-    else if (format === 'curl' || format === 'sh') mimeType = 'text/x-shellscript';
-    else mimeType = 'application/json';
-
-    // Trigger browser file download
+    // Trigger browser / webview file download
     const blob = new Blob([data], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -78,23 +67,87 @@ export function generateHarJson(requests: HttpRequest[]): string {
         name: 'HTTPeek - Next Gen HTTP Debugging Tool',
         version: '1.0.0',
       },
+      pages: [
+        {
+          startedDateTime: new Date().toISOString(),
+          id: 'page_1',
+          title: 'HTTPeek Captured Traffic',
+          pageTimings: {
+            onContentLoad: -1,
+            onLoad: -1,
+          },
+        },
+      ],
       entries: requests.map((r) => {
         const headersList: { name: string; value: string }[] = [];
+        let cookieHeader = '';
         if (r.headers) {
           Object.entries(r.headers).forEach(([k, v]) => {
-            headersList.push({ name: k, value: Array.isArray(v) ? v.join(', ') : String(v) });
+            const val = Array.isArray(v) ? v.join(', ') : String(v);
+            headersList.push({ name: k, value: val });
+            if (k.toLowerCase() === 'cookie') {
+              cookieHeader = val;
+            }
           });
         }
+
+        // Parse request cookies
+        const reqCookies: { name: string; value: string }[] = [];
+        if (cookieHeader) {
+          cookieHeader.split(';').forEach((part) => {
+            const eqIdx = part.indexOf('=');
+            if (eqIdx > 0) {
+              reqCookies.push({
+                name: part.substring(0, eqIdx).trim(),
+                value: part.substring(eqIdx + 1).trim(),
+              });
+            }
+          });
+        }
+
+        // Parse query string parameters from URL
+        const queryParams: { name: string; value: string }[] = [];
+        try {
+          const parsedUrl = new URL(r.url);
+          parsedUrl.searchParams.forEach((val, key) => {
+            queryParams.push({ name: key, value: val });
+          });
+        } catch { /* ignore */ }
+
+        // Response headers & cookies
         const respHeadersList: { name: string; value: string }[] = [];
+        const respCookies: { name: string; value: string }[] = [];
         if (r.response?.headers) {
           Object.entries(r.response.headers).forEach(([k, v]) => {
-            respHeadersList.push({ name: k, value: Array.isArray(v) ? v.join(', ') : String(v) });
+            const val = Array.isArray(v) ? v.join(', ') : String(v);
+            respHeadersList.push({ name: k, value: val });
+            if (k.toLowerCase() === 'set-cookie') {
+              const eqIdx = val.indexOf('=');
+              if (eqIdx > 0) {
+                respCookies.push({
+                  name: val.substring(0, eqIdx).trim(),
+                  value: val.substring(eqIdx + 1).split(';')[0].trim(),
+                });
+              }
+            }
           });
         }
 
         const validStartTime = r.startTime && !isNaN(new Date(r.startTime).getTime())
           ? new Date(r.startTime).toISOString()
           : new Date().toISOString();
+
+        // Response content (handle binary / base64)
+        const isBinaryResp = Boolean(r.response?.isBinary) || Boolean(r.response?.bodyBase64);
+        let respContentText = '';
+        let respEncoding: string | undefined = undefined;
+
+        if (isBinaryResp && r.response?.bodyBase64) {
+          respContentText = r.response.bodyBase64;
+          respEncoding = 'base64';
+        } else {
+          respContentText = r.response?.bodyString || r.response?.body || '';
+        }
 
         return {
           startedDateTime: validStartTime,
@@ -104,34 +157,39 @@ export function generateHarJson(requests: HttpRequest[]): string {
             url: r.url,
             httpVersion: r.protocol || 'HTTP/1.1',
             headers: headersList,
-            queryString: [],
-            cookies: [],
+            queryString: queryParams,
+            cookies: reqCookies,
             headersSize: -1,
             bodySize: r.bodyString ? r.bodyString.length : (r.body ? r.body.length : 0),
-            postData: r.bodyString || r.body ? {
-              mimeType: String(r.headers?.['content-type'] || 'text/plain'),
-              text: r.bodyString || r.body,
+            postData: (r.bodyString || r.body) ? {
+              mimeType: String(r.headers?.['content-type'] || r.headers?.['Content-Type'] || 'text/plain'),
+              text: r.bodyString || r.body || '',
             } : undefined,
           },
           response: {
             status: r.response?.statusCode || 0,
-            statusText: r.response?.statusText || 'OK',
-            httpVersion: r.response?.protocol || 'HTTP/1.1',
+            statusText: r.response?.statusText || (r.response?.statusCode === 200 ? 'OK' : ''),
+            httpVersion: r.response?.protocol || r.protocol || 'HTTP/1.1',
             headers: respHeadersList,
-            cookies: [],
+            cookies: respCookies,
             content: {
-              size: r.response?.bodySize || 0,
+              size: r.response?.bodySize || respContentText.length,
               mimeType: r.response?.contentType || 'text/plain',
-              text: r.response?.bodyString || r.response?.body || '',
+              text: respContentText,
+              encoding: respEncoding,
             },
             redirectURL: '',
             headersSize: -1,
-            bodySize: r.response?.bodySize || 0,
+            bodySize: r.response?.bodySize || respContentText.length,
           },
           cache: {},
           timings: {
+            blocked: -1,
+            dns: -1,
+            connect: r.timings?.connect || -1,
+            ssl: r.timings?.tls || -1,
             send: 0,
-            wait: r.durationMs || 0,
+            wait: r.timings?.ttfb || r.durationMs || 0,
             receive: 0,
           },
         };
