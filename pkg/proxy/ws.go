@@ -218,14 +218,15 @@ func (h *Handler) interceptWSFrames(ctx *Context, reqID string, src io.Reader, d
 		masked := (header[1] & 0x80) != 0
 		payloadLen := int64(header[1] & 0x7F)
 
+		var ext []byte
 		if payloadLen == 126 {
-			ext := make([]byte, 2)
+			ext = make([]byte, 2)
 			if _, err := io.ReadFull(src, ext); err != nil {
 				return err
 			}
 			payloadLen = int64(binary.BigEndian.Uint16(ext))
 		} else if payloadLen == 127 {
-			ext := make([]byte, 8)
+			ext = make([]byte, 8)
 			if _, err := io.ReadFull(src, ext); err != nil {
 				return err
 			}
@@ -298,6 +299,11 @@ func (h *Handler) interceptWSFrames(ctx *Context, reqID string, src io.Reader, d
 		// Forward the exact raw frame bytes to destination
 		if _, err := dst.Write(header); err != nil {
 			return err
+		}
+		if len(ext) > 0 {
+			if _, err := dst.Write(ext); err != nil {
+				return err
+			}
 		}
 		if masked {
 			if _, err := dst.Write(maskKey); err != nil {

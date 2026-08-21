@@ -534,6 +534,7 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		Request:     httpReq,
 	}
 
+	bodyModified := false
 	// Run Interceptor Chain OnResponse
 	if capture && h.server.Interceptor() != nil {
 		modResp, err := h.server.Interceptor().OnResponse(ctx, httpResp)
@@ -541,6 +542,7 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 			return h.writeInterceptorError(clientConn, req, err)
 		}
 		if modResp != nil {
+			bodyModified = true
 			httpResp = modResp
 			decodedRespBytes = httpResp.Body
 			// Re-derive metadata after interceptor mutation so UI/export
@@ -589,10 +591,22 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	clientHeaders := httpResp.Headers.Clone()
 	removeHopByHopHeaders(clientHeaders)
 
-	// Since we deliver the decoded/modified body, clear compressed Content-Encoding and chunked Transfer-Encoding
-	clientHeaders.Del("Content-Encoding")
-	clientHeaders.Del("Transfer-Encoding")
-	clientHeaders.Set("Content-Length", strconv.Itoa(len(decodedRespBytes)))
+	var payloadToSend []byte
+	if bodyModified {
+		// Response was modified by an interceptor, send uncompressed modified body
+		clientHeaders.Del("Content-Encoding")
+		clientHeaders.Del("Transfer-Encoding")
+		clientHeaders.Set("Content-Length", strconv.Itoa(len(decodedRespBytes)))
+		payloadToSend = decodedRespBytes
+	} else {
+		// Response was NOT modified; forward exact raw bytes from upstream server
+		// preserving upstream Content-Encoding, Content-Length, and Subresource Integrity (SRI)
+		payloadToSend = respBodyBytes
+		if len(respBodyBytes) > 0 {
+			clientHeaders.Set("Content-Length", strconv.Itoa(len(respBodyBytes)))
+		}
+	}
+
 	// HTTP/1.0 closes by default unless keep-alive was requested; reflect the
 	// client's framing intent instead of always advertising keep-alive.
 	if req != nil && req.Close {
@@ -629,8 +643,8 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		return err
 	}
 
-	if len(decodedRespBytes) > 0 {
-		_, err = clientConn.Write(decodedRespBytes)
+	if len(payloadToSend) > 0 {
+		_, err = clientConn.Write(payloadToSend)
 		if err != nil {
 			return err
 		}
