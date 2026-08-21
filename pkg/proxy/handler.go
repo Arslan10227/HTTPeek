@@ -510,11 +510,6 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 
 	// Decompress and decode response body
 	decodedRespBytes, decodedRespStr := DecodeBody(respBodyBytes, contentEncoding, contentType)
-	storageDir := ""
-	if h.server != nil {
-		storageDir = h.server.Config().StorageDir
-	}
-	decodedRespBytes, decodedRespStr, _ = PrepareBodyForStorage(storageDir, reqID, "response", decodedRespBytes, decodedRespStr)
 	respBase64 := base64.StdEncoding.EncodeToString(decodedRespBytes)
 
 	httpResp := &HttpResponse{
@@ -573,9 +568,19 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		httpResp.Protocol = ProtoHTTP2
 	}
 
-	// Emit onResponse to UI
+	// Emit onResponse to UI & SQLite persistence
 	if capture {
-		h.server.DispatchResponse(ctx, httpResp)
+		storageDir := ""
+		if h.server != nil {
+			storageDir = h.server.Config().StorageDir
+		}
+		previewBytes, previewStr, _ := PrepareBodyForStorage(storageDir, reqID, "response", decodedRespBytes, decodedRespStr)
+		dispatchResp := *httpResp
+		dispatchResp.Body = previewBytes
+		dispatchResp.BodyString = previewStr
+		dispatchResp.BodyText = previewStr
+		dispatchResp.BodyBase64 = base64.StdEncoding.EncodeToString(previewBytes)
+		h.server.DispatchResponse(ctx, &dispatchResp)
 	}
 
 	// Write response to client using httpResp (which includes all interceptor mutations)
