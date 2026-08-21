@@ -466,17 +466,21 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	isBinary := isBinaryContentType(contentType)
 
-	// Check if this is an SSE (Server-Sent Events) stream - stream immediately without blocking
-	if strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+	// Check if this is an SSE / streaming response - stream immediately without blocking
+	lowerCT := strings.ToLower(contentType)
+	if strings.Contains(lowerCT, "text/event-stream") ||
+		strings.Contains(lowerCT, "application/x-ndjson") ||
+		strings.Contains(lowerCT, "application/stream+json") ||
+		strings.Contains(lowerCT, "application/x-json-stream") {
 		httpResp := &HttpResponse{
 			ID:          reqID,
 			StatusCode:  resp.StatusCode,
 			StatusText:  resp.Status,
 			Protocol:    resp.Proto,
 			Headers:     resp.Header.Clone(),
-			Body:        []byte("[Streaming Server-Sent Events]"),
-			BodyString:  "[Streaming Server-Sent Events]",
-			BodyText:    "[Streaming Server-Sent Events]",
+			Body:        []byte("[Streaming Response]"),
+			BodyString:  "[Streaming Response]",
+			BodyText:    "[Streaming Response]",
 			BodySize:    0,
 			ContentType: contentType,
 			IsBinary:    false,
@@ -588,11 +592,6 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		clientHeaders.Set("Connection", "close")
 	} else {
 		clientHeaders.Set("Connection", "keep-alive")
-	}
-
-	// Advertise HTTP/3 & QUIC support to modern downstream clients (Chrome, Firefox, curl)
-	if h.server != nil && h.server.quicServer != nil {
-		clientHeaders.Set("Alt-Svc", fmt.Sprintf(`h3=":%d"; ma=86400`, h.server.Port()))
 	}
 
 	statusCode := httpResp.StatusCode

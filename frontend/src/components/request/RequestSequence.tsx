@@ -213,7 +213,7 @@ export const RequestSequence: React.FC<RequestSequenceProps> = ({
                       SSE
                     </span>
                   )}
-                  {req.protocol?.includes('TCP') && (
+                  {(req.protocol === 'RawTCP' || req.protocol === 'RawTLS') && (
                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/25 shrink-0">
                       TCP
                     </span>

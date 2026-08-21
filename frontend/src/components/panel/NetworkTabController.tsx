@@ -98,12 +98,9 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
     reqCtHeader.toLowerCase().includes('application/grpc') ||
     request.protocol?.includes('gRPC');
   const isRawStream =
-    Boolean(request.bodyBase64) ||
-    Boolean(request.response?.bodyBase64) ||
-    request.protocol?.includes('TCP') ||
-    request.protocol?.includes('TLS') ||
-    isWebSocket ||
-    isGrpc;
+    request.protocol === 'RawTCP' ||
+    request.protocol === 'RawTLS' ||
+    request.protocol === 'SOCKS5';
 
   const handleRepeat = async () => {
     try {
