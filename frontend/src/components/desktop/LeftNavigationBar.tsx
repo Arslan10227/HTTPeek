@@ -14,9 +14,11 @@ import {
   ChevronRight,
   User,
   Bell,
+  Info,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { PreferenceDialog } from './PreferenceDialog';
+import { AboutDialog } from './AboutDialog';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -41,6 +43,7 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
   const { toggleDrawer, unreadCount } = useNotificationStore();
   const { user, openAuthModal } = useAuthStore();
   const [isPreferenceOpen, setIsPreferenceOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const activeColor = getActiveColorPreset();
   const isDark = getEffectiveIsDark();
@@ -173,6 +176,15 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
       ),
       label: 'Feedback',
       onClick: () => window.open('https://github.com/Arslan10227/HTTPeek/issues', '_blank'),
+      colorClass: '',
+    },
+    {
+      key: 'about',
+      icon: (
+        <Info className="w-4 h-4 text-cyan-400 transition-all duration-300 group-hover:scale-120 group-hover:rotate-12" />
+      ),
+      label: 'About HTTPeek',
+      onClick: () => setIsAboutOpen(true),
       colorClass: '',
     },
   ];
@@ -311,6 +323,10 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
 
       {isPreferenceOpen && (
         <PreferenceDialog onClose={() => setIsPreferenceOpen(false)} />
+      )}
+
+      {isAboutOpen && (
+        <AboutDialog onClose={() => setIsAboutOpen(false)} />
       )}
     </>
   );
