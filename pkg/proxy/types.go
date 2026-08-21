@@ -28,11 +28,20 @@ const (
 
 // Protocol constants.
 const (
-	ProtoHTTP10 = "HTTP/1.0"
-	ProtoHTTP11 = "HTTP/1.1"
-	ProtoHTTP2  = "HTTP/2.0"
-	ProtoWS     = "WebSocket"
-	ProtoSSE    = "SSE"
+	ProtoHTTP10       = "HTTP/1.0"
+	ProtoHTTP11       = "HTTP/1.1"
+	ProtoHTTP2        = "HTTP/2.0"
+	ProtoHTTP3        = "HTTP/3.0"
+	ProtoQUIC         = "QUIC"
+	ProtoGRPC         = "gRPC"
+	ProtoGRPCWeb      = "gRPC-Web"
+	ProtoWS           = "WebSocket"
+	ProtoSSE          = "SSE"
+	ProtoWebTransport = "WebTransport"
+	ProtoWebRTC       = "WebRTC"
+	ProtoRawTCP       = "Raw TCP"
+	ProtoRawTLS       = "Raw TLS"
+	ProtoSOCKS5       = "SOCKS5"
 )
 
 // HostPort represents a host and port combination.

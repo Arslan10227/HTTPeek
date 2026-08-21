@@ -192,6 +192,33 @@ export const RequestSequence: React.FC<RequestSequenceProps> = ({
 
                 {/* URL — host bold, path muted */}
                 <div className="flex-1 min-w-[200px] truncate flex items-center gap-1.5" title={req.url}>
+                  {/* Protocol Indicator Pill */}
+                  {req.protocol === 'HTTP/3.0' && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/25 shrink-0">
+                      H3
+                    </span>
+                  )}
+                  {req.protocol === 'HTTP/2.0' && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/25 shrink-0">
+                      H2
+                    </span>
+                  )}
+                  {(contentType.includes('application/grpc') || req.protocol?.includes('gRPC')) && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
+                      gRPC
+                    </span>
+                  )}
+                  {contentType.includes('text/event-stream') && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
+                      SSE
+                    </span>
+                  )}
+                  {req.protocol?.includes('TCP') && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/25 shrink-0">
+                      TCP
+                    </span>
+                  )}
+
                   {(() => {
                     try {
                       const u = new URL(req.url);

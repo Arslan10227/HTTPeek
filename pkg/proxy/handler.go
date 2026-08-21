@@ -590,6 +590,11 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		clientHeaders.Set("Connection", "keep-alive")
 	}
 
+	// Advertise HTTP/3 & QUIC support to modern downstream clients (Chrome, Firefox, curl)
+	if h.server != nil && h.server.quicServer != nil {
+		clientHeaders.Set("Alt-Svc", fmt.Sprintf(`h3=":%d"; ma=86400`, h.server.Port()))
+	}
+
 	statusCode := httpResp.StatusCode
 	if statusCode == 0 {
 		statusCode = resp.StatusCode

@@ -34,6 +34,10 @@ export function CreateNewSession(arg1) {
   return window['go']['main']['App']['CreateNewSession'](arg1);
 }
 
+export function DecodeGrpcPayload(arg1) {
+  return window['go']['main']['App']['DecodeGrpcPayload'](arg1);
+}
+
 export function DeleteFavorite(arg1) {
   return window['go']['main']['App']['DeleteFavorite'](arg1);
 }

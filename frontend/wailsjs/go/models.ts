@@ -141,6 +141,33 @@ export namespace external {
 
 }
 
+export namespace grpc {
+	
+	export class GrpcMessage {
+	    isTrailer?: boolean;
+	    compressed: boolean;
+	    length: number;
+	    decodedJson?: Record<string, any>;
+	    rawHex?: string;
+	    trailerText?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GrpcMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.isTrailer = source["isTrailer"];
+	        this.compressed = source["compressed"];
+	        this.length = source["length"];
+	        this.decodedJson = source["decodedJson"];
+	        this.rawHex = source["rawHex"];
+	        this.trailerText = source["trailerText"];
+	    }
+	}
+
+}
+
 export namespace interceptor {
 	
 	export class BlockRule {

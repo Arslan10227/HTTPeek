@@ -50,6 +50,7 @@ type Server struct {
 	interceptor      Interceptor
 	handler          *Handler
 	discovery        *DiscoveryBroadcaster
+	quicServer       *QUICServer
 	listeners        []EventListener
 	listenersMu      sync.RWMutex
 	mobileBridge     MobileAPIBridge
@@ -72,6 +73,7 @@ func NewServer(cfg ServerConfig, certMgr *cert.CertificateManager) *Server {
 		discovery:   NewDiscoveryBroadcaster(cfg.Port),
 	}
 	s.handler = NewHandler(s)
+	s.quicServer = NewQUICServer(s)
 	return s
 }
 
@@ -106,7 +108,13 @@ func (s *Server) Start() error {
 		s.discovery.Start()
 	}
 
-	logger.Info("Proxy", fmt.Sprintf("Proxy server started on %s (SSL: %v, SOCKS5: %v)", addr, s.cfg.EnableSSL, s.cfg.EnableSOCKS5))
+	if s.quicServer != nil {
+		if qErr := s.quicServer.Start(s.cfg.Port); qErr != nil {
+			logger.Warn("Proxy", fmt.Sprintf("HTTP/3 QUIC start warning: %v", qErr))
+		}
+	}
+
+	logger.Info("Proxy", fmt.Sprintf("Proxy server started on %s (SSL: %v, SOCKS5: %v, HTTP/3: true)", addr, s.cfg.EnableSSL, s.cfg.EnableSOCKS5))
 
 	s.wg.Add(1)
 	go s.acceptLoop()
@@ -125,6 +133,10 @@ func (s *Server) Stop() error {
 
 	if s.discovery != nil {
 		s.discovery.Stop()
+	}
+
+	if s.quicServer != nil {
+		_ = s.quicServer.Stop()
 	}
 
 	var err error

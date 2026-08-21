@@ -6,7 +6,9 @@ import { ResponseTab } from './ResponseTab';
 import { GraphQLViewer, parseGraphQLPayload } from './GraphQLViewer';
 import { WebSocketTab } from './WebSocketTab';
 import { SSETab } from './SSETab';
-import { Play, Edit3, Share2, Heart, Copy, Sparkles, Activity } from 'lucide-react';
+import { GrpcTab } from './GrpcTab';
+import { StreamTab } from './StreamTab';
+import { Play, Edit3, Share2, Heart, Copy, Sparkles, Activity, Binary, Cpu } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { toast } from '../../store/useToastStore';
@@ -14,7 +16,7 @@ import { api } from '../../store/apiAdapter';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { exportRequests } from '../../utils/exportHelper';
 
-export type InspectorTabType = 'general' | 'request' | 'response' | 'graphql' | 'websocket' | 'sse';
+export type InspectorTabType = 'general' | 'request' | 'response' | 'graphql' | 'websocket' | 'sse' | 'grpc' | 'stream';
 
 interface NetworkTabControllerProps {
   request: HttpRequest | null;
@@ -86,7 +88,22 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
   const ctHeader = Array.isArray(request.response?.headers?.['content-type'] || request.response?.headers?.['Content-Type'])
     ? (request.response?.headers?.['content-type'] || request.response?.headers?.['Content-Type']).join(', ')
     : String(request.response?.contentType || request.response?.headers?.['content-type'] || request.response?.headers?.['Content-Type'] || '');
+  const reqCtHeader = Array.isArray(request.headers?.['content-type'] || request.headers?.['Content-Type'])
+    ? (request.headers?.['content-type'] || request.headers?.['Content-Type']).join(', ')
+    : String(request.headers?.['content-type'] || request.headers?.['Content-Type'] || '');
+
   const isSse = ctHeader.toLowerCase().includes('text/event-stream');
+  const isGrpc =
+    ctHeader.toLowerCase().includes('application/grpc') ||
+    reqCtHeader.toLowerCase().includes('application/grpc') ||
+    request.protocol?.includes('gRPC');
+  const isRawStream =
+    Boolean(request.bodyBase64) ||
+    Boolean(request.response?.bodyBase64) ||
+    request.protocol?.includes('TCP') ||
+    request.protocol?.includes('TLS') ||
+    isWebSocket ||
+    isGrpc;
 
   const handleRepeat = async () => {
     try {
@@ -264,6 +281,28 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
               SSE Stream
             </button>
           )}
+
+          {isGrpc && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('grpc')}
+              className={`tab-item flex items-center gap-1 ${activeTab === 'grpc' ? 'tab-item-active' : ''}`}
+            >
+              <Cpu className="w-3 h-3 text-emerald-400" />
+              <span>gRPC</span>
+            </button>
+          )}
+
+          {isRawStream && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('stream')}
+              className={`tab-item flex items-center gap-1 ${activeTab === 'stream' ? 'tab-item-active' : ''}`}
+            >
+              <Binary className="w-3 h-3 text-cyan-400" />
+              <span>Hex Stream</span>
+            </button>
+          )}
         </div>
 
         {/* Action icons */}
@@ -417,6 +456,8 @@ export const NetworkTabController: React.FC<NetworkTabControllerProps> = ({
         )}
         {activeTab === 'websocket' && <WebSocketTab request={request} />}
         {activeTab === 'sse' && <SSETab request={request} />}
+        {activeTab === 'grpc' && <GrpcTab request={request} />}
+        {activeTab === 'stream' && <StreamTab request={request} />}
       </div>
     </div>
   );
