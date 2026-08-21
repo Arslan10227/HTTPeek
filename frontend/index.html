@@ -213,10 +213,12 @@
 
     <script>
         // Dismiss loading screen seamlessly when React App mounts
-        window.addEventListener('DOMContentLoaded', () => {
+        (function() {
+            let mounted = false;
             const checkReady = setInterval(() => {
                 const root = document.getElementById('root');
                 if (root && root.children.length > 0) {
+                    mounted = true;
                     clearInterval(checkReady);
                     const loader = document.getElementById('app-loader');
                     if (loader) {
@@ -227,15 +229,16 @@
                     }
                 }
             }, 50);
-            // Safety timeout
-            setTimeout(() => {
-                const loader = document.getElementById('app-loader');
-                if (loader) {
-                    loader.style.opacity = '0';
-                    setTimeout(() => { loader.style.display = 'none'; }, 500);
+
+            // Global error catcher for diagnostics instead of blank screen
+            window.addEventListener('error', function(e) {
+                console.error('Boot Error:', e.error || e.message);
+                const statusText = document.querySelector('.loader-status-text');
+                if (statusText && !mounted) {
+                    statusText.innerHTML = '<span style="color:#F43F5E;">STARTUP NOTICE: RETRYING LOCAL CACHE…</span>';
                 }
-            }, 3000);
-        });
+            });
+        })();
     </script>
     <script src="./src/main.tsx" type="module"></script>
 </body>

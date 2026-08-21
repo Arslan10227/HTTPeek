@@ -46,10 +46,12 @@ func checkHostedAvailability() (string, bool) {
 		req.Header.Set("Cache-Control", "no-cache")
 		resp, err := hostedClient.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
+			bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 16384))
 			resp.Body.Close()
-			return baseURL, true
-		}
-		if resp != nil && resp.Body != nil {
+			if readErr == nil && strings.Contains(string(bodyBytes), "id=\"root\"") && strings.Contains(string(bodyBytes), "HTTPeek") {
+				return baseURL, true
+			}
+		} else if resp != nil && resp.Body != nil {
 			resp.Body.Close()
 		}
 	}
@@ -87,6 +89,17 @@ func dynamicAssetMiddleware(next http.Handler) http.Handler {
 				}
 				resp, fetchErr := hostedClient.Do(req)
 				if fetchErr == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotModified) {
+					contentType := resp.Header.Get("Content-Type")
+					// Guard against SPA 404 HTML fallback rewrite when JS/CSS is requested
+					isJs := strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".mjs")
+					isCss := strings.HasSuffix(path, ".css")
+					if (isJs && !strings.Contains(contentType, "javascript")) || (isCss && !strings.Contains(contentType, "css")) {
+						resp.Body.Close()
+						// Remote is out of sync with requested assets. Fall back to local embedded assets!
+						next.ServeHTTP(w, r)
+						return
+					}
+
 					defer resp.Body.Close()
 					for k, v := range resp.Header {
 						w.Header()[k] = v
