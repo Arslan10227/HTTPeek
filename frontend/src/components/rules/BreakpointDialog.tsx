@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, PauseCircle, Save } from 'lucide-react';
+import { X, Plus, Trash2, PauseCircle, Save, ArrowUpRight, ArrowDownLeft, RefreshCw, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 import { api } from '../../store/apiAdapter';
 import { HttpRequest, BreakpointRule } from '../../types';
-import { HttpMethodPicker } from '../common/HttpMethodPicker';
+import { VisualMatchBuilder } from '../common/VisualMatchBuilder';
+import { MethodBadge } from '../common/MethodBadge';
 
 interface BreakpointDialogProps {
   onClose: () => void;
@@ -14,7 +15,7 @@ interface BreakpointDialogProps {
 }
 
 export const BreakpointDialog: React.FC<BreakpointDialogProps> = ({ onClose, initialRequest }) => {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const { breakpointRules, setBreakpointRules } = useProxyStore();
   const { getActiveColorPreset } = useAppConfig();
   const activeColor = getActiveColorPreset();
@@ -31,8 +32,6 @@ export const BreakpointDialog: React.FC<BreakpointDialogProps> = ({ onClose, ini
   const [method, setMethod] = useState(() => initialRequest?.method || '');
   const [breakType, setBreakType] = useState<'both' | 'request' | 'response'>('both');
 
-  const isZh = language.startsWith('zh');
-
   const handleAdd = () => {
     if (!urlPattern.trim()) {
       toast.warning('URL pattern required');
@@ -47,6 +46,17 @@ export const BreakpointDialog: React.FC<BreakpointDialogProps> = ({ onClose, ini
     };
     setRules([...rules, newRule]);
     setUrlPattern('');
+    toast.success('Breakpoint added', `Holding traffic on ${newRule.urlPattern}`);
+  };
+
+  const handleToggle = (index: number) => {
+    const updated = [...rules];
+    updated[index].enabled = !updated[index].enabled;
+    setRules(updated);
+  };
+
+  const handleDelete = (index: number) => {
+    setRules(rules.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
@@ -63,143 +73,158 @@ export const BreakpointDialog: React.FC<BreakpointDialogProps> = ({ onClose, ini
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs select-none font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs select-none font-sans p-4">
       <div
-        className="w-[640px] max-h-[85vh] rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-xs"
-        style={{
-          backgroundColor: 'var(--md-dialog-bg, #ffffff)',
-          borderColor: 'var(--md-sys-color-divider, rgba(128,128,128,0.2))',
-          color: 'var(--md-sys-color-on-surface, #1f2937)',
-        }}
+        className="w-[680px] max-h-[90vh] rounded-2xl shadow-2xl p-6 border flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 text-xs bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-2">
-            <PauseCircle className="w-5 h-5 text-orange-500" />
+        <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-orange-500/15 text-orange-500 border border-orange-500/30">
+              <PauseCircle className="w-5 h-5" />
+            </div>
             <div>
-              <h2 className="text-sm font-semibold">{t.breakpoint} (Live Traffic Breakpoints)</h2>
-              <p className="text-[11px] text-gray-500">Hold incoming/outgoing traffic to inspect and alter data</p>
+              <h2 className="text-sm font-bold">{t.breakpoint} (Live Traffic Breakpoint Studio)</h2>
+              <p className="text-[11px] text-gray-500">Hold incoming/outgoing traffic to inspect, modify, and replay on the fly</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-gray-500 hover:text-gray-900 dark:hover:text-white"
+            className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-gray-500 hover:text-gray-900 dark:hover:text-white"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Input Controls */}
-        <div className="space-y-2.5 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-gray-600 dark:text-gray-300">Method Filter:</span>
-            <HttpMethodPicker value={method} onChange={setMethod} />
-          </div>
+        {/* Visual Match Builder */}
+        <div className="space-y-3">
+          <VisualMatchBuilder
+            urlPattern={urlPattern}
+            onChangeUrlPattern={setUrlPattern}
+            method={method}
+            onChangeMethod={setMethod}
+            title="Breakpoint Target Endpoint"
+          />
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={urlPattern}
-              onChange={(e) => setUrlPattern(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAdd();
-              }}
-              placeholder="*://api.example.com/*"
-              className="flex-1 px-3 py-1.5 rounded-lg border font-mono text-xs bg-white dark:bg-gray-900 focus:outline-none"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            />
-            <select
-              value={breakType}
-              onChange={(e) => setBreakType(e.target.value as any)}
-              className="px-2 py-1.5 rounded-lg border font-medium text-xs bg-white dark:bg-gray-900 focus:outline-none cursor-pointer"
-              style={{ borderColor: 'var(--md-sys-color-outline)' }}
-            >
-              <option value="both">Both (Req &amp; Resp)</option>
-              <option value="request">Request Only</option>
-              <option value="response">Response Only</option>
-            </select>
-            <button
-              type="button"
-              onClick={handleAdd}
-              className="flex items-center gap-1 px-4 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
-              style={{ backgroundColor: activeColor.hex }}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t.add}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Rules Table */}
-        <div
-          className="flex-1 max-h-[300px] overflow-y-auto border rounded-xl overflow-hidden font-mono text-[11px]"
-          style={{ borderColor: 'var(--md-sys-color-divider)' }}
-        >
-          {rules.length === 0 ? (
-            <div className="text-center text-gray-400 py-12 italic">
-              {isZh ? '暂无断点规则' : 'No breakpoint rules defined. Add a URL pattern above.'}
-            </div>
-          ) : (
-            rules.map((rule, idx) => (
-              <div
-                key={rule.id || idx}
-                className="flex items-center justify-between px-3 py-2 border-b last:border-b-0 border-gray-100 dark:border-gray-800 hover:bg-black/5 dark:hover:bg-white/5"
+          {/* Visual Stage Selector Cards */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Breakpoint Interception Stage:</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setBreakType('request')}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                  breakType === 'request'
+                    ? 'bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 ring-1 ring-orange-500'
+                    : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <input
-                    type="checkbox"
-                    checked={rule.enabled}
-                    onChange={(e) => {
-                      const next = [...rules];
-                      next[idx].enabled = e.target.checked;
-                      setRules(next);
-                    }}
-                    className="rounded text-blue-600 shrink-0"
-                  />
-                  {rule.method && (
-                    <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold text-[9px] uppercase shrink-0">
-                      {rule.method}
-                    </span>
-                  )}
-                  <span className="font-semibold text-orange-600 dark:text-orange-400 truncate max-w-sm">
-                    {rule.urlPattern}
-                  </span>
-                  <span className="text-gray-400 text-[10px] uppercase shrink-0">
-                    [{rule.breakType || 'both'}]
-                  </span>
-                </div>
+                <ArrowUpRight className="w-4 h-4 mb-1 text-orange-500" />
+                <span className="font-bold text-xs">Request Phase</span>
+                <span className="text-[10px] text-gray-400">Pause before server</span>
+              </button>
 
-                <button
-                  type="button"
-                  onClick={() => setRules(rules.filter((_, i) => i !== idx))}
-                  className="p-1 text-gray-400 hover:text-red-500 cursor-pointer shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))
-          )}
+              <button
+                type="button"
+                onClick={() => setBreakType('response')}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                  breakType === 'response'
+                    ? 'bg-blue-500/15 border-blue-500 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500'
+                    : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                }`}
+              >
+                <ArrowDownLeft className="w-4 h-4 mb-1 text-blue-500" />
+                <span className="font-bold text-xs">Response Phase</span>
+                <span className="text-[10px] text-gray-400">Pause before client</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBreakType('both')}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                  breakType === 'both'
+                    ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500'
+                    : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                }`}
+              >
+                <RefreshCw className="w-4 h-4 mb-1 text-emerald-500" />
+                <span className="font-bold text-xs">Both Phases</span>
+                <span className="text-[10px] text-gray-400">Pause in both ways</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-xs bg-orange-500 text-white hover:bg-orange-600 transition-all cursor-pointer shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            Add Breakpoint Rule
+          </button>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+        {/* Active Rules List */}
+        <div className="flex-1 flex flex-col gap-2 min-h-0">
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <span>Configured Breakpoints ({rules.length})</span>
+            <span className="text-[11px] text-gray-400">Toggle switches to enable/disable</span>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+            {rules.length === 0 ? (
+              <div className="p-6 text-center text-xs text-gray-400 border border-dashed rounded-xl">
+                No active breakpoints. Add a URL pattern above to pause traffic live.
+              </div>
+            ) : (
+              rules.map((r, idx) => (
+                <div
+                  key={r.id || idx}
+                  className="flex items-center justify-between p-2.5 rounded-xl border bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 hover:border-gray-400 transition-all"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <input
+                      type="checkbox"
+                      checked={r.enabled}
+                      onChange={() => handleToggle(idx)}
+                      className="w-4 h-4 rounded text-orange-500 cursor-pointer accent-orange-500"
+                    />
+                    <MethodBadge method={r.method || 'ALL'} size="sm" />
+                    <span className="font-mono text-xs font-bold truncate">{r.urlPattern}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                      {r.breakType || 'both'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(idx)}
+                    className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg border text-xs font-medium hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
-            style={{ borderColor: 'var(--md-sys-color-divider)' }}
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
           >
-            {t.cancel}
+            Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="flex items-center gap-1.5 px-5 py-1.5 rounded-lg font-medium text-xs text-white cursor-pointer shadow-xs transition-opacity hover:opacity-90"
-            style={{ backgroundColor: activeColor.hex }}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer shadow-md transition-all"
           >
             <Save className="w-3.5 h-3.5" />
-            <span>{t.save}</span>
+            Save &amp; Apply Breakpoints
           </button>
         </div>
       </div>

@@ -17,14 +17,19 @@ interface RequestSequenceProps {
 
 const getMethodClass = (method: string): string => {
   switch (method.toUpperCase()) {
-    case 'GET':    return 'badge-method badge-get';
-    case 'POST':   return 'badge-method badge-post';
-    case 'PUT':    return 'badge-method badge-put';
-    case 'PATCH':  return 'badge-method badge-patch';
-    case 'DELETE': return 'badge-method badge-delete';
-    case 'WS':     return 'badge-method badge-ws';
-    case 'SSE':    return 'badge-method badge-sse';
-    default:       return 'badge-method badge-options';
+    case 'GET':     return 'badge-method badge-get';
+    case 'POST':    return 'badge-method badge-post';
+    case 'PUT':     return 'badge-method badge-put';
+    case 'PATCH':   return 'badge-method badge-patch';
+    case 'DELETE':  return 'badge-method badge-delete';
+    case 'OPTIONS': return 'badge-method badge-options';
+    case 'HEAD':    return 'badge-method badge-head';
+    case 'CONNECT': return 'badge-method badge-connect';
+    case 'WS':      return 'badge-method badge-ws';
+    case 'SSE':     return 'badge-method badge-sse';
+    case 'GRPC':    return 'badge-method badge-grpc';
+    case 'H3':      return 'badge-method badge-h3';
+    default:        return 'badge-method badge-options';
   }
 };
 
