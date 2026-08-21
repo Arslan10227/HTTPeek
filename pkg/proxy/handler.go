@@ -33,7 +33,7 @@ type Handler struct {
 // NewHandler creates a new connection handler.
 func NewHandler(s *Server) *Handler {
 	tr := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: nil, // Direct connection to target server (never self-proxy via ProxyFromEnvironment)
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -440,13 +440,15 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	outReq.Header.Del("Content-Encoding")
 	outReq.Header.Del("Content-Length")
 	outReq.Header.Del("Transfer-Encoding")
-	// Preserve the original authority including non-default ports (virtual
-	// hosts depend on Host:port). Go stores the Host header outside the
-	// Header map, so an interceptor-supplied "Host" key takes precedence.
-	outReq.Host = httpReq.HostPort.String()
+	outReq.Header.Del("Connection")
+
+	// Set host for upstream request (preserve host without appending default ports :443/:80)
+	outReq.Host = httpReq.HostPort.Host
+	if httpReq.HostPort.Port != 443 && httpReq.HostPort.Port != 80 && httpReq.HostPort.Port != 0 {
+		outReq.Host = net.JoinHostPort(httpReq.HostPort.Host, strconv.Itoa(httpReq.HostPort.Port))
+	}
 	if host := httpReq.Headers.Get("Host"); host != "" {
 		outReq.Host = host
-		outReq.Header.Set("Host", host)
 	}
 
 	// Limit Accept-Encoding to formats we decompress reliably
