@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTTPeek Google Sign In</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0B0F17;
+      color: #F3F4F6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid #1F2937;
+      border-radius: 20px;
+      padding: 32px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+    .logo {
+      width: 56px;
+      height: 56px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      color: #10B981;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+    p {
+      font-size: 13px;
+      color: #9CA3AF;
+      line-height: 1.5;
+      margin: 0 0 24px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 16px;
+      background: #FFFFFF;
+      color: #1F2937;
+      font-size: 13px;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: #F3F4F6;
+      transform: translateY(-1px);
+    }
+    .spinner {
+      border: 3px solid rgba(16, 185, 129, 0.2);
+      border-top: 3px solid #10B981;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      animation: spin 0.8s linear infinite;
+      margin: 16px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .success {
+      color: #10B981;
+      font-weight: 700;
+      font-size: 14px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <path d="m9 12 2 2 4-4"/>
+      </svg>
+    </div>
+    <h1>HTTPeek Sign In</h1>
+    <p id="status-text">Click below to continue with Google</p>
+
+    <div id="loading" class="spinner" style="display: none;"></div>
+
+    <button id="login-btn" class="btn">
+      <svg width="18" height="18" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+      </svg>
+      Sign in with Google
+    </button>
+
+    <div id="success" class="success">
+      ✓ Signed in successfully! Closing window...
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAS0nIrvVrH_NvAsxSVVu4VIT3AEOj5U2A",
+      authDomain: "httpeek.firebaseapp.com",
+      projectId: "httpeek",
+      storageBucket: "httpeek.firebasestorage.app",
+      messagingSenderId: "197087786767",
+      appId: "1:197087786767:web:48c123e5966268b494307a",
+      measurementId: "G-VSQ7RTKQFS"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const loginBtn = document.getElementById('login-btn');
+    const loading = document.getElementById('loading');
+    const statusText = document.getElementById('status-text');
+    const success = document.getElementById('success');
+
+    async function handleLogin() {
+      loginBtn.style.display = 'none';
+      loading.style.display = 'block';
+      statusText.innerText = 'Connecting to Google...';
+
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const profile = {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL
+        };
+
+        loading.style.display = 'none';
+        success.style.display = 'block';
+        statusText.innerText = 'Signed in as ' + (user.displayName || user.email);
+
+        // Send to opener (Wails Desktop / Web app)
+        if (window.opener) {
+          window.opener.postMessage({ type: 'HTTPEEK_AUTH_SUCCESS', user: profile }, '*');
+        }
+
+        // Also broadcast via BroadcastChannel
+        try {
+          const bc = new BroadcastChannel('httpeek_auth');
+          bc.postMessage({ type: 'HTTPEEK_AUTH_SUCCESS', user: profile });
+          bc.close();
+        } catch (e) {}
+
+        setTimeout(() => {
+          window.close();
+        }, 1200);
+
+      } catch (err) {
+        loading.style.display = 'none';
+        loginBtn.style.display = 'inline-flex';
+        statusText.innerText = 'Sign in failed: ' + (err.message || 'Error');
+      }
+    }
+
+    loginBtn.addEventListener('click', handleLogin);
+
+    // Auto-trigger if popup was explicitly opened with auto=true
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auto') === 'true') {
+      handleLogin();
+    }
+  </script>
+</body>
+</html>
