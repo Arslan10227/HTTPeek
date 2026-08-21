@@ -99,7 +99,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ onClose }) => {
   const systemSpecs = [
     { label: 'Engine Core', value: 'Go 1.25 + Wails v2.15' },
     { label: 'Frontend', value: 'React 19 + Vite + TypeScript' },
-    { label: 'Cloud CDN', value: 'httpeek.vercel.app' },
+    { label: 'Cloud CDN', value: 'httpeek.onemanbyte.cc' },
     { label: 'Architecture', value: 'Cross-Platform Native' },
   ];
 
@@ -262,7 +262,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ onClose }) => {
               <span>GitHub</span>
             </a>
             <a
-              href="https://httpeek.vercel.app"
+              href="https://httpeek.onemanbyte.cc"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-all"

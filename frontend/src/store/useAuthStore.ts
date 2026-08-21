@@ -38,9 +38,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      // 1. If running directly on the hosted Vercel web app, direct popup works natively
+      // 1. If running directly on the hosted web app (https://httpeek.onemanbyte.cc), direct popup works natively
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-      if (currentHost.includes('vercel.app')) {
+      if (currentHost.includes('onemanbyte.cc') || currentHost.includes('httpeek')) {
         const user = await loginWithGoogle();
         const profile: AuthUserProfile = {
           uid: user.uid,
@@ -55,8 +55,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       // 2. In Desktop / Wails environment:
-      // Open the browser with the authorized relay URL (Vercel primary)
-      const authUrl = 'https://httpeek.vercel.app/auth-callback.html?auto=true';
+      // Open the browser with the authorized relay URL (httpeek.onemanbyte.cc)
+      const authUrl = 'https://httpeek.onemanbyte.cc/auth-callback.html?auto=true';
 
       try {
         if (typeof BrowserOpenURL === 'function') {

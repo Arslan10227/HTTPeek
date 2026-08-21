@@ -34,8 +34,7 @@
   },
   "auth": {
     "authorizedDomains": [
-      "httpeek.vercel.app",
-      "httpeek.web.app",
+      "httpeek.onemanbyte.cc",
       "httpeek.firebaseapp.com",
       "localhost",
       "wails.localhost",

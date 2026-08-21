@@ -26,7 +26,7 @@ var assets embed.FS
 
 var (
 	hostedCandidateURLs = []string{
-		"https://httpeek.vercel.app",
+		"https://httpeek.onemanbyte.cc",
 	}
 	activeHostedURL = ""
 	hostedClient    = &http.Client{
