@@ -2,14 +2,17 @@ package interceptor
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 )
 
@@ -151,11 +154,24 @@ func (r *RequestRewriteInterceptor) SetRules(rules []*RewriteRule) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(rule *RewriteRule) string { return rule.ID }, func(rule *RewriteRule, id string) { rule.ID = id })
 	for _, rule := range rules {
-		rule.regex = compilePattern(rule.URLPattern)
+		regex, err := compilePatternErr(rule.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("rewrite rule %q has invalid regex %q: %v", rule.Name, rule.URLPattern, err))
+			rule.regex = nil
+		} else {
+			rule.regex = regex
+		}
 		for _, item := range rule.Items {
 			if item.IsRegex && item.Key != "" {
-				item.regex, _ = regexp.Compile(item.Key)
+				compiled, err := regexp.Compile(item.Key)
+				if err != nil {
+					logger.Warn("Interceptor", fmt.Sprintf("rewrite rule %q item has invalid regex %q: %v", rule.Name, item.Key, err))
+					item.regex = nil
+				} else {
+					item.regex = compiled
+				}
 			}
 		}
 	}
@@ -289,9 +305,15 @@ func (r *RequestRewriteInterceptor) applyRequestItem(req *proxy.HttpRequest, ite
 
 	case ActionReplaceBody:
 		if item.BodyFile != "" {
-			if data, err := os.ReadFile(item.BodyFile); err == nil {
-				req.Body = data
-				req.BodyString = string(data)
+			// Validate path to prevent directory traversal attacks
+			if strings.Contains(item.BodyFile, "..") || filepath.IsAbs(item.BodyFile) {
+				logger.Warn("Rewrite", fmt.Sprintf("BodyFile path %q rejected: contains traversal or is absolute", item.BodyFile))
+			} else {
+				safePath := filepath.Join(".", item.BodyFile)
+				if data, err := os.ReadFile(safePath); err == nil {
+					req.Body = data
+					req.BodyString = string(data)
+				}
 			}
 		} else {
 			req.Body = []byte(item.Value)
@@ -335,10 +357,16 @@ func (r *RequestRewriteInterceptor) applyResponseItem(resp *proxy.HttpResponse, 
 
 	case ActionReplaceBody:
 		if item.BodyFile != "" {
-			if data, err := os.ReadFile(item.BodyFile); err == nil {
-				resp.Body = data
-				resp.BodyString = string(data)
-				resp.BodySize = int64(len(data))
+			// Validate path to prevent directory traversal attacks
+			if strings.Contains(item.BodyFile, "..") || filepath.IsAbs(item.BodyFile) {
+				logger.Warn("Rewrite", fmt.Sprintf("BodyFile path %q rejected: contains traversal or is absolute", item.BodyFile))
+			} else {
+				safePath := filepath.Join(".", item.BodyFile)
+				if data, err := os.ReadFile(safePath); err == nil {
+					resp.Body = data
+					resp.BodyString = string(data)
+					resp.BodySize = int64(len(data))
+				}
 			}
 		} else {
 			resp.Body = []byte(item.Value)
@@ -373,12 +401,19 @@ func updateURLQuery(req *proxy.HttpRequest) {
 }
 
 func compilePattern(pattern string) *regexp.Regexp {
+	r, _ := compilePatternErr(pattern)
+	return r
+}
+
+// compilePatternErr is like compilePattern but returns the compile error so
+// callers can surface invalid regexes to the user instead of silently
+// producing a nil regex that never matches.
+func compilePatternErr(pattern string) (*regexp.Regexp, error) {
 	if strings.TrimSpace(pattern) == "" {
-		return nil
+		return nil, nil
 	}
 	if strings.HasPrefix(pattern, "regex:") {
-		r, _ := regexp.Compile(strings.TrimPrefix(pattern, "regex:"))
-		return r
+		return regexp.Compile(strings.TrimPrefix(pattern, "regex:"))
 	}
 	p := pattern
 	escaped := regexp.QuoteMeta(p)
@@ -386,6 +421,5 @@ func compilePattern(pattern string) *regexp.Regexp {
 	if !strings.Contains(p, "://") {
 		escaped = "(https?://)?" + escaped
 	}
-	r, _ := regexp.Compile("(?i)" + escaped)
-	return r
+	return regexp.Compile("(?i)" + escaped)
 }

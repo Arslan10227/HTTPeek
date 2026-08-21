@@ -13,11 +13,20 @@ type MobileAPIBridge interface {
 	GetRules(kind string) (any, error)
 	SetRules(kind string, payload []byte) error
 	GetAllRules() (map[string]any, error)
+	ExportRules() (string, error)
+	ImportRules(jsonData string) error
 	ResumeBreakpoint(requestID string, isResponse bool, modifiedJSON string) error
 	AbortBreakpoint(requestID string, isResponse bool) error
 	GetReportConfigs() (any, error)
 	SetReportConfigs(payload []byte) error
 	RepeatRequest(requestID string) (any, error)
 	SendCustomRequest(reqJSON string) (any, error)
+	DetectLaunchableApps() (any, error)
+	LaunchAndIntercept(appID string) (any, error)
+	LaunchCustomApp(executablePath string) (any, error)
+	SetJavaGlobalProxy(enable bool) error
+	GetJavaGlobalProxyStatus() (any, error)
+	ResolveADBPath() (string, error)
+	DownloadADBIfMissing() (string, error)
 }
 

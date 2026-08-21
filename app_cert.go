@@ -104,6 +104,7 @@ func (a *App) InstallAndroidRootCA(deviceSerial string) cert.AndroidInstallResul
 	}
 
 	inst := cert.NewAndroidADBInstaller(a.certMgr.CA())
+	inst.SetDataDir(a.dataDir)
 	return inst.Install(deviceSerial, host, port)
 }
 
@@ -118,6 +119,7 @@ func (a *App) ListADBDevices() []cert.ADBDeviceInfo {
 		return []cert.ADBDeviceInfo{}
 	}
 	inst := cert.NewAndroidADBInstaller(a.certMgr.CA())
+	inst.SetDataDir(a.dataDir)
 	devices, err := inst.ListDevices()
 	if err != nil {
 		return []cert.ADBDeviceInfo{}

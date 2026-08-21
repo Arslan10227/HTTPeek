@@ -543,6 +543,9 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
     toast.success(label);
   };
 
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   const tools: {
     id: ToolboxTool;
     title: string;
@@ -550,6 +553,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
     icon: React.ElementType;
     color: string;
     badge?: string;
+    category: 'network' | 'code' | 'crypto' | 'converters';
   }[] = [
     {
       id: 'curl_composer',
@@ -558,6 +562,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       icon: Terminal,
       color: '#3b82f6',
       badge: 'Popular',
+      category: 'network',
     },
     {
       id: 'json_viewer',
@@ -566,6 +571,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       icon: Braces,
       color: '#f59e0b',
       badge: 'Enhanced',
+      category: 'code',
     },
     {
       id: 'text_diff',
@@ -574,6 +580,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       icon: FileDiff,
       color: '#ec4899',
       badge: 'DiffEditor',
+      category: 'code',
     },
     {
       id: 'text_editor',
@@ -582,6 +589,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       icon: FileText,
       color: '#6366f1',
       badge: 'New',
+      category: 'code',
     },
     {
       id: 'xml_viewer',
@@ -589,6 +597,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Monaco editor with full XML/HTML syntax highlighting, formatting, and file inspector',
       icon: FileCode,
       color: '#10b981',
+      category: 'code',
     },
     {
       id: 'aes_tool',
@@ -597,6 +606,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       icon: KeyRound,
       color: '#e11d48',
       badge: 'Interactive',
+      category: 'crypto',
     },
     {
       id: 'rsa_tool',
@@ -604,6 +614,23 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Generate 1024/2048/4096-bit RSA PEM keys, encrypt, decrypt, and sign payloads',
       icon: Key,
       color: '#a855f7',
+      category: 'crypto',
+    },
+    {
+      id: 'hash_tool',
+      title: 'Hash & Checksum Calculator',
+      description: 'Compute SHA-256, SHA-1, and MD5 hashes with 1-click clipboard copy',
+      icon: Hash,
+      color: '#f97316',
+      category: 'crypto',
+    },
+    {
+      id: 'cert_hash',
+      title: 'Android Cert Subject Hash',
+      description: 'Calculate Android 7.0+ system trusted certificate filename hash (e.g. c032a829.0)',
+      icon: Shield,
+      color: '#059669',
+      category: 'crypto',
     },
     {
       id: 'qr_code',
@@ -612,6 +639,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       icon: QrCode,
       color: '#8b5cf6',
       badge: 'Updated',
+      category: 'converters',
     },
     {
       id: 'timestamp',
@@ -619,6 +647,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Convert Unix seconds, milliseconds, microseconds, nanoseconds, ISO-8601, and batch timestamps',
       icon: Clock,
       color: '#0ea5e9',
+      category: 'converters',
     },
     {
       id: 'url_encoder',
@@ -626,6 +655,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Encode and decode query parameters, path segments, and component URIs',
       icon: Link,
       color: '#14b8a6',
+      category: 'converters',
     },
     {
       id: 'base64_encoder',
@@ -633,6 +663,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Encode and decode Base64 strings, binary byte streams, and JWT authorization headers',
       icon: Binary,
       color: '#06b6d4',
+      category: 'converters',
     },
     {
       id: 'unicode_encoder',
@@ -640,20 +671,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Encode and decode \\uXXXX Unicode escape character codes and multilingual symbols',
       icon: Bold,
       color: '#84cc16',
-    },
-    {
-      id: 'hash_tool',
-      title: 'Hash & Checksum Calculator',
-      description: 'Compute SHA-256, SHA-1, and MD5 hashes with 1-click clipboard copy',
-      icon: Hash,
-      color: '#f97316',
-    },
-    {
-      id: 'cert_hash',
-      title: 'Android Cert Subject Hash',
-      description: 'Calculate Android 7.0+ system trusted certificate filename hash (e.g. c032a829.0)',
-      icon: Shield,
-      color: '#059669',
+      category: 'converters',
     },
     {
       id: 'regexp',
@@ -661,6 +679,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Real-time regex matcher with capture groups inspector and string replacement preview',
       icon: Search,
       color: '#d97706',
+      category: 'converters',
     },
     {
       id: 'websocket_client',
@@ -668,6 +687,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Test live WS/WSS connections, transmit Monaco-highlighted JSON frames, and inspect live streams',
       icon: Wifi,
       color: '#4f46e5',
+      category: 'network',
     },
     {
       id: 'js_runner',
@@ -675,70 +695,127 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       description: 'Execute custom JavaScript snippets locally with Monaco syntax highlighting and console logging',
       icon: Code2,
       color: '#0284c7',
+      category: 'network',
     },
   ];
 
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden select-none bg-slate-50 dark:bg-gray-950 font-sans">
-      {/* Top Banner */}
-      <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shrink-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-black tracking-tight text-gray-900 dark:text-gray-100 flex items-center gap-2.5">
-              <span>HTTPeek Swiss Army Toolbox</span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                17 Developer Utilities
-              </span>
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Monaco-powered syntax highlighters, AES/RSA cryptography, diff viewers, encoders, decoders, and websocket clients.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenRequestEditor}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: activeColor.hex }}
-          >
-            <Send className="w-4 h-4" />
-            <span>Open Request Composer</span>
-          </button>
-        </div>
-      </div>
+  const filteredTools = tools.filter((tool) => {
+    const matchesSearch =
+      tool.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tool.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || tool.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
-      {/* Main Container */}
-      <div className="flex-1 overflow-y-auto p-6 min-h-0">
+  return (
+    <div
+      className="flex-1 flex flex-col overflow-hidden select-none font-sans"
+      style={{ backgroundColor: 'var(--color-bg)' }}
+    >
+      {/* ── Category Filter & Search Bar Header Strip ─────────── */}
+      {!activeTool && (
+        <div
+          className="p-4 border-b shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)',
+          }}
+        >
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
+            {[
+              { id: 'all', label: 'All Tools', icon: <Layers className="w-3.5 h-3.5" /> },
+              { id: 'network', label: 'API & Network', icon: <Wifi className="w-3.5 h-3.5" /> },
+              { id: 'code', label: 'Code & Diff', icon: <Code2 className="w-3.5 h-3.5" /> },
+              { id: 'crypto', label: 'Crypto & Security', icon: <Shield className="w-3.5 h-3.5" /> },
+              { id: 'converters', label: 'Encoders & Conversions', icon: <Binary className="w-3.5 h-3.5" /> },
+            ].map((cat) => {
+              const isActive = selectedCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`chip ${isActive ? 'chip-active' : ''}`}
+                  style={isActive ? { background: `${activeColor.hex}18`, color: activeColor.hex, borderColor: `${activeColor.hex}40` } : {}}
+                >
+                  {cat.icon}
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Search tools..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input-base pl-9 text-xs"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={onOpenRequestEditor}
+              className="btn-primary py-1.5 px-3 text-xs shrink-0"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Composer</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Main Container ───────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto p-5 min-h-0">
         {!activeTool ? (
-          /* Tool Grid Cards */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {tools.map((tool) => {
+          /* Tool Grid Cards (Standardized 3-Column) */
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredTools.map((tool) => {
               const Icon = tool.icon;
               return (
                 <div
                   key={tool.id}
                   onClick={() => setActiveTool(tool.id)}
-                  className="group bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:border-blue-500/50 rounded-2xl p-5 shadow-xs hover:shadow-md cursor-pointer transition-all flex flex-col justify-between"
+                  className="card group p-5 cursor-pointer flex flex-col justify-between card-hover-lift"
                 >
-                  <div className="flex items-start justify-between">
-                    <div
-                      className="p-3 rounded-2xl text-white shadow-sm group-hover:scale-105 transition-transform"
-                      style={{ backgroundColor: tool.color }}
-                    >
-                      <Icon className="w-5 h-5" />
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div
+                        className="p-3 rounded-2xl text-white shadow-xs group-hover:scale-105 transition-transform"
+                        style={{ backgroundColor: tool.color }}
+                      >
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      {tool.badge && (
+                        <span className="badge-status badge-2xx">
+                          {tool.badge}
+                        </span>
+                      )}
                     </div>
-                    {tool.badge && (
-                      <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-300">
-                        {tool.badge}
-                      </span>
-                    )}
+                    <div className="mt-4">
+                      <h3
+                        className="text-sm font-bold group-hover:text-emerald-400 transition-colors"
+                        style={{ color: 'var(--color-text)' }}
+                      >
+                        {tool.title}
+                      </h3>
+                      <p
+                        className="text-xs mt-1 leading-relaxed line-clamp-2"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        {tool.description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="mt-4">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 transition-colors">
-                      {tool.title}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-2">
-                      {tool.description}
-                    </p>
+
+                  <div className="mt-4 pt-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--color-primary)' }}>
+                      Open Tool
+                    </span>
+                    <span className="text-xs text-neutral-400 group-hover:translate-x-1 transition-transform">→</span>
                   </div>
                 </div>
               );
@@ -746,28 +823,44 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
           </div>
         ) : (
           /* Active Tool Dialog Container */
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-xl flex flex-col h-full min-h-[550px]">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <div
+            className="rounded-3xl p-6 border shadow-xl flex flex-col h-full min-h-[550px]"
+            style={{
+              backgroundColor: 'var(--color-surface)',
+              borderColor: 'var(--color-border)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between pb-4 border-b shrink-0"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setActiveTool(null)}
-                  className="p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 cursor-pointer"
+                  className="btn-icon border"
+                  style={{ borderColor: 'var(--color-border)' }}
+                  title="Back to all tools"
                 >
                   <ArrowRightLeft className="w-4 h-4" />
                 </button>
-                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                <h2
+                  className="text-base font-bold"
+                  style={{ color: 'var(--color-text)' }}
+                >
                   {tools.find((t) => t.id === activeTool)?.title}
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setActiveTool(null)}
-                className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 cursor-pointer"
+                className="btn-icon"
+                title="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
+
 
             <div className="flex-1 py-4 overflow-y-auto min-h-0 flex flex-col text-xs">
               {/* 1. cURL Command Parser Tool */}

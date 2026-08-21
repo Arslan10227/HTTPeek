@@ -9,6 +9,7 @@ import { ResponseCard } from './cards/ResponseCard';
 import { ExportCard } from './cards/ExportCard';
 import { TransformCard, PerformanceCard } from './cards/TransformPerformanceCards';
 import { WebSocketCard, SSECard } from './cards/StreamCards';
+import { SecretDetectionCard } from './cards/SecretDetectionCard';
 import { PaneHeader } from '../ui/PaneHeader';
 import { useProxyStore } from '../../store/useProxyStore';
 import { toast } from '../../store/useToastStore';
@@ -67,6 +68,13 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ request }) => {
             />
           </>
         )}
+        <SecretDetectionCard
+          request={request}
+          reqHeaders={derived.reqHeaders}
+          respHeaders={derived.respHeaders}
+          reqBodyRaw={derived.reqBodyRaw}
+          respBodyRaw={derived.respBodyRaw}
+        />
         <TransformCard appliedRules={request.appliedRules} />
         <PerformanceCard timings={request.timings} durationMs={request.durationMs} />
         <WebSocketCard frames={derived.resp?.wsFrames} />

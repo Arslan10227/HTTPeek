@@ -2,11 +2,13 @@ package interceptor
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 )
 
@@ -103,8 +105,15 @@ func (b *RequestBreakpointInterceptor) SetRules(rules []*BreakpointRule) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(r *BreakpointRule) string { return r.ID }, func(r *BreakpointRule, id string) { r.ID = id })
 	for _, r := range rules {
-		r.regex = compilePattern(r.URLPattern)
+		regex, err := compilePatternErr(r.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("breakpoint rule %q has invalid regex %q: %v", r.Name, r.URLPattern, err))
+			r.regex = nil
+		} else {
+			r.regex = regex
+		}
 	}
 	b.rules = rules
 }
@@ -147,6 +156,23 @@ func (b *RequestBreakpointInterceptor) OnRequest(ctx *proxy.Context, req *proxy.
 		resChan: resChan,
 	}
 	b.mu.Unlock()
+
+	// Register cleanup on context cancellation to prevent map leaks
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Breakpoint", fmt.Sprintf("panic in cleanup goroutine: %v", r))
+			}
+		}()
+		if ctx == nil || ctx.Context == nil || b == nil {
+			return
+		}
+		<-ctx.Context.Done()
+		b.mu.Lock()
+		delete(b.pausedRequests, req.ID)
+		b.mu.Unlock()
+		close(resChan) // Signal timeout/abort
+	}()
 
 	// Notify GUI
 	if b.notifier != nil {
@@ -200,6 +226,23 @@ func (b *RequestBreakpointInterceptor) OnResponse(ctx *proxy.Context, req *proxy
 		resChan: resChan,
 	}
 	b.mu.Unlock()
+
+	// Register cleanup on context cancellation to prevent map leaks
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Breakpoint", fmt.Sprintf("panic in cleanup goroutine: %v", r))
+			}
+		}()
+		if ctx == nil || ctx.Context == nil || b == nil {
+			return
+		}
+		<-ctx.Context.Done()
+		b.mu.Lock()
+		delete(b.pausedResponses, req.ID)
+		b.mu.Unlock()
+		close(resChan) // Signal timeout/abort
+	}()
 
 	// Notify GUI
 	if b.notifier != nil {

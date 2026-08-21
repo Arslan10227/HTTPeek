@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"httpeek/pkg/adb"
 	"httpeek/pkg/cert"
 	"httpeek/pkg/proxy"
 
@@ -49,6 +50,8 @@ func (a *App) SyncRulesToMobile(deviceID string) error {
 }
 
 // ReverseADBPort executes `adb reverse tcp:PORT tcp:PORT` for 1-click USB tethering without Wi-Fi dependencies.
+// Uses smart ADB resolution (PATH, SDK locations, cached auto-download) instead
+// of requiring adb on PATH.
 func (a *App) ReverseADBPort(serial string, port int) map[string]any {
 	if port <= 0 {
 		port = 9099
@@ -58,10 +61,21 @@ func (a *App) ReverseADBPort(serial string, port int) map[string]any {
 	}
 
 	installer := cert.NewAndroidADBInstaller(a.certMgr.CA())
+	installer.SetDataDir(a.dataDir)
 	if !installer.ADBAvailable() {
 		return map[string]any{
 			"success": false,
-			"error":   "ADB binary not found in system PATH",
+			"error":   "ADB binary not found. Use DownloadADBIfMissing() to auto-download it.",
+		}
+	}
+
+	// Use the same resolver to get the binary path (the installer's runADB
+	// already does this, but we need to construct the args here directly).
+	adbPath, err := adb.ResolvePath(a.dataDir)
+	if err != nil {
+		return map[string]any{
+			"success": false,
+			"error":   fmt.Sprintf("resolve adb: %v", err),
 		}
 	}
 
@@ -71,7 +85,7 @@ func (a *App) ReverseADBPort(serial string, port int) map[string]any {
 	}
 	args = append(args, "reverse", fmt.Sprintf("tcp:%d", port), fmt.Sprintf("tcp:%d", port))
 
-	out, err := exec.Command("adb", args...).CombinedOutput()
+	out, err := exec.Command(adbPath, args...).CombinedOutput()
 	if err != nil {
 		return map[string]any{
 			"success": false,
@@ -85,6 +99,20 @@ func (a *App) ReverseADBPort(serial string, port int) map[string]any {
 		"serial":  serial,
 		"message": fmt.Sprintf("Reverse tunnel active: tcp:%d -> tcp:%d", port, port),
 	}
+}
+
+// DownloadADBIfMissing resolves adb via PATH/SDK/cache; if not found, downloads
+// the official Google platform-tools zip and extracts it into the app data
+// directory. Returns the resolved adb path on success.
+func (a *App) DownloadADBIfMissing() (string, error) {
+	return adb.DownloadIfMissing(a.dataDir)
+}
+
+// ResolveADBPath exposes the resolved adb binary path (without downloading) so
+// the frontend can check availability before offering a download button.
+func (a *App) ResolveADBPath() string {
+	p, _ := adb.ResolvePath(a.dataDir)
+	return p
 }
 
 // WireMobileEvents registers real-time device change callbacks with Wails runtime.

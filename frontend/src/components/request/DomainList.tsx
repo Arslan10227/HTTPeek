@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -91,13 +91,22 @@ export const DomainList: React.FC<DomainListProps> = ({
   onOpenMapLocal,
   onOpenBreakpoint,
 }) => {
-  const { getActiveColorPreset } = useAppConfig();
+  const { getActiveColorPreset, domainListDefaultCollapsed } = useAppConfig();
   const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(new Set());
+  const [blinkingDomains, setBlinkingDomains] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
     request: HttpRequest;
     position: ContextMenuPosition;
   } | null>(null);
   const activeColor = getActiveColorPreset();
+
+  // Track which domains we've already seen so we only apply the default-collapse
+  // setting the first time a domain appears (not on every re-render).
+  const seenDomains = useRef<Set<string>>(new Set());
+  // Track previous per-domain request counts to detect new traffic for blink.
+  const prevCounts = useRef<Map<string, number>>(new Map());
+  // Guard so blink doesn't fire for the initial bulk-load of an existing session.
+  const mountedRef = useRef(false);
 
   // Group requests by domain
   const domainGroups = useMemo(() => {
@@ -122,6 +131,58 @@ export const DomainList: React.FC<DomainListProps> = ({
     });
     return Array.from(map.entries());
   }, [requests]);
+
+  // When a brand-new domain appears, apply the default collapse setting once.
+  useEffect(() => {
+    domainGroups.forEach(([domain]) => {
+      if (!seenDomains.current.has(domain)) {
+        seenDomains.current.add(domain);
+        if (domainListDefaultCollapsed) {
+          setCollapsedDomains((prev) => new Set(prev).add(domain));
+        }
+      }
+    });
+  }, [domainGroups, domainListDefaultCollapsed]);
+
+  // Mark mounted after first render so blink only triggers for genuinely new
+  // traffic (not the initial bulk-load of an existing session).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      mountedRef.current = true;
+    }, 500);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Blink collapsed domains when new traffic arrives.
+  useEffect(() => {
+    if (!mountedRef.current) {
+      // Still seed prevCounts on the first render so the first new request
+      // after mount triggers blink correctly.
+      domainGroups.forEach(([domain, reqs]) => {
+        prevCounts.current.set(domain, reqs.length);
+      });
+      return;
+    }
+    const next = new Set<string>();
+    domainGroups.forEach(([domain, reqs]) => {
+      const prev = prevCounts.current.get(domain) || 0;
+      if (reqs.length > prev && collapsedDomains.has(domain)) {
+        next.add(domain);
+      }
+      prevCounts.current.set(domain, reqs.length);
+    });
+    if (next.size > 0) {
+      setBlinkingDomains((prev) => new Set([...prev, ...next]));
+      const timer = setTimeout(() => {
+        setBlinkingDomains((prev) => {
+          const cleared = new Set(prev);
+          next.forEach((d) => cleared.delete(d));
+          return cleared;
+        });
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [domainGroups, collapsedDomains]);
 
   const toggleDomain = (domain: string) => {
     setCollapsedDomains((prev) => {
@@ -160,7 +221,9 @@ export const DomainList: React.FC<DomainListProps> = ({
               {/* Domain Header */}
               <div
                 onClick={() => toggleDomain(domain)}
-                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-800 dark:text-gray-200"
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium text-gray-800 dark:text-gray-200 ${
+                  blinkingDomains.has(domain) ? 'animate-domain-blink' : ''
+                }`}
               >
                 {isCollapsed ? (
                   <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />

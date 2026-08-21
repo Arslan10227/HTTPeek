@@ -2,10 +2,12 @@ package interceptor
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 )
 
@@ -61,13 +63,26 @@ func (h *HostsInterceptor) SetRules(rules []*HostRule) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(r *HostRule) string { return r.ID }, func(r *HostRule, id string) { r.ID = id })
 	for _, r := range rules {
 		if strings.HasPrefix(r.Pattern, "regex:") {
-			r.regex, _ = regexp.Compile(strings.TrimPrefix(r.Pattern, "regex:"))
+			compiled, err := regexp.Compile(strings.TrimPrefix(r.Pattern, "regex:"))
+			if err != nil {
+				logger.Warn("Interceptor", fmt.Sprintf("hosts rule %q has invalid regex %q: %v", r.Name, r.Pattern, err))
+				r.regex = nil
+			} else {
+				r.regex = compiled
+			}
 		} else if strings.Contains(r.Pattern, "*") {
 			escaped := regexp.QuoteMeta(r.Pattern)
 			escaped = strings.ReplaceAll(escaped, "\\*", ".*")
-			r.regex, _ = regexp.Compile("^" + escaped + "$")
+			compiled, err := regexp.Compile("^" + escaped + "$")
+			if err != nil {
+				logger.Warn("Interceptor", fmt.Sprintf("hosts rule %q has invalid wildcard %q: %v", r.Name, r.Pattern, err))
+				r.regex = nil
+			} else {
+				r.regex = compiled
+			}
 		}
 	}
 	h.rules = rules

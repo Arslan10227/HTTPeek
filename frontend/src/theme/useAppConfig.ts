@@ -17,7 +17,8 @@ export interface AppConfigState {
   enabledHttp2: boolean;
   proxyPassDomains: string;
   confirmOnClose: boolean;
-  
+  domainListDefaultCollapsed: boolean;
+
   // Actions
   setThemeMode: (mode: ThemeMode) => void;
   setUseMaterial3: (use: boolean) => void;
@@ -32,15 +33,17 @@ export interface AppConfigState {
   setEnabledHttp2: (enable: boolean) => void;
   setProxyPassDomains: (domains: string) => void;
   setConfirmOnClose: (confirm: boolean) => void;
+  setDomainListDefaultCollapsed: (v: boolean) => void;
   
   getActiveColorPreset: () => ColorPreset;
   getEffectiveIsDark: () => boolean;
 }
 
 export const useAppConfig = create<AppConfigState>((set, get) => {
-  const savedThemeMode = (localStorage.getItem('proxypin_themeMode') as ThemeMode) || 'system';
+  const savedThemeMode = (localStorage.getItem('proxypin_themeMode') as ThemeMode) || 'dark';
   const savedUseMaterial3 = localStorage.getItem('proxypin_useMaterial3') !== 'false';
-  const savedThemeColor = localStorage.getItem('proxypin_themeColor') || 'Pink';
+  const savedThemeColor = localStorage.getItem('proxypin_themeColor') || 'Teal';
+
   const savedPanelRatio = parseFloat(localStorage.getItem('proxypin_panelRatio') || '0.35');
   const savedAutoStartup = localStorage.getItem('proxypin_autoStartup') === 'true';
   const savedClearConfirm = localStorage.getItem('proxypin_clearConfirm') === 'true';
@@ -50,6 +53,7 @@ export const useAppConfig = create<AppConfigState>((set, get) => {
   const savedProxyPass = localStorage.getItem('proxypin_proxyPassDomains') || 'localhost;127.0.0.1;';
   const savedConfirmOnClose = localStorage.getItem('httpeek_confirmOnClose') !== 'false';
   const savedHttp2 = localStorage.getItem('httpeek_enabledHttp2') !== 'false';
+  const savedDomainCollapsed = localStorage.getItem('httpeek_domainListDefaultCollapsed') === 'true';
 
   return {
     themeMode: savedThemeMode,
@@ -65,6 +69,7 @@ export const useAppConfig = create<AppConfigState>((set, get) => {
     enabledHttp2: savedHttp2,
     proxyPassDomains: savedProxyPass,
     confirmOnClose: savedConfirmOnClose,
+    domainListDefaultCollapsed: savedDomainCollapsed,
 
     setThemeMode: (mode) => {
       localStorage.setItem('proxypin_themeMode', mode);
@@ -118,6 +123,10 @@ export const useAppConfig = create<AppConfigState>((set, get) => {
     setConfirmOnClose: (confirm) => {
       localStorage.setItem('httpeek_confirmOnClose', String(confirm));
       set({ confirmOnClose: confirm });
+    },
+    setDomainListDefaultCollapsed: (v) => {
+      localStorage.setItem('httpeek_domainListDefaultCollapsed', String(v));
+      set({ domainListDefaultCollapsed: v });
     },
 
     getActiveColorPreset: () => {

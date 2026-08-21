@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 )
 
@@ -104,8 +106,15 @@ func (c *RequestCryptoInterceptor) SetRules(rules []*CryptoRule) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(r *CryptoRule) string { return r.ID }, func(r *CryptoRule, id string) { r.ID = id })
 	for _, r := range rules {
-		r.regex = compilePattern(r.URLPattern)
+		regex, err := compilePatternErr(r.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("crypto rule %q has invalid regex %q: %v", r.Name, r.URLPattern, err))
+			r.regex = nil
+		} else {
+			r.regex = regex
+		}
 	}
 	c.rules = rules
 }
@@ -187,6 +196,11 @@ func (c *RequestCryptoInterceptor) decryptData(data []byte, rule *CryptoRule) ([
 
 	key := []byte(rule.Key)
 	iv := []byte(rule.IV)
+
+	// Validate AES key size (must be 16, 24, or 32 bytes)
+	if len(key) != aes.BlockSize && len(key) != 2*aes.BlockSize && len(key) != 3*aes.BlockSize {
+		return nil, errors.New("invalid AES key size: must be 16, 24, or 32 bytes")
+	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {

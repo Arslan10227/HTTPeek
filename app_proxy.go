@@ -53,7 +53,12 @@ func (a *App) GetProxyStatus() map[string]any {
 }
 
 // StartProxy starts the proxy server on the given port.
-// When traffic capture is started, system proxy is automatically activated.
+// When traffic capture is started, system proxy is automatically activated
+// (only when enableSystemProxy is true).
+//
+// To preserve live Android companion WebSocket connections and the
+// MobileAPIManager device list, this reuses the existing Server instance
+// whenever possible (via Restart) instead of discarding and recreating it.
 func (a *App) StartProxy(port int, enableSSL, enableSystemProxy bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -76,18 +81,35 @@ func (a *App) StartProxy(port int, enableSSL, enableSystemProxy bool) error {
 	cfg.EnableSystemProxy = enableSystemProxy
 
 	if a.server != nil && a.server.IsRunning() {
-		_ = a.server.Stop()
+		// Reuse the existing server object: Restart preserves the handler and
+		// mobileAPI instance identity, so connected Android companions stay
+		// paired and the device-change callback keeps firing.
+		if err := a.server.Restart(&cfg); err != nil {
+			logger.Error("App", fmt.Sprintf("Failed to restart proxy on port %d: %v", port, err))
+			return err
+		}
+	} else if a.server != nil && !a.server.IsRunning() {
+		// Server exists but is stopped — restart it with the new config.
+		if err := a.server.Restart(&cfg); err != nil {
+			logger.Error("App", fmt.Sprintf("Failed to restart proxy on port %d: %v", port, err))
+			return err
+		}
+	} else {
+		// First-time creation.
+		a.server = proxy.NewServer(cfg, a.certMgr)
+		a.server.SetInterceptor(a.chain)
+		a.server.AddListener(&appEventListener{app: a})
 	}
 
-	a.server = proxy.NewServer(cfg, a.certMgr)
-	a.server.SetInterceptor(a.chain)
-	a.server.AddListener(&appEventListener{app: a})
 	a.wireServices()
 	a.attachMobileBridge()
+	a.wireMobileEvents()
 
-	if err := a.server.Start(); err != nil {
-		logger.Error("App", fmt.Sprintf("Failed to start proxy on port %d: %v", port, err))
-		return err
+	if a.server != nil && !a.server.IsRunning() {
+		if err := a.server.Start(); err != nil {
+			logger.Error("App", fmt.Sprintf("Failed to start proxy on port %d: %v", port, err))
+			return err
+		}
 	}
 
 	logger.Info("App", fmt.Sprintf("Proxy capture successfully started on port %d (SSL: %v)", port, enableSSL))
@@ -138,6 +160,8 @@ func (a *App) SetPort(port int) error {
 }
 
 // SetProxyPort updates the proxy listening port and restarts server if currently running.
+// Reuses the existing Server instance via Restart to preserve mobile companion
+// connections and the MobileAPIManager device list.
 func (a *App) SetProxyPort(port int) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("invalid port %d: must be between 1 and 65535", port)
@@ -151,9 +175,6 @@ func (a *App) SetProxyPort(port int) error {
 	if a.server != nil {
 		ssl = a.server.Config().EnableSSL
 		sysProxy = a.server.Config().EnableSystemProxy
-		if isRunning {
-			_ = a.server.Stop()
-		}
 	}
 
 	cfg := proxy.DefaultServerConfig()
@@ -162,16 +183,28 @@ func (a *App) SetProxyPort(port int) error {
 	cfg.EnableSSL = ssl
 	cfg.EnableSystemProxy = sysProxy
 
-	a.server = proxy.NewServer(cfg, a.certMgr)
-	a.server.SetInterceptor(a.chain)
-	a.server.AddListener(&appEventListener{app: a})
-	a.wireServices()
-	a.attachMobileBridge()
-
-	if isRunning {
-		if err := a.server.Start(); err != nil {
+	if a.server != nil {
+		// Restart in place — preserves handler/mobileAPI instance identity.
+		if err := a.server.Restart(&cfg); err != nil {
 			logger.Error("App", fmt.Sprintf("Failed to restart proxy on new port %d: %v", port, err))
 			return err
+		}
+	} else {
+		a.server = proxy.NewServer(cfg, a.certMgr)
+		a.server.SetInterceptor(a.chain)
+		a.server.AddListener(&appEventListener{app: a})
+	}
+
+	a.wireServices()
+	a.attachMobileBridge()
+	a.wireMobileEvents()
+
+	if isRunning {
+		if a.server != nil && !a.server.IsRunning() {
+			if err := a.server.Start(); err != nil {
+				logger.Error("App", fmt.Sprintf("Failed to start proxy on new port %d: %v", port, err))
+				return err
+			}
 		}
 		if sysProxy {
 			_ = system.SetSystemProxy(true, "127.0.0.1", port, "")

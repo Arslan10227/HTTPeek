@@ -18,8 +18,10 @@ import (
 	"httpeek/internal/services"
 	"httpeek/pkg/cert"
 	"httpeek/pkg/interceptor"
+	"httpeek/pkg/interceptor/external"
 	"httpeek/pkg/logger"
 	"httpeek/pkg/platform"
+	"httpeek/pkg/platform/helpers"
 	"httpeek/pkg/proxy"
 	"httpeek/pkg/storage"
 	"httpeek/pkg/system"
@@ -49,6 +51,16 @@ type App struct {
 	reportInt   *interceptor.ReportServerInterceptor
 	scriptInt   *interceptor.ScriptInterceptor
 	filterInt   *interceptor.HostFilterInterceptor
+
+	externalInterceptorRepo *storage.ExternalInterceptorRepo
+	jvmInt      *external.JVMInterceptor
+	termInt     *external.TerminalInterceptor
+	browserInt  *external.BrowserInterceptor
+	electronInt *external.ElectronInterceptor
+	adbInt      *external.ADBInterceptor
+	fridaInt    *external.FridaInterceptor
+	dockerInt   *external.DockerInterceptor
+
 	dataDir     string
 	httpClient  *http.Client
 	proxySvc    *services.ProxyService
@@ -60,32 +72,37 @@ type App struct {
 
 // NewApp creates a new App application struct.
 func NewApp() *App {
-	logger.Init()
-	userConfigDir, _ := os.UserConfigDir()
-	dataDir := filepath.Join(userConfigDir, "ProxyPin")
-	_ = os.MkdirAll(dataDir, 0755)
-
-	return &App{
-		dataDir: dataDir,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-	}
+	return &App{}
 }
 
-// startup is called when the app starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	logger.SetWailsContext(ctx)
-	logger.Info("App", "ProxyPin desktop startup initiated")
 
-	// 1. Initialize DB
+	// Initialize data directory
+	a.dataDir, _ = helpers.GetUserConfigDir()
+
+	// Open SQLite DB
 	db, err := storage.OpenDB(a.dataDir)
 	if err != nil {
 		a.emitInitError("Database initialization failed: " + err.Error())
 	} else {
 		a.db = db
 		a.sessionRepo = storage.NewSessionRepo(db)
+		a.externalInterceptorRepo = storage.NewExternalInterceptorRepo(db)
+		a.jvmInt = external.NewJVMInterceptor(a.externalInterceptorRepo, helpers.GetJVMAgentJarPath())
+		a.termInt = external.NewTerminalInterceptor(a.externalInterceptorRepo)
+		a.browserInt = external.NewBrowserInterceptor(a.externalInterceptorRepo)
+		a.electronInt = external.NewElectronInterceptor(a.externalInterceptorRepo)
+		a.adbInt = external.NewADBInterceptor(a.externalInterceptorRepo)
+		a.fridaInt = external.NewFridaInterceptor(a.externalInterceptorRepo)
+		a.dockerInt = external.NewDockerInterceptor(a.externalInterceptorRepo, "httpeek/proxy:latest")
+
+		// Mark any leftover active runs from a previous session as stopped so
+		// the UI polling loop starts with a clean slate on every launch.
+		if err := a.externalInterceptorRepo.MarkAllRunsStopped(); err != nil {
+			logger.Warn("App", fmt.Sprintf("MarkAllRunsStopped on startup: %v", err))
+		}
+
 		sess, sessErr := a.sessionRepo.CreateSession("Default Session")
 		if sessErr != nil {
 			a.emitInitError("Failed to create default session: " + sessErr.Error())
@@ -93,6 +110,7 @@ func (a *App) startup(ctx context.Context) {
 			a.currentSess = sess
 		}
 	}
+
 
 	// 2. Initialize CA & Cert Manager
 	caCfg := cert.DefaultConfig()
@@ -307,15 +325,29 @@ func (l *appEventListener) OnRequest(ctx *proxy.Context, req *proxy.HttpRequest)
 
 	runtime.EventsEmit(l.app.ctx, "proxy:request", req)
 	if l.app.sessionRepo != nil && l.app.currentSess != nil {
-		_ = l.app.sessionRepo.SaveRequest(l.app.currentSess.ID, req)
+		if err := l.app.sessionRepo.SaveRequest(l.app.currentSess.ID, req); err != nil {
+			l.emitCaptureError(err, req.ID)
+		}
 	}
 }
 
 func (l *appEventListener) OnResponse(ctx *proxy.Context, resp *proxy.HttpResponse) {
 	runtime.EventsEmit(l.app.ctx, "proxy:response", resp)
 	if l.app.sessionRepo != nil && resp != nil {
-		_ = l.app.sessionRepo.SaveResponse(resp)
+		if err := l.app.sessionRepo.SaveResponse(resp); err != nil {
+			l.emitCaptureError(err, resp.ID)
+		}
 	}
+}
+
+// emitCaptureError makes persistence failures visible instead of silently
+// dropping captured traffic.
+func (l *appEventListener) emitCaptureError(err error, requestID string) {
+	logger.Error("Capture", fmt.Sprintf("persist failed for request %s: %v", requestID, err))
+	runtime.EventsEmit(l.app.ctx, "proxy:capture_error", map[string]any{
+		"requestId": requestID,
+		"error":     err.Error(),
+	})
 }
 
 func (l *appEventListener) OnWsFrame(ctx *proxy.Context, frame *proxy.WsFrame) {

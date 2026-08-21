@@ -7,12 +7,17 @@ import {
   Settings as SettingsIcon,
   MessageSquare,
   BookOpen,
+  Rocket,
+  Sliders,
+  Sun,
+  Moon,
+  ChevronRight,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { PreferenceDialog } from './PreferenceDialog';
 import { useAppConfig } from '../../theme/useAppConfig';
 
-export type LeftNavTab = 'requests' | 'favorites' | 'history' | 'toolbox';
+export type LeftNavTab = 'interceptors' | 'requests' | 'rules' | 'favorites' | 'history' | 'toolbox';
 
 interface LeftNavigationBarProps {
   activeTab: LeftNavTab;
@@ -28,118 +33,192 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
   onOpenDocs,
 }) => {
   const { t, language } = useTranslation();
-  const { getActiveColorPreset } = useAppConfig();
+  const { getActiveColorPreset, themeMode, setThemeMode, getEffectiveIsDark } = useAppConfig();
   const [isPreferenceOpen, setIsPreferenceOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const activeColor = getActiveColorPreset();
+  const isDark = getEffectiveIsDark();
 
-  const isZh = language.startsWith('zh');
-  const barWidth = isZh ? 'w-[64px]' : 'w-[72px]';
+  const navItems: { id: LeftNavTab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { id: 'interceptors', label: 'Intercept', icon: <Rocket className="w-[18px] h-[18px]" /> },
+    { id: 'requests', label: 'View', icon: <LayoutGrid className="w-[18px] h-[18px]" />, badge: requestCount > 0 ? requestCount : undefined },
+    { id: 'rules', label: 'Mock', icon: <Sliders className="w-[18px] h-[18px]" /> },
+    { id: 'favorites', label: t.favorites, icon: <Heart className="w-[18px] h-[18px]" /> },
+    { id: 'history', label: t.history, icon: <HistoryIcon className="w-[18px] h-[18px]" /> },
+    { id: 'toolbox', label: t.toolbox, icon: <Wrench className="w-[18px] h-[18px]" /> },
+  ];
 
-  const navItems: { id: LeftNavTab; label: string; icon: React.ReactNode }[] = [
+  const bottomActions = [
     {
-      id: 'requests',
-      label: t.requests,
-      icon: <LayoutGrid className="w-5 h-5" />,
+      key: 'theme',
+      icon: isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />,
+      label: isDark ? 'Light Mode' : 'Dark Mode',
+      onClick: () => setThemeMode(isDark ? 'light' : 'dark'),
+      colorClass: 'text-amber-500',
+    },
+    ...(onOpenDocs
+      ? [{
+          key: 'docs',
+          icon: <BookOpen className="w-4 h-4" />,
+          label: 'Docs (F1)',
+          onClick: onOpenDocs,
+          colorClass: 'text-blue-400',
+        }]
+      : []),
+    {
+      key: 'settings',
+      icon: <SettingsIcon className="w-4 h-4" />,
+      label: 'Settings',
+      onClick: () => setIsPreferenceOpen(true),
+      colorClass: '',
     },
     {
-      id: 'favorites',
-      label: t.favorites,
-      icon: <Heart className="w-5 h-5" />,
-    },
-    {
-      id: 'history',
-      label: t.history,
-      icon: <HistoryIcon className="w-5 h-5" />,
-    },
-    {
-      id: 'toolbox',
-      label: t.toolbox,
-      icon: <Wrench className="w-5 h-5" />,
+      key: 'feedback',
+      icon: <MessageSquare className="w-4 h-4" />,
+      label: 'Feedback',
+      onClick: () => window.open('https://github.com/Arslan10227/HTTPeek/issues', '_blank'),
+      colorClass: '',
     },
   ];
+
+  const sidebarWidth = collapsed ? 'w-12' : 'w-[76px]';
 
   return (
     <>
       <div
-        className={`flex flex-col items-center justify-between py-2 border-r select-none shrink-0 ${barWidth}`}
+        className={`flex flex-col items-center justify-between py-2 border-r select-none shrink-0 transition-[width] duration-200 relative ${sidebarWidth}`}
         style={{
-          borderColor: 'var(--md-sys-color-divider)',
-          backgroundColor: 'var(--md-sys-color-surface)',
+          borderColor: 'var(--color-border)',
+          backgroundColor: 'var(--color-surface)',
         }}
       >
-        {/* Top Navigation Destinations */}
-        <div className="flex flex-col items-center gap-1 w-full pt-1">
+        {/* ── Nav Items ───────────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-0.5 w-full pt-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onTabChange(item.id)}
-                className="flex flex-col items-center justify-center w-[54px] py-1.5 rounded-xl cursor-pointer transition-all relative group"
-                style={{
-                  color: isActive ? activeColor.hex : 'var(--md-sys-color-on-surface-variant)',
-                  backgroundColor: isActive
-                    ? 'rgba(0, 0, 0, 0.06)'
-                    : 'transparent',
-                }}
-                title={item.label}
-              >
-                <div
-                  className="p-1 rounded-full transition-colors flex items-center justify-center"
+              <div key={item.id} className="group relative w-full flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => onTabChange(item.id)}
+                  className={`relative flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all rounded-xl mx-1
+                    ${collapsed ? 'w-9 h-9' : 'w-[58px] py-2'}`}
                   style={{
-                    backgroundColor: isActive ? activeColor.primaryContainer : 'transparent',
-                    color: isActive ? activeColor.onPrimaryContainer : 'inherit',
+                    color: isActive ? activeColor.hex : 'var(--color-text-muted)',
+                    backgroundColor: isActive ? 'rgba(0, 229, 163, 0.12)' : 'transparent',
                   }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'var(--color-surface-raised)';
+                    if (!isActive) e.currentTarget.style.color = 'var(--color-text)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                    if (!isActive) e.currentTarget.style.color = 'var(--color-text-muted)';
+                  }}
+                  title={collapsed ? item.label : undefined}
                 >
-                  {item.icon}
-                </div>
-                <span className="text-[11px] mt-0.5 font-medium leading-tight">
-                  {item.label}
-                </span>
+                  {/* Active left bar */}
+                  {isActive && (
+                    <span
+                      className="absolute left-0 inset-y-1/4 w-[3px] rounded-r-full animate-nav-indicator"
+                      style={{ backgroundColor: activeColor.hex, height: '50%', top: '25%' }}
+                    />
+                  )}
 
-                {item.id === 'requests' && requestCount > 0 && (
-                  <span
-                    className="absolute top-1 right-2 text-[9px] font-bold px-1 rounded-full text-white"
-                    style={{ backgroundColor: activeColor.hex }}
+                  <div className="flex items-center justify-center">
+                    {item.icon}
+                  </div>
+
+                  {!collapsed && (
+                    <span
+                      className="text-[10px] font-bold leading-tight text-center"
+                      style={{ color: isActive ? activeColor.hex : 'var(--color-text-muted)' }}
+                    >
+                      {item.label}
+                    </span>
+                  )}
+
+                  {/* Badge */}
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span
+                      className="absolute top-0.5 right-0.5 text-[9px] font-bold px-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full text-white"
+                      style={{ backgroundColor: activeColor.hex, color: '#0a2e1e' }}
+                    >
+                      {item.badge > 999 ? '999+' : item.badge}
+                    </span>
+                  )}
+                </button>
+
+                {/* Collapsed tooltip */}
+                {collapsed && (
+                  <div
+                    className="absolute left-full ml-2.5 top-1/2 -translate-y-1/2 z-50 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                    style={{
+                      background: 'var(--color-surface-raised)',
+                      color: 'var(--color-text)',
+                      boxShadow: 'var(--shadow-md)',
+                      border: '1px solid var(--color-border-strong)',
+                    }}
                   >
-                    {requestCount > 999 ? '999+' : requestCount}
-                  </span>
+                    {item.label}
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span
+                        className="ml-1.5 px-1 rounded-full text-[9px]"
+                        style={{ backgroundColor: activeColor.hex, color: '#0a2e1e' }}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
 
-        {/* Bottom Actions: Docs, Preferences & Feedback */}
-        <div className="flex flex-col items-center gap-1.5 pb-1 w-full">
-          {onOpenDocs && (
-            <button
-              type="button"
-              onClick={onOpenDocs}
-              className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-blue-600 dark:text-blue-400 transition-colors"
-              title="Documentation & Guides (F1)"
-            >
-              <BookOpen className="w-5 h-5" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsPreferenceOpen(true)}
-            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-            title={t.preference}
-          >
-            <SettingsIcon className="w-5 h-5" />
-          </button>
-          <a
-            href="https://github.com/Arslan10227/HTTPeek/issues"
-            target="_blank"
-            rel="noreferrer"
-            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-            title={t.feedback}
-          >
-            <MessageSquare className="w-5 h-5" />
-          </a>
+        {/* ── Collapse / Expand Toggle ─────────────────────────── */}
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className="btn-icon mb-1"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{ color: 'var(--color-text-subtle)' }}
+        >
+          <ChevronRight
+            className="w-3.5 h-3.5 transition-transform duration-200"
+            style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+          />
+        </button>
+
+        {/* ── Bottom Actions ───────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-0.5 pb-1 w-full">
+          {bottomActions.map((action) => (
+            <div key={action.key} className="group relative w-full flex justify-center">
+              <button
+                type="button"
+                onClick={action.onClick}
+                className="btn-icon"
+                title={action.label}
+                style={{ color: action.colorClass ? undefined : 'var(--color-text-subtle)' }}
+              >
+                <span className={action.colorClass}>{action.icon}</span>
+              </button>
+
+              {collapsed && (
+                <div
+                  className="absolute left-full ml-2.5 top-1/2 -translate-y-1/2 z-50 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                  style={{
+                    background: 'var(--color-surface-raised)',
+                    color: 'var(--color-text)',
+                    boxShadow: 'var(--shadow-md)',
+                    border: '1px solid var(--color-border-strong)',
+                  }}
+                >
+                  {action.label}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

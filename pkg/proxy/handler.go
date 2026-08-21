@@ -281,14 +281,25 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	if maxRequestBodyBytes > 0 && req.ContentLength > maxRequestBodyBytes {
 		return h.writeBodyLimitError(clientConn, req, fmt.Errorf("%w: request is %d bytes", ErrBodyTooLarge, req.ContentLength), http.StatusRequestEntityTooLarge)
 	}
+
+	var readErr error
 	if req.Body != nil {
-		var err error
-		bodyBytes, err = readLimitedBody(req.Body, maxRequestBodyBytes)
-		if err != nil {
-			if errors.Is(err, ErrBodyTooLarge) {
-				return h.writeBodyLimitError(clientConn, req, err, http.StatusRequestEntityTooLarge)
+		bodyBytes, readErr = readLimitedBody(req.Body, maxRequestBodyBytes)
+		if readErr != nil {
+			if errors.Is(readErr, ErrBodyTooLarge) {
+				return h.writeBodyLimitError(clientConn, req, fmt.Errorf("%w: request is %d bytes", ErrBodyTooLarge, req.ContentLength), http.StatusRequestEntityTooLarge)
 			}
-			return err
+			return readErr
+		}
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	} else if maxRequestBodyBytes > 0 {
+		// Enforce body limit even when Content-Length is absent/chunked encoding
+		bodyBytes, readErr = readLimitedBody(io.LimitReader(req.Body, maxRequestBodyBytes+1), maxRequestBodyBytes)
+		if readErr != nil {
+			if errors.Is(readErr, ErrBodyTooLarge) {
+				return h.writeBodyLimitError(clientConn, req, fmt.Errorf("%w: request is %d bytes", ErrBodyTooLarge, maxRequestBodyBytes), http.StatusRequestEntityTooLarge)
+			}
+			return readErr
 		}
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	}

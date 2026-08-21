@@ -7,10 +7,17 @@ import (
 	"path/filepath"
 
 	"httpeek/pkg/interceptor"
+	"httpeek/pkg/logger"
 )
+
+// rulesSchemaVersion is the persisted-rules schema version. Increment when
+// the SavedRulesConfig shape changes in a backwards-incompatible way; Load
+// will reject files with a newer schema than the binary understands.
+const rulesSchemaVersion = 1
 
 // SavedRulesConfig holds serialized interceptor rules for local disk persistence.
 type SavedRulesConfig struct {
+	SchemaVersion    int                              `json:"schemaVersion,omitempty"`
 	HostsRules       []*interceptor.HostRule           `json:"hostsRules"`
 	RewriteRules     []*interceptor.RewriteRule        `json:"rewriteRules"`
 	MockRules        []*interceptor.MapRule            `json:"mockRules"`
@@ -19,6 +26,7 @@ type SavedRulesConfig struct {
 	CryptoRules      []*interceptor.CryptoRule         `json:"cryptoRules"`
 	ScriptRules      []*interceptor.ScriptRule         `json:"scriptRules"`
 	ThrottleProfiles []*interceptor.ThrottleProfile    `json:"throttleProfiles"`
+	ThrottleConfig   interceptor.ThrottleConfig        `json:"throttleConfig"`
 	HostFilterConfig interceptor.HostFilterConfig      `json:"hostFilterConfig"`
 	ReportConfigs    []*interceptor.ReportServerConfig `json:"reportConfigs,omitempty"`
 }
@@ -48,26 +56,89 @@ func NewRulesService(dataDir string, deps RulesDeps) *RulesService {
 	return &RulesService{dataDir: dataDir, deps: deps}
 }
 
-// Save persists all rule configurations to disk.
+// Save persists all rule configurations to disk atomically. The previous
+// rules.json (if any) is rotated to rules.json.bak before the new content
+// is renamed into place, so a crash never leaves a truncated rules file.
 func (s *RulesService) Save() {
 	cfg := s.Snapshot()
+	cfg.SchemaVersion = rulesSchemaVersion
 	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err == nil {
-		_ = os.WriteFile(filepath.Join(s.dataDir, "rules.json"), data, 0644)
+	if err != nil {
+		logger.Warn("Rules", fmt.Sprintf("marshal rules failed: %v", err))
+		return
+	}
+	if err := atomicWriteRulesFile(s.dataDir, data); err != nil {
+		logger.Warn("Rules", fmt.Sprintf("atomic save rules failed: %v", err))
 	}
 }
 
-// Load reads persisted rules from disk.
+// Load reads persisted rules from disk. If rules.json is missing or corrupt,
+// it falls back to rules.json.bak. A schema-version mismatch logs a warning
+// and still attempts to apply the file (forward-compat is rejected).
 func (s *RulesService) Load() {
-	data, err := os.ReadFile(filepath.Join(s.dataDir, "rules.json"))
+	cfg, err := loadRulesFile(s.dataDir)
 	if err != nil {
+		logger.Warn("Rules", fmt.Sprintf("load rules failed: %v", err))
 		return
+	}
+	if cfg.SchemaVersion > rulesSchemaVersion {
+		logger.Warn("Rules", fmt.Sprintf("rules.json schema version %d is newer than supported %d; ignoring", cfg.SchemaVersion, rulesSchemaVersion))
+		return
+	}
+	s.Apply(*cfg)
+}
+
+// atomicWriteRulesFile writes data to a temp file in the same directory,
+// then renames it over rules.json. The previous rules.json is backed up to
+// rules.json.bak. The temp file uses 0600 to avoid leaking rule contents.
+func atomicWriteRulesFile(dir string, data []byte) error {
+	finalPath := filepath.Join(dir, "rules.json")
+	backupPath := filepath.Join(dir, "rules.json.bak")
+	tempPath := filepath.Join(dir, ".rules.json.tmp")
+
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
+		return fmt.Errorf("write temp rules file: %w", err)
+	}
+
+	// Back up the existing rules.json before replacing it.
+	if _, err := os.Stat(finalPath); err == nil {
+		_ = os.Rename(finalPath, backupPath)
+	}
+
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		// Attempt to restore from backup so we don't lose the old file.
+		_ = os.Rename(backupPath, finalPath)
+		return fmt.Errorf("rename temp rules file: %w", err)
+	}
+	return nil
+}
+
+// loadRulesFile reads rules.json, falling back to rules.json.bak if the
+// primary file is missing or fails to parse.
+func loadRulesFile(dir string) (*SavedRulesConfig, error) {
+	primary := filepath.Join(dir, "rules.json")
+	data, err := os.ReadFile(primary)
+	if err != nil {
+		// Try backup.
+		backup := filepath.Join(dir, "rules.json.bak")
+		data, err = os.ReadFile(backup)
+		if err != nil {
+			return nil, fmt.Errorf("read rules file: %w", err)
+		}
 	}
 	var cfg SavedRulesConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return
+		// Try backup before giving up.
+		backup := filepath.Join(dir, "rules.json.bak")
+		bData, bErr := os.ReadFile(backup)
+		if bErr != nil {
+			return nil, fmt.Errorf("parse rules.json: %w", err)
+		}
+		if err := json.Unmarshal(bData, &cfg); err != nil {
+			return nil, fmt.Errorf("parse rules.json.bak: %w", err)
+		}
 	}
-	s.Apply(cfg)
+	return &cfg, nil
 }
 
 // Snapshot returns current in-memory rule state.
@@ -96,6 +167,7 @@ func (s *RulesService) Snapshot() SavedRulesConfig {
 	}
 	if s.deps.ThrottleInt != nil {
 		cfg.ThrottleProfiles = s.deps.ThrottleInt.GetProfiles()
+		cfg.ThrottleConfig = s.deps.ThrottleInt.GetConfig()
 	}
 	if s.deps.FilterInt != nil && s.deps.FilterInt.Filter() != nil {
 		cfg.HostFilterConfig = s.deps.FilterInt.Filter().GetConfig()
@@ -131,6 +203,9 @@ func (s *RulesService) Apply(cfg SavedRulesConfig) {
 	}
 	if len(cfg.ThrottleProfiles) > 0 && s.deps.ThrottleInt != nil {
 		s.deps.ThrottleInt.SetProfiles(cfg.ThrottleProfiles)
+	}
+	if cfg.ThrottleConfig.Profile != nil && s.deps.ThrottleInt != nil {
+		s.deps.ThrottleInt.SetConfig(cfg.ThrottleConfig)
 	}
 	if s.deps.FilterInt != nil && s.deps.FilterInt.Filter() != nil {
 		s.deps.FilterInt.Filter().SetConfig(cfg.HostFilterConfig)

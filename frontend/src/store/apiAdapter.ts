@@ -2,6 +2,22 @@ import { HttpRequest, HttpResponse, WsFrame, SSEEvent, BreakpointEvent, ProxySta
 
 export type EventCallback = (data: any) => void;
 
+// ApiError is a structured error thrown by httpFetch when the response is
+// not ok or the request times out. Callers can inspect `status` and `message`.
+export class ApiError extends Error {
+  public readonly status: number;
+  public readonly endpoint: string;
+  constructor(message: string, status: number, endpoint: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.endpoint = endpoint;
+  }
+}
+
+// Default timeout for HTTP fetch calls (30 seconds).
+const DEFAULT_HTTP_TIMEOUT_MS = 30_000;
+
 class ApiAdapter {
   private isWails: boolean = false;
   private ws: WebSocket | null = null;
@@ -9,6 +25,7 @@ class ApiAdapter {
   private reconnectTimer: any = null;
   private reconnectDelay: number = 1000;
   private maxReconnectDelay: number = 30000;
+  private destroyed: boolean = false;
 
   constructor() {
     this.isWails = typeof window !== 'undefined' && (window as any).go?.main?.App != null;
@@ -36,6 +53,75 @@ class ApiAdapter {
     return headers;
   }
 
+  // httpFetch is a typed fetch wrapper that checks res.ok, enforces a
+  // timeout via AbortController, and throws a structured ApiError on
+  // failure. All HTTP fallback paths in the adapter should use this.
+  private async httpFetch<T = any>(
+    endpoint: string,
+    init?: RequestInit,
+    timeoutMs: number = DEFAULT_HTTP_TIMEOUT_MS,
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(endpoint, {
+        ...init,
+        headers: { ...this.getAuthHeaders(), ...(init?.headers || {}) },
+        signal: init?.signal || controller.signal,
+      });
+      if (!res.ok) {
+        let body = '';
+        try { body = await res.text(); } catch { /* ignore */ }
+        throw new ApiError(
+          `HTTP ${res.status} ${res.statusText}${body ? ': ' + body.slice(0, 200) : ''}`,
+          res.status,
+          endpoint,
+        );
+      }
+      const text = await res.text();
+      if (!text) return undefined as unknown as T;
+      return JSON.parse(text) as T;
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err;
+      if (err?.name === 'AbortError') {
+        throw new ApiError(`Request timeout after ${timeoutMs}ms`, 0, endpoint);
+      }
+      throw new ApiError(err?.message || 'Network error', 0, endpoint);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // httpText is like httpFetch but returns the raw text body (for non-JSON
+  // responses like PEM certificates or HAR text).
+  private async httpText(
+    endpoint: string,
+    init?: RequestInit,
+    timeoutMs: number = DEFAULT_HTTP_TIMEOUT_MS,
+  ): Promise<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(endpoint, {
+        ...init,
+        headers: { ...this.getAuthHeaders(), ...(init?.headers || {}) },
+        signal: init?.signal || controller.signal,
+      });
+      if (!res.ok) {
+        throw new ApiError(`HTTP ${res.status} ${res.statusText}`, res.status, endpoint);
+      }
+      return await res.text();
+    } catch (err: any) {
+      if (err instanceof ApiError) throw err;
+      if (err?.name === 'AbortError') {
+        throw new ApiError(`Request timeout after ${timeoutMs}ms`, 0, endpoint);
+      }
+      throw new ApiError(err?.message || 'Network error', 0, endpoint);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private getWsUrl(): string {
     const base = this.getBaseUrl().replace('http://', 'ws://').replace('https://', 'wss://');
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('httpeek_api_token') : null;
@@ -44,6 +130,7 @@ class ApiAdapter {
   }
 
   private initMobileWebSocket() {
+    if (this.destroyed) return;
     try {
       this.ws = new WebSocket(this.getWsUrl());
 
@@ -63,11 +150,15 @@ class ApiAdapter {
       };
 
       this.ws.onclose = () => {
+        if (this.destroyed) return;
         clearTimeout(this.reconnectTimer);
+        // Exponential backoff with jitter to avoid thundering herd.
+        const jitter = Math.random() * 0.3 * this.reconnectDelay;
+        const delay = this.reconnectDelay + jitter;
         this.reconnectTimer = setTimeout(() => {
           this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
           this.initMobileWebSocket();
-        }, this.reconnectDelay);
+        }, delay);
       };
 
       this.ws.onerror = () => {
@@ -76,6 +167,22 @@ class ApiAdapter {
     } catch (e) {
       console.warn('WebSocket init deferred:', e);
     }
+  }
+
+  // destroy cleans up the WebSocket connection and reconnect timer.
+  // Called on app shutdown / hot-module-reload to prevent leaks.
+  public destroy() {
+    this.destroyed = true;
+    clearTimeout(this.reconnectTimer);
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      try { this.ws.close(); } catch { /* ignore */ }
+      this.ws = null;
+    }
+    this.listeners.clear();
   }
 
   public on(event: string, callback: EventCallback) {
@@ -116,8 +223,7 @@ class ApiAdapter {
     if (this.isWailsApp() && (window as any).go?.main?.App?.GetProxyStatus) {
       return await (window as any).go.main.App.GetProxyStatus();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/proxy/status`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch<ProxyStatus>(`${this.getBaseUrl()}/api/proxy/status`);
   }
 
   public async start(): Promise<void> {
@@ -131,7 +237,7 @@ class ApiAdapter {
         return;
       }
     }
-    await fetch(`${this.getBaseUrl()}/api/proxy/start`, { method: 'POST', headers: this.getAuthHeaders() });
+    await this.httpFetch(`${this.getBaseUrl()}/api/proxy/start`, { method: 'POST' });
   }
 
   public async stop(): Promise<void> {
@@ -145,7 +251,7 @@ class ApiAdapter {
         return;
       }
     }
-    await fetch(`${this.getBaseUrl()}/api/proxy/stop`, { method: 'POST', headers: this.getAuthHeaders() });
+    await this.httpFetch(`${this.getBaseUrl()}/api/proxy/stop`, { method: 'POST' });
   }
 
   public async setPort(port: number): Promise<void> {
@@ -159,9 +265,8 @@ class ApiAdapter {
         return;
       }
     }
-    await fetch(`${this.getBaseUrl()}/api/proxy/port`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/proxy/port`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ port }),
     });
   }
@@ -171,9 +276,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetSSLEnabled(enabled);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/proxy/ssl`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/proxy/ssl`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ enabled }),
     });
   }
@@ -183,9 +287,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetSystemProxy(enabled);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/proxy/system_proxy`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/proxy/system_proxy`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ enabled }),
     });
   }
@@ -213,19 +316,16 @@ class ApiAdapter {
     if (this.isWailsApp() && (window as any).go.main.App.GetCADetails) {
       return await (window as any).go.main.App.GetCADetails();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/ca/details`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch(`${this.getBaseUrl()}/api/ca/details`);
   }
 
   public async repeatRequest(requestId: string): Promise<any> {
     if (this.isWails && (window as any).go?.main?.App?.RepeatRequest) {
       return await (window as any).go.main.App.RepeatRequest(requestId);
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/requests/${requestId}/repeat`, {
+    return this.httpFetch(`${this.getBaseUrl()}/api/requests/${requestId}/repeat`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
     });
-    return await res.json();
   }
 
   public async sendWsFrame(requestId: string, payload: string): Promise<void> {
@@ -233,9 +333,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SendWsFrame(requestId, payload);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/requests/${requestId}/ws/send`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/requests/${requestId}/ws/send`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ payload }),
     });
   }
@@ -252,9 +351,8 @@ class ApiAdapter {
       await (window as any).go.main.App.ResumeBreakpoint(requestId, isResponse, jsonStr);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/breakpoint/resume`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/breakpoint/resume`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ requestId, isResponse, modifiedJson: jsonStr }),
     });
   }
@@ -264,9 +362,8 @@ class ApiAdapter {
       await (window as any).go.main.App.AbortBreakpoint(requestId, isResponse);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/breakpoint/abort`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/breakpoint/abort`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ requestId, isResponse }),
     });
   }
@@ -277,9 +374,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetHostFilterConfig(cfg);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/filter`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/filter`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(cfg),
     });
   }
@@ -289,9 +385,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetHostsRules(rules);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/hosts`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/hosts`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(rules),
     });
   }
@@ -301,9 +396,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetBlockRules(rules);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/block`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/block`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(rules),
     });
   }
@@ -320,9 +414,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetRewriteRules(rules);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/rewrite`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/rewrite`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(rules),
     });
   }
@@ -332,9 +425,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetMockRules(rules);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/mock`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/mock`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(rules),
     });
   }
@@ -344,9 +436,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetCryptoRules(rules);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/crypto`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/crypto`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(rules),
     });
   }
@@ -356,9 +447,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetScriptRules(scripts);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/script`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/script`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(scripts),
     });
   }
@@ -368,9 +458,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetBreakpointRules(rules);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/breakpoint`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/breakpoint`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(rules),
     });
   }
@@ -380,9 +469,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetThrottleConfig(cfg);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/rules/throttle`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/throttle`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(cfg),
     });
   }
@@ -392,9 +480,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetExternalProxy(cfg);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/proxy/external`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/proxy/external`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(cfg),
     });
   }
@@ -414,19 +501,11 @@ class ApiAdapter {
     if (this.isWails && (window as any).go?.main?.App?.ExportRootCA) {
       return await (window as any).go.main.App.ExportRootCA();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/ca/export`);
-    return await res.text();
+    return this.httpText(`${this.getBaseUrl()}/api/ca/export`);
   }
 
   public async installDesktopRootCA(): Promise<void> {
     return this.installCA();
-  }
-
-  public async listADBDevices(): Promise<any[]> {
-    if (this.isWails && (window as any).go?.main?.App?.ListADBDevices) {
-      return await (window as any).go.main.App.ListADBDevices();
-    }
-    return [];
   }
 
   public async installAndroidRootCA(deviceSerial = ''): Promise<any> {
@@ -440,8 +519,7 @@ class ApiAdapter {
     if (this.isWails && (window as any).go?.main?.App?.GetReportConfigs) {
       return await (window as any).go.main.App.GetReportConfigs();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/report/configs`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch(`${this.getBaseUrl()}/api/report/configs`);
   }
 
   public async setReportConfigs(configs: any[]): Promise<void> {
@@ -449,9 +527,8 @@ class ApiAdapter {
       await (window as any).go.main.App.SetReportConfigs(configs);
       return;
     }
-    await fetch(`${this.getBaseUrl()}/api/report/configs`, {
+    await this.httpFetch(`${this.getBaseUrl()}/api/report/configs`, {
       method: 'PUT',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(configs),
     });
   }
@@ -460,75 +537,95 @@ class ApiAdapter {
     if (this.isWailsApp() && (window as any).go?.main?.App?.GetFavorites) {
       return await (window as any).go.main.App.GetFavorites();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/favorites`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch(`${this.getBaseUrl()}/api/favorites`);
+  }
+
+  public async toggleFavorite(requestId: string, isFavorite: boolean): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ToggleFavoriteRequest) {
+      return await (window as any).go.main.App.ToggleFavoriteRequest(requestId, isFavorite);
+    }
+    await this.httpFetch(`${this.getBaseUrl()}/api/favorites/toggle`, {
+      method: 'POST',
+      body: JSON.stringify({ id: requestId, isFavorite }),
+    }).catch(() => {});
   }
 
   public async listSessions(): Promise<any[]> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.ListSessions) {
       return await (window as any).go.main.App.ListSessions();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/sessions`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch(`${this.getBaseUrl()}/api/sessions`);
   }
 
   public async getSessionRequests(sessionId: string): Promise<any[]> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.GetSessionRequests) {
       return await (window as any).go.main.App.GetSessionRequests(sessionId);
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/sessions/${sessionId}/requests`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch(`${this.getBaseUrl()}/api/sessions/${sessionId}/requests`);
   }
 
   public async deleteSession(sessionId: string): Promise<void> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.DeleteSession) {
       return await (window as any).go.main.App.DeleteSession(sessionId);
     }
-    await fetch(`${this.getBaseUrl()}/api/sessions/${sessionId}`, { method: 'DELETE', headers: this.getAuthHeaders() });
+    await this.httpFetch(`${this.getBaseUrl()}/api/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
   public async createSession(name: string): Promise<any> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.CreateNewSession) {
       return await (window as any).go.main.App.CreateNewSession(name);
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/sessions`, {
+    return this.httpFetch(`${this.getBaseUrl()}/api/sessions`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ name }),
     });
-    return await res.json();
   }
 
   public async exportHAR(requests: any[]): Promise<string> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.ExportHAR) {
       return await (window as any).go.main.App.ExportHAR(requests);
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/sessions/har/export`, {
+    return this.httpText(`${this.getBaseUrl()}/api/sessions/har/export`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ requests }),
     });
-    return await res.text();
   }
 
   public async importHAR(harJSON: string, sessionName?: string): Promise<any> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.ImportHAR) {
       return await (window as any).go.main.App.ImportHAR(harJSON, sessionName || '');
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/sessions/har/import`, {
+    return this.httpFetch(`${this.getBaseUrl()}/api/sessions/har/import`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
       body: JSON.stringify({ har: harJSON, name: sessionName }),
     });
-    return await res.json();
   }
 
   public async getAllRules(): Promise<any> {
     if (this.isWailsApp() && (window as any).go?.main?.App?.GetAllRules) {
       return await (window as any).go.main.App.GetAllRules();
     }
-    const res = await fetch(`${this.getBaseUrl()}/api/rules/all`, { headers: this.getAuthHeaders() });
-    return await res.json();
+    return this.httpFetch(`${this.getBaseUrl()}/api/rules/all`);
+  }
+
+  public async exportRules(): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ExportRules) {
+      return await (window as any).go.main.App.ExportRules();
+    }
+    const resp = await this.httpFetch(`${this.getBaseUrl()}/api/rules/export`);
+    return resp?.rules || '';
+  }
+
+  public async importRules(jsonData: string): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ImportRules) {
+      await (window as any).go.main.App.ImportRules(jsonData);
+      return;
+    }
+    await this.httpFetch(`${this.getBaseUrl()}/api/rules/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules: jsonData }),
+    });
   }
 
   public async toolboxRSA(action: string, input: string, keyPEM: string): Promise<string> {
@@ -536,6 +633,85 @@ class ApiAdapter {
       return await (window as any).go.main.App.ToolboxRSA(action, input, keyPEM);
     }
     return '';
+  }
+
+  // ==================== App Launcher (Phase 9-C) ====================
+
+  public async detectLaunchableApps(): Promise<any[]> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.DetectLaunchableApps) {
+      return await (window as any).go.main.App.DetectLaunchableApps();
+    }
+    return await this.httpFetch(`${this.getBaseUrl()}/api/apps/detect`);
+  }
+
+  public async launchAndIntercept(appId: string): Promise<any> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchAndIntercept) {
+      return await (window as any).go.main.App.LaunchAndIntercept(appId);
+    }
+    return await this.httpFetch(`${this.getBaseUrl()}/api/apps/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appId }),
+    });
+  }
+
+  public async launchCustomApp(path: string): Promise<any> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchCustomApp) {
+      return await (window as any).go.main.App.LaunchCustomApp(path);
+    }
+    return await this.httpFetch(`${this.getBaseUrl()}/api/apps/launch-custom`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+  }
+
+  public async setJavaGlobalProxy(enable: boolean): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.SetJavaGlobalProxy) {
+      await (window as any).go.main.App.SetJavaGlobalProxy(enable);
+      return;
+    }
+    await this.httpFetch(`${this.getBaseUrl()}/api/java/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enable }),
+    });
+  }
+
+  public async getJavaGlobalProxyStatus(): Promise<any> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.GetJavaGlobalProxyStatus) {
+      return await (window as any).go.main.App.GetJavaGlobalProxyStatus();
+    }
+    return await this.httpFetch(`${this.getBaseUrl()}/api/java/proxy/status`);
+  }
+
+  public async getLaunchableAppCAs(): Promise<any[]> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.GetLaunchableAppCAs) {
+      return await (window as any).go.main.App.GetLaunchableAppCAs();
+    }
+    return [];
+  }
+
+  public async resolveADBPath(): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ResolveADBPath) {
+      return await (window as any).go.main.App.ResolveADBPath();
+    }
+    try {
+      const r = await this.httpFetch(`${this.getBaseUrl()}/api/adb/resolve`);
+      return r?.path || '';
+    } catch {
+      return '';
+    }
+  }
+
+  public async downloadADBIfMissing(): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.DownloadADBIfMissing) {
+      return await (window as any).go.main.App.DownloadADBIfMissing();
+    }
+    const r = await this.httpFetch(`${this.getBaseUrl()}/api/adb/download`, {
+      method: 'POST',
+    });
+    return r?.path || '';
   }
 
   public async toolboxAES(action: string, mode: string, input: string, key: string, iv: string): Promise<string> {
@@ -571,13 +747,12 @@ class ApiAdapter {
       return await (window as any).go.main.App.WriteLog(level, category, message);
     }
     try {
-      await fetch(`${this.getBaseUrl()}/api/logs/write`, {
+      await this.httpFetch(`${this.getBaseUrl()}/api/logs/write`, {
         method: 'POST',
-        headers: this.getAuthHeaders(),
         body: JSON.stringify({ level, category, message, caller: 'UI:Frontend' }),
       });
     } catch {
-      // safe fallback
+      // safe fallback — logging must never throw
     }
   }
 
@@ -586,9 +761,8 @@ class ApiAdapter {
       return await (window as any).go.main.App.GetLogFilePath();
     }
     try {
-      const res = await fetch(`${this.getBaseUrl()}/api/logs`, { headers: this.getAuthHeaders() });
-      const data = await res.json();
-      return data.filePath || '';
+      const data = await this.httpFetch<any>(`${this.getBaseUrl()}/api/logs`);
+      return data?.filePath || '';
     } catch {
       return '';
     }
@@ -605,9 +779,8 @@ class ApiAdapter {
       return await (window as any).go.main.App.GetRecentLogs(limit);
     }
     try {
-      const res = await fetch(`${this.getBaseUrl()}/api/logs?limit=${limit}`, { headers: this.getAuthHeaders() });
-      const data = await res.json();
-      return data.entries || [];
+      const data = await this.httpFetch<any>(`${this.getBaseUrl()}/api/logs?limit=${limit}`);
+      return data?.entries || [];
     } catch {
       return [];
     }
@@ -618,12 +791,131 @@ class ApiAdapter {
       return await (window as any).go.main.App.ClearLogs();
     }
     try {
-      await fetch(`${this.getBaseUrl()}/api/logs/clear`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-      });
+      await this.httpFetch(`${this.getBaseUrl()}/api/logs/clear`, { method: 'POST' });
     } catch {
       // safe fallback
+    }
+  }
+
+  public async listJVMTargets(): Promise<Array<{ pid: string; name: string }>> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ListJVMTargets) {
+      return await (window as any).go.main.App.ListJVMTargets();
+    }
+    return [];
+  }
+
+  public async attachJVM(pid: number, nonProxyHosts: string = ''): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.AttachJVM) {
+      return await (window as any).go.main.App.AttachJVM(pid, nonProxyHosts);
+    }
+  }
+
+  public async launchJVMApp(jarPath: string, args: string[] = [], nonProxyHosts: string = ''): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchJVMApp) {
+      return await (window as any).go.main.App.LaunchJVMApp(jarPath, args, nonProxyHosts);
+    }
+    return '';
+  }
+
+  public async launchTerminal(shellType: string = 'powershell', nonProxyHosts: string = ''): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchTerminal) {
+      return await (window as any).go.main.App.LaunchTerminal(shellType, nonProxyHosts);
+    }
+    return '';
+  }
+
+  public async launchBrowserInterceptor(browserPath: string, bType: string, url: string = ''): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchBrowserInterceptor) {
+      return await (window as any).go.main.App.LaunchBrowserInterceptor(browserPath, bType, url);
+    }
+    return '';
+  }
+
+  public async launchElectronApp(appPath: string, args: string[] = []): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchElectronApp) {
+      return await (window as any).go.main.App.LaunchElectronApp(appPath, args);
+    }
+    return '';
+  }
+
+  public async listExternalRuns(): Promise<any[]> {
+    // ListActiveExternalRuns only returns runs that are still running (no stopped_at),
+    // preventing stale sessions from previous launches from reappearing in the UI.
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ListActiveExternalRuns) {
+      return await (window as any).go.main.App.ListActiveExternalRuns();
+    }
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ListExternalRuns) {
+      return await (window as any).go.main.App.ListExternalRuns();
+    }
+    return [];
+  }
+
+  public async deleteFavorite(requestId: string): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.DeleteFavorite) {
+      return await (window as any).go.main.App.DeleteFavorite(requestId);
+    }
+    await this.httpFetch(`${this.getBaseUrl()}/api/favorites/${requestId}`, {
+      method: 'DELETE',
+    }).catch(() => {});
+  }
+
+  public async listADBDevices(): Promise<any[]> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ListADBDevices) {
+      return await (window as any).go.main.App.ListADBDevices();
+    }
+    return [];
+  }
+
+  public async startADBInterception(serial: string): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.StartADBInterception) {
+      return await (window as any).go.main.App.StartADBInterception(serial);
+    }
+    return '';
+  }
+
+  public async stopADBInterception(serial: string): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.StopADBInterception) {
+      return await (window as any).go.main.App.StopADBInterception(serial);
+    }
+  }
+
+  public async launchFrida(app: string, scriptPath: string = '', deviceSerial: string = ''): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchFrida) {
+      return await (window as any).go.main.App.LaunchFrida(app, scriptPath, deviceSerial);
+    }
+    return '';
+  }
+
+  public async launchFridaAttach(targetAppOrPid: string, scriptPath: string = '', deviceSerial: string = ''): Promise<string> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.LaunchFridaAttach) {
+      return await (window as any).go.main.App.LaunchFridaAttach(targetAppOrPid, scriptPath, deviceSerial);
+    }
+    return '';
+  }
+
+  public async stopFrida(runId: string): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.StopFrida) {
+      return await (window as any).go.main.App.StopFrida(runId);
+    }
+  }
+
+  public async listAndroidInstalledApps(serial: string): Promise<any[]> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ListAndroidInstalledApps) {
+      return await (window as any).go.main.App.ListAndroidInstalledApps(serial);
+    }
+    return [];
+  }
+
+  public async listAndroidRunningApps(serial: string): Promise<any[]> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.ListAndroidRunningApps) {
+      return await (window as any).go.main.App.ListAndroidRunningApps(serial);
+    }
+    return [];
+  }
+
+  public async deployFridaServer(serial: string): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.DeployFridaServer) {
+      return await (window as any).go.main.App.DeployFridaServer(serial);
     }
   }
 

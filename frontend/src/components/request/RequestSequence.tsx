@@ -15,43 +15,35 @@ interface RequestSequenceProps {
   onOpenBreakpoint?: (req: HttpRequest) => void;
 }
 
-const getMethodColor = (method: string): string => {
+const getMethodClass = (method: string): string => {
   switch (method.toUpperCase()) {
-    case 'GET':
-      return '#2196F3';
-    case 'POST':
-      return '#4CAF50';
-    case 'PUT':
-      return '#FF9800';
-    case 'DELETE':
-      return '#F44336';
-    case 'PATCH':
-      return '#9C27B0';
-    case 'WS':
-      return '#E91E63';
-    case 'SSE':
-      return '#00BCD4';
-    default:
-      return '#607D8B';
+    case 'GET':    return 'badge-method badge-get';
+    case 'POST':   return 'badge-method badge-post';
+    case 'PUT':    return 'badge-method badge-put';
+    case 'PATCH':  return 'badge-method badge-patch';
+    case 'DELETE': return 'badge-method badge-delete';
+    case 'WS':     return 'badge-method badge-ws';
+    case 'SSE':    return 'badge-method badge-sse';
+    default:       return 'badge-method badge-options';
   }
 };
 
-const getStatusColor = (status?: number): string => {
-  if (!status) return '#9E9E9E';
-  if (status >= 200 && status < 300) return '#4CAF50';
-  if (status >= 300 && status < 400) return '#2196F3';
-  if (status >= 400 && status < 500) return '#FF9800';
-  return '#F44336';
+const renderStatusBadge = (status?: number) => {
+  if (!status) return <span className="badge-status badge-pending">···</span>;
+  if (status >= 200 && status < 300) return <span className="badge-status badge-2xx">{status}</span>;
+  if (status >= 300 && status < 400) return <span className="badge-status badge-3xx">{status}</span>;
+  if (status >= 400 && status < 500) return <span className="badge-status badge-4xx">{status}</span>;
+  return <span className="badge-status badge-5xx">{status}</span>;
 };
 
 const formatDuration = (ms?: number): string => {
-  if (ms === undefined || ms === null) return '-';
+  if (ms === undefined || ms === null) return '–';
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 };
 
 const formatSize = (bytes?: number): string => {
-  if (!bytes) return '-';
+  if (!bytes) return '–';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -64,8 +56,7 @@ const detectGraphQLOp = (req: HttpRequest): string | null => {
     const p = JSON.parse(body);
     if (p && typeof p.query === 'string') {
       const m = p.query.match(/^\s*(query|mutation|subscription)\s+(\w+)/m);
-      if (m && m[2]) return m[2];
-      return 'GraphQL';
+      return m?.[2] ?? 'GraphQL';
     }
   } catch (_) {}
   return null;
@@ -89,42 +80,44 @@ export const RequestSequence: React.FC<RequestSequenceProps> = ({
 
   const handleContextMenu = (e: React.MouseEvent, req: HttpRequest) => {
     e.preventDefault();
-    setContextMenu({
-      request: req,
-      position: { x: e.clientX, y: e.clientY },
-    });
+    setContextMenu({ request: req, position: { x: e.clientX, y: e.clientY } });
   };
 
   return (
     <div className="flex-1 overflow-auto text-xs select-none flex flex-col min-h-0">
       {/* Table Header */}
       <div
-        className="flex items-center px-2 py-1.5 border-b font-semibold text-[11px] text-gray-500 bg-gray-50 dark:bg-gray-800/60 shrink-0 sticky top-0 z-10"
-        style={{ borderColor: 'var(--md-sys-color-divider)' }}
+        className="flex items-center px-2 h-8 border-b font-semibold text-[11px] shrink-0 sticky top-0 z-10"
+        style={{
+          background: 'var(--color-surface-raised)',
+          borderColor: 'var(--color-border)',
+          color: 'var(--color-text-subtle)',
+        }}
       >
         {selectedIds.size > 0 && <div className="w-6 shrink-0" />}
-        <div className="w-10 text-center shrink-0">#</div>
-        <div className="w-16 shrink-0">Method</div>
+        <div className="w-8 text-center shrink-0">#</div>
+        <div className="w-[68px] shrink-0">Method</div>
         <div className="flex-1 min-w-[200px]">URL / Path</div>
         <div className="w-14 text-center shrink-0">Status</div>
         <div className="w-24 shrink-0 hidden md:block">Type</div>
-        <div className="w-16 text-right shrink-0">Time</div>
-        <div className="w-16 text-right shrink-0 pr-2">Size</div>
+        <div className="w-14 text-right shrink-0">Time</div>
+        <div className="w-14 text-right shrink-0 pr-2">Size</div>
         <div className="w-20 shrink-0 hidden lg:block">App</div>
       </div>
 
       {/* Table Rows */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {requests.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-            <span>No requests in sequence</span>
+          <div
+            className="flex flex-col items-center justify-center h-48 gap-2"
+            style={{ color: 'var(--color-text-subtle)' }}
+          >
+            <span className="text-xs">No requests captured yet.</span>
           </div>
         ) : (
           requests.map((req, idx) => {
             const isSelected = selectedRequestId === req.id;
             const isChecked = selectedIds.has(req.id);
-            const methodColor = getMethodColor(req.method);
-            const statusColor = getStatusColor(req.response?.statusCode);
             const rawContentType =
               req.response?.contentType ||
               req.response?.headers?.['content-type'] ||
@@ -145,28 +138,41 @@ export const RequestSequence: React.FC<RequestSequenceProps> = ({
                   }
                 }}
                 onContextMenu={(e) => handleContextMenu(e, req)}
-                className={`flex items-center px-2 py-1.5 border-b border-gray-100 dark:border-gray-800/40 cursor-pointer font-mono text-[11px] transition-colors ${
-                  isSelected
-                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium'
+                className="group flex items-center px-2 py-1.5 border-b cursor-pointer font-mono text-[11px] transition-colors animate-row-in"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  background: isSelected
+                    ? 'rgba(0,229,163,0.08)'
                     : isChecked
-                    ? 'bg-black/5 dark:bg-white/5'
+                    ? 'var(--color-surface-raised)'
                     : idx % 2 === 0
-                    ? 'bg-transparent hover:bg-black/5 dark:hover:bg-white/5'
-                    : 'bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
+                    ? 'transparent'
+                    : 'rgba(0,0,0,0.01)',
+                  borderLeft: isSelected ? `3px solid var(--color-primary)` : '3px solid transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'var(--color-surface-raised)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected)
+                    e.currentTarget.style.background =
+                      isChecked
+                        ? 'var(--color-surface-raised)'
+                        : idx % 2 === 0
+                        ? 'transparent'
+                        : 'rgba(0,0,0,0.01)';
+                }}
               >
                 {selectedIds.size > 0 && (
                   <div className="w-6 shrink-0 flex items-center">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleSelectId(req.id);
-                      }}
-                      className="text-gray-400 hover:text-gray-700 dark:hover:text-white"
+                      onClick={(e) => { e.stopPropagation(); onToggleSelectId(req.id); }}
+                      className="cursor-pointer"
+                      style={{ color: 'var(--color-text-subtle)' }}
                     >
                       {isChecked ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
+                        <CheckSquare className="w-3.5 h-3.5 text-emerald-500" />
                       ) : (
                         <Square className="w-3.5 h-3.5" />
                       )}
@@ -174,51 +180,64 @@ export const RequestSequence: React.FC<RequestSequenceProps> = ({
                   </div>
                 )}
 
-                {/* Index # */}
-                <div className="w-10 text-center text-gray-400 shrink-0">{idx + 1}</div>
-
-                {/* Method */}
-                <div className="w-16 shrink-0">
-                  <span
-                    className="px-1.5 py-0.2 rounded text-[9px] font-bold text-white uppercase text-center inline-block min-w-[36px]"
-                    style={{ backgroundColor: methodColor }}
-                  >
-                    {req.method}
-                  </span>
+                {/* Index */}
+                <div className="w-8 text-center shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+                  {idx + 1}
                 </div>
 
-                {/* URL */}
-                <div className="flex-1 min-w-[200px] truncate" title={req.url}>
-                  {req.url}
-                  {(() => { const gql = detectGraphQLOp(req); return gql ? <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-pink-500/20 text-pink-600 dark:text-pink-400 font-bold">{gql}</span> : null; })()}
+                {/* Method badge */}
+                <div className="w-[68px] shrink-0">
+                  <span className={getMethodClass(req.method)}>{req.method}</span>
+                </div>
+
+                {/* URL — host bold, path muted */}
+                <div className="flex-1 min-w-[200px] truncate flex items-center gap-1.5" title={req.url}>
+                  {(() => {
+                    try {
+                      const u = new URL(req.url);
+                      return (
+                        <>
+                          <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{u.host}</span>
+                          <span style={{ color: 'var(--color-text-muted)' }}>{u.pathname + u.search}</span>
+                        </>
+                      );
+                    } catch {
+                      return <span style={{ color: 'var(--color-text)' }}>{req.url}</span>;
+                    }
+                  })()}
+                  {(() => {
+                    const gql = detectGraphQLOp(req);
+                    return gql ? (
+                      <span className="badge-method" style={{ background: 'rgba(236,72,153,0.12)', color: '#f472b6', border: '1px solid rgba(236,72,153,0.2)', flexShrink: 0 }}>
+                        {gql}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Status */}
-                <div
-                  className="w-14 text-center font-bold shrink-0"
-                  style={{ color: statusColor }}
-                >
-                  {req.response?.statusCode || '...'}
+                <div className="w-14 text-center shrink-0">
+                  {renderStatusBadge(req.response?.statusCode)}
                 </div>
 
                 {/* Content-Type */}
-                <div className="w-24 truncate text-gray-500 text-[10px] shrink-0 hidden md:block">
-                  {contentType ? contentType.split(';')[0] : '-'}
+                <div className="w-24 truncate text-[10px] shrink-0 hidden md:block" style={{ color: 'var(--color-text-subtle)' }}>
+                  {contentType ? contentType.split(';')[0] : '–'}
                 </div>
 
                 {/* Duration */}
-                <div className="w-16 text-right text-gray-500 shrink-0">
+                <div className="w-14 text-right font-mono shrink-0" style={{ color: 'var(--color-text-muted)' }}>
                   {formatDuration(req.response?.duration)}
                 </div>
 
                 {/* Size */}
-                <div className="w-16 text-right text-gray-500 shrink-0 pr-2">
+                <div className="w-14 text-right font-mono shrink-0 pr-2" style={{ color: 'var(--color-text-muted)' }}>
                   {formatSize(req.response?.bodySize)}
                 </div>
 
                 {/* App */}
-                <div className="w-20 truncate text-gray-400 text-[10px] shrink-0 hidden lg:block">
-                  {req.processName || req.process?.name || '-'}
+                <div className="w-20 truncate text-[10px] shrink-0 hidden lg:block" style={{ color: 'var(--color-text-subtle)' }}>
+                  {req.processName || req.process?.name || '–'}
                 </div>
               </div>
             );

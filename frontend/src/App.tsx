@@ -64,12 +64,25 @@ export const App: React.FC = () => {
       document.documentElement.setAttribute('data-theme-style', 'classic');
     }
 
-    document.documentElement.style.setProperty('--md-primary', activeColor.hex);
-    document.documentElement.style.setProperty(
+    const root = document.documentElement;
+
+    // Primary brand color — propagate to ALL CSS custom properties so every
+    // component using var(--color-primary) immediately reflects the new color.
+    root.style.setProperty('--color-primary', activeColor.hex);
+    root.style.setProperty('--color-primary-dim', isDark
+      ? `${activeColor.hex}1F`   // ~12% alpha
+      : `${activeColor.hex}26`); // ~15% alpha
+    root.style.setProperty('--color-primary-border', isDark
+      ? `${activeColor.hex}40`   // ~25% alpha
+      : `${activeColor.hex}4D`); // ~30% alpha
+
+    // Material 3 aliases kept in sync
+    root.style.setProperty('--md-primary', activeColor.hex);
+    root.style.setProperty(
       '--md-primary-container',
       isDark ? activeColor.darkPrimaryContainer : activeColor.primaryContainer
     );
-    document.documentElement.style.setProperty(
+    root.style.setProperty(
       '--md-on-primary-container',
       isDark ? activeColor.darkOnPrimaryContainer : activeColor.onPrimaryContainer
     );
@@ -209,21 +222,35 @@ export const App: React.FC = () => {
     api.on('proxy:response', (resp: HttpResponse) => updateResponse(resp));
     api.on('proxy:ws_frame', (frame: WsFrame) => addWsFrame(frame));
     api.on('proxy:sse_event', (event: SSEEvent) => addSSEEvent(event));
-    api.on('breakpoint:paused', (event: BreakpointEvent) => {
+    const onBreakpoint = (event: BreakpointEvent) => {
       addBreakpoint(event);
       setActiveBreakpoint(event);
       toast.warning('Breakpoint Paused', `${event.request?.method} ${event.request?.url}`);
-    });
-    api.on('log:event', (entry: any) => {
+    };
+    api.on('breakpoint:paused', onBreakpoint);
+    const onLogEvent = (entry: any) => {
       if (entry) {
         useLogStore.getState().addLog(entry.level || 'INFO', entry.category || 'Proxy', entry.message || '', entry.details);
       }
-    });
-    api.on('app:init_error', (entry: { message?: string }) => {
+    };
+    api.on('log:event', onLogEvent);
+    const onInitError = (entry: { message?: string }) => {
       if (entry?.message) {
         toast.error('Startup Error', entry.message);
       }
-    });
+    };
+    api.on('app:init_error', onInitError);
+
+    // Cleanup event listeners on unmount / strict-mode re-run (DEEP-039).
+    return () => {
+      api.off('proxy:request', addRequest);
+      api.off('proxy:response', updateResponse);
+      api.off('proxy:ws_frame', addWsFrame);
+      api.off('proxy:sse_event', addSSEEvent);
+      api.off('breakpoint:paused', onBreakpoint);
+      api.off('log:event', onLogEvent);
+      api.off('app:init_error', onInitError);
+    };
   }, [addRequest, updateResponse, addWsFrame, addSSEEvent, addBreakpoint, setStatus, setFavorites]);
 
   return (

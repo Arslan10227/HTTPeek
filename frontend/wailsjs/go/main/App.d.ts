@@ -3,8 +3,10 @@
 import {interceptor} from '../models';
 import {storage} from '../models';
 import {cert} from '../models';
+import {system} from '../models';
 import {proxy} from '../models';
 import {logger} from '../models';
+import {external} from '../models';
 
 export function AbortBreakpoint(arg1:string,arg2:boolean):Promise<void>;
 
@@ -14,17 +16,27 @@ export function AddHostToBlacklist(arg1:string):Promise<void>;
 
 export function AddHostToWhitelist(arg1:string):Promise<void>;
 
+export function AttachJVM(arg1:number,arg2:string):Promise<void>;
+
 export function CheckCAInstalled():Promise<boolean>;
 
 export function ClearLogs():Promise<void>;
 
 export function CreateNewSession(arg1:string):Promise<storage.Session>;
 
+export function DeleteFavorite(arg1:string):Promise<void>;
+
 export function DeleteSession(arg1:string):Promise<void>;
+
+export function DeployFridaServer(arg1:string):Promise<void>;
 
 export function DetectJavaInstallations():Promise<Array<cert.JavaInstallation>>;
 
+export function DetectLaunchableApps():Promise<Array<system.LaunchableApp>>;
+
 export function DisconnectMobileDevice(arg1:string):Promise<void>;
+
+export function DownloadADBIfMissing():Promise<string>;
 
 export function ExitApp():Promise<void>;
 
@@ -33,6 +45,8 @@ export function ExportHAR(arg1:Array<proxy.HttpRequest>):Promise<string>;
 export function ExportRequestsAs(arg1:Array<proxy.HttpRequest>,arg2:string):Promise<string>;
 
 export function ExportRootCA():Promise<string>;
+
+export function ExportRules():Promise<string>;
 
 export function GetAllRules():Promise<Record<string, any>>;
 
@@ -52,11 +66,17 @@ export function GetHostFilterConfig():Promise<interceptor.HostFilterConfig>;
 
 export function GetHostsRules():Promise<Array<interceptor.HostRule>>;
 
+export function GetJavaGlobalProxyStatus():Promise<system.JavaProxyStatus>;
+
+export function GetLaunchableAppCAs():Promise<Array<cert.JavaInstallation>>;
+
 export function GetLocalIPs():Promise<Array<string>>;
 
 export function GetLogDir():Promise<string>;
 
 export function GetLogFilePath():Promise<string>;
+
+export function GetMobileAPIToken():Promise<string>;
 
 export function GetMockRules():Promise<Array<interceptor.MapRule>>;
 
@@ -82,6 +102,8 @@ export function GetThrottleProfiles():Promise<Array<interceptor.ThrottleProfile>
 
 export function ImportHAR(arg1:string,arg2:string):Promise<storage.Session>;
 
+export function ImportRules(arg1:string):Promise<void>;
+
 export function InstallAndroidRootCA(arg1:string):Promise<cert.AndroidInstallResult>;
 
 export function InstallCertToAndroid(arg1:string):Promise<cert.AndroidInstallResult>;
@@ -94,7 +116,33 @@ export function IsCAInstalled():Promise<boolean>;
 
 export function IsHARAssociated():Promise<boolean>;
 
+export function LaunchAndIntercept(arg1:string):Promise<system.LaunchResult>;
+
+export function LaunchBrowserInterceptor(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function LaunchCustomApp(arg1:string):Promise<system.LaunchResult>;
+
+export function LaunchElectronApp(arg1:string,arg2:Array<string>):Promise<string>;
+
+export function LaunchFrida(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function LaunchFridaAttach(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function LaunchJVMApp(arg1:string,arg2:Array<string>,arg3:string):Promise<string>;
+
+export function LaunchTerminal(arg1:string,arg2:string):Promise<string>;
+
 export function ListADBDevices():Promise<Array<cert.ADBDeviceInfo>>;
+
+export function ListActiveExternalRuns():Promise<Array<storage.ExternalInterceptorRun>>;
+
+export function ListAndroidInstalledApps(arg1:string):Promise<Array<cert.AndroidAppInfo>>;
+
+export function ListAndroidRunningApps(arg1:string):Promise<Array<cert.AndroidAppInfo>>;
+
+export function ListExternalRuns():Promise<Array<storage.ExternalInterceptorRun>>;
+
+export function ListJVMTargets():Promise<Array<external.JVMTarget>>;
 
 export function ListSessions():Promise<Array<storage.Session>>;
 
@@ -107,6 +155,8 @@ export function RegisterHARAssociation():Promise<void>;
 export function RepeatRequest(arg1:proxy.HttpRequest,arg2:number,arg3:number):Promise<Array<proxy.HttpResponse>>;
 
 export function ReplayRequest(arg1:proxy.HttpRequest):Promise<proxy.HttpResponse>;
+
+export function ResolveADBPath():Promise<string>;
 
 export function ResumeBreakpoint(arg1:string,arg2:boolean,arg3:string):Promise<void>;
 
@@ -130,6 +180,8 @@ export function SetHostFilterConfig(arg1:interceptor.HostFilterConfig):Promise<v
 
 export function SetHostsRules(arg1:Array<interceptor.HostRule>):Promise<void>;
 
+export function SetJavaGlobalProxy(arg1:boolean):Promise<void>;
+
 export function SetMockRules(arg1:Array<interceptor.MapRule>):Promise<void>;
 
 export function SetPort(arg1:number):Promise<void>;
@@ -152,9 +204,15 @@ export function SetThrottleProfiles(arg1:Array<interceptor.ThrottleProfile>):Pro
 
 export function Start():Promise<void>;
 
+export function StartADBInterception(arg1:string):Promise<string>;
+
 export function StartProxy(arg1:number,arg2:boolean,arg3:boolean):Promise<void>;
 
 export function Stop():Promise<void>;
+
+export function StopADBInterception(arg1:string):Promise<void>;
+
+export function StopFrida(arg1:string):Promise<void>;
 
 export function StopProxy():Promise<void>;
 

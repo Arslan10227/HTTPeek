@@ -5,7 +5,7 @@ import { useProxyStore } from '../../store/useProxyStore';
 import { useAppConfig } from '../../theme/useAppConfig';
 
 interface WeakNetworkIndicatorProps {
-  onOpenWeakNetwork: () => void;
+  onOpenWeakNetwork?: () => void;
 }
 
 export const WeakNetworkIndicator: React.FC<WeakNetworkIndicatorProps> = ({
@@ -18,7 +18,7 @@ export const WeakNetworkIndicator: React.FC<WeakNetworkIndicatorProps> = ({
 
   const isEnabled = throttleConfig?.enabled ?? false;
 
-  if (!isEnabled) {
+  if (!isEnabled || !onOpenWeakNetwork) {
     return null;
   }
 

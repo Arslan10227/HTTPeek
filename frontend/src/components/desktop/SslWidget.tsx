@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, Unlock, ShieldCheck, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Lock, Unlock, ShieldCheck, ShieldAlert, CheckCircle2, AlertTriangle, Download, RefreshCw, KeyRound, Smartphone, Monitor } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useProxyStore } from '../../store/useProxyStore';
 import { api } from '../../store/apiAdapter';
@@ -24,7 +24,6 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const activeColor = getActiveColorPreset();
 
-  const isZh = language.startsWith('zh');
   const isSslEnabled = status.sslEnabled ?? true;
 
   const refreshCaStatus = async () => {
@@ -69,13 +68,13 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
     try {
       if ((window as any).go?.main?.App?.ExportCACert) {
         await (window as any).go.main.App.ExportCACert();
-        toast.success(t.exportSuccess, 'ProxyPinCA.crt exported');
+        toast.success(t.exportSuccess || 'Exported', 'ProxyPinCA.crt exported');
       } else {
         const url = `${window.location.origin}/ssl`;
         window.open(url, '_blank');
       }
     } catch (e: any) {
-      toast.error(t.exportFailed, e?.message);
+      toast.error(t.exportFailed || 'Export Failed', e?.message);
     }
     setIsOpen(false);
   };
@@ -86,12 +85,12 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
     try {
       if ((window as any).go?.main?.App?.ExportCAPkcs12) {
         await (window as any).go.main.App.ExportCAPkcs12(password);
-        toast.success(t.exportSuccess, 'ProxyPinCA.p12 exported');
+        toast.success(t.exportSuccess || 'Exported', 'ProxyPinCA.p12 exported');
       } else {
         toast.info('P12 Export is available in desktop mode');
       }
     } catch (e: any) {
-      toast.error(t.exportFailed, e?.message);
+      toast.error(t.exportFailed || 'Export Failed', e?.message);
     }
     setIsOpen(false);
   };
@@ -109,13 +108,13 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
     try {
       if ((window as any).go?.main?.App?.GenerateNewCA) {
         await (window as any).go.main.App.GenerateNewCA();
-        toast.success(t.success, 'New Root CA generated');
+        toast.success(t.success || 'Success', 'New Root CA generated');
         await refreshCaStatus();
       } else {
         toast.info('Root CA generated');
       }
     } catch (e: any) {
-      toast.error(t.fail, e?.message);
+      toast.error(t.fail || 'Failed', e?.message);
     }
   };
 
@@ -132,13 +131,13 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
     try {
       if ((window as any).go?.main?.App?.ResetDefaultCA) {
         await (window as any).go.main.App.ResetDefaultCA();
-        toast.success(t.success, 'Reset to default Root CA');
+        toast.success(t.success || 'Success', 'Reset to default Root CA');
         await refreshCaStatus();
       } else {
         toast.info('Default Root CA reset');
       }
     } catch (e: any) {
-      toast.error(t.fail, e?.message);
+      toast.error(t.fail || 'Failed', e?.message);
     }
   };
 
@@ -147,33 +146,36 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors"
-        title={t.httpsProxy}
+        className="btn-icon relative shrink-0"
+        title="HTTPS Interception & Root CA"
       >
         {!isSslEnabled ? (
-          <Unlock className="w-5 h-5 text-red-500" />
+          <Unlock className="w-4 h-4 text-red-500" />
         ) : isCaInstalled ? (
-          <Lock className="w-5 h-5 text-green-500" />
+          <Lock className="w-4 h-4 text-emerald-400" />
         ) : (
           <>
-            <Lock className="w-5 h-5 text-amber-500" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500 border border-white dark:border-gray-900" />
+            <Lock className="w-4 h-4 text-amber-400" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 animate-ping" />
           </>
         )}
       </button>
 
       {isOpen && (
         <div
-          className="absolute left-0 top-full mt-1.5 w-64 rounded-xl shadow-xl py-1.5 border z-50 text-xs flex flex-col animate-in fade-in zoom-in-95 duration-100"
+          className="absolute right-0 top-full mt-2 w-72 rounded-2xl border p-2 flex flex-col gap-1 z-50 text-xs shadow-xl animate-dialog-in"
           style={{
-            backgroundColor: 'var(--md-dialog-bg)',
-            borderColor: 'var(--md-sys-color-divider)',
-            color: 'var(--md-sys-color-on-surface)',
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border-strong)',
+            color: 'var(--color-text)',
           }}
         >
-          {/* HTTPS Toggle Switch */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-            <span className="font-medium text-xs">{t.httpsProxy}</span>
+          {/* Header Status Strip */}
+          <div className="flex items-center justify-between px-2.5 py-2 rounded-xl bg-black/5 dark:bg-white/5">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span className="font-bold text-xs">HTTPS Decryption</span>
+            </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -182,105 +184,111 @@ export const SslWidget: React.FC<SslWidgetProps> = ({
                 className="sr-only peer"
               />
               <div
-                className="w-8 h-4.5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all"
-                style={{
-                  backgroundColor: isSslEnabled ? activeColor.hex : undefined,
-                }}
+                className={`w-8 h-4.5 rounded-full transition-colors peer-focus:outline-none after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all ${
+                  isSslEnabled ? 'bg-emerald-500 after:translate-x-full' : 'bg-neutral-600'
+                }`}
               />
             </label>
           </div>
 
-          {/* Certificate Install Status Banner */}
+          {/* Root CA Status Banner */}
           <div
             onClick={() => {
               setIsOpen(false);
               onOpenPcCert();
             }}
-            className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            className="flex items-center justify-between px-2.5 py-2 rounded-xl border border-dashed cursor-pointer transition-colors"
+            style={{
+              borderColor: isCaInstalled ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)',
+              backgroundColor: isCaInstalled ? 'rgba(16, 185, 129, 0.06)' : 'rgba(245, 158, 11, 0.06)',
+            }}
           >
-            <span className="text-gray-500">Root CA Status:</span>
+            <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Root CA Status:</span>
             {isCaInstalled ? (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-green-600 dark:text-green-400">
-                <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="badge-status badge-2xx">
+                <CheckCircle2 className="w-3 h-3" />
                 <span>Installed</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="badge-status badge-3xx">
+                <AlertTriangle className="w-3 h-3" />
                 <span>Not Installed</span>
               </span>
             )}
           </div>
 
-          {/* Menu Items */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsOpen(false);
-              onOpenPcCert();
-            }}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
-          >
-            {t.installCaLocal}
-          </button>
+          {/* Action List */}
+          <div className="flex flex-col gap-0.5 mt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                onOpenPcCert();
+              }}
+              className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <Monitor className="w-3.5 h-3.5 text-blue-400" />
+              <span>Install CA on PC / System</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setIsOpen(false);
-              onOpenMobileCert('ios');
-            }}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
-          >
-            {t.installRootCa} iOS
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                onOpenMobileCert('ios');
+              }}
+              className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-purple-400" />
+              <span>Install CA on iOS Device</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setIsOpen(false);
-              onOpenMobileCert('android');
-            }}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
-          >
-            {t.installRootCa} Android
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                onOpenMobileCert('android');
+              }}
+              className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-teal-400" />
+              <span>Install CA on Android Device</span>
+            </button>
+          </div>
 
-          <div className="h-px bg-gray-200 dark:bg-gray-800 my-1" />
+          <div className="h-px my-1" style={{ backgroundColor: 'var(--color-border)' }} />
 
-          <button
-            type="button"
-            onClick={handleExportCrt}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300"
-          >
-            {t.exportCA}
-          </button>
+          {/* Certificate Exports & Reset */}
+          <div className="flex flex-col gap-0.5">
+            <button
+              type="button"
+              onClick={handleExportCrt}
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-[11px] font-medium text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <Download className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Export Root Certificate (.crt)</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={handleExportP12}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300"
-          >
-            {t.exportCaP12}
-          </button>
+            <button
+              type="button"
+              onClick={handleExportP12}
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-[11px] font-medium text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <KeyRound className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Export PKCS#12 Keystore (.p12)</span>
+            </button>
 
-          <div className="h-px bg-gray-200 dark:bg-gray-800 my-1" />
-
-          <button
-            type="button"
-            onClick={handleGenerateCa}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300"
-          >
-            {t.generateCA}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleResetDefaultCa}
-            className="px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-gray-700 dark:text-gray-300"
-          >
-            {t.resetDefaultCA}
-          </button>
+            <button
+              type="button"
+              onClick={handleGenerateCa}
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-[11px] font-medium text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-amber-500"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Generate New Root CA</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

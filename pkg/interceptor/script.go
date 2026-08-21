@@ -1,9 +1,11 @@
 package interceptor
 
 import (
+	"fmt"
 	"regexp"
 	"sync"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 	"httpeek/pkg/scriptengine"
 )
@@ -45,8 +47,15 @@ func (s *ScriptInterceptor) SetRules(rules []*ScriptRule) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(r *ScriptRule) string { return r.ID }, func(r *ScriptRule, id string) { r.ID = id })
 	for _, r := range rules {
-		r.regex = compilePattern(r.URLPattern)
+		regex, err := compilePatternErr(r.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("script rule %q has invalid regex %q: %v", r.Name, r.URLPattern, err))
+			r.regex = nil
+		} else {
+			r.regex = regex
+		}
 	}
 	s.rules = rules
 }

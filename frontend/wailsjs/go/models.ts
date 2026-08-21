@@ -18,6 +18,26 @@ export namespace cert {
 	        this.rooted = source["rooted"];
 	    }
 	}
+	export class AndroidAppInfo {
+	    package: string;
+	    name: string;
+	    pid: number;
+	    isRunning: boolean;
+	    isSystem: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AndroidAppInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.package = source["package"];
+	        this.name = source["name"];
+	        this.pid = source["pid"];
+	        this.isRunning = source["isRunning"];
+	        this.isSystem = source["isSystem"];
+	    }
+	}
 	export class InstallStepResult {
 	    method: string;
 	    status: string;
@@ -97,6 +117,25 @@ export namespace cert {
 	        this.keytoolPath = source["keytoolPath"];
 	        this.cacertsPath = source["cacertsPath"];
 	        this.isInstalled = source["isInstalled"];
+	    }
+	}
+
+}
+
+export namespace external {
+	
+	export class JVMTarget {
+	    pid: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JVMTarget(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pid = source["pid"];
+	        this.name = source["name"];
 	    }
 	}
 
@@ -517,6 +556,7 @@ export namespace proxy {
 	    requestId: string;
 	    event: string;
 	    data: string;
+	    eventId?: string;
 	    retry?: number;
 	    // Go type: time
 	    timestamp: any;
@@ -531,6 +571,7 @@ export namespace proxy {
 	        this.requestId = source["requestId"];
 	        this.event = source["event"];
 	        this.data = source["data"];
+	        this.eventId = source["eventId"];
 	        this.retry = source["retry"];
 	        this.timestamp = this.convertValues(source["timestamp"], null);
 	    }
@@ -810,8 +851,83 @@ export namespace proxy {
 
 }
 
+export namespace sql {
+	
+	export class NullInt64 {
+	    Int64: number;
+	    Valid: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NullInt64(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Int64 = source["Int64"];
+	        this.Valid = source["Valid"];
+	    }
+	}
+	export class NullString {
+	    String: string;
+	    Valid: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NullString(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.String = source["String"];
+	        this.Valid = source["Valid"];
+	    }
+	}
+
+}
+
 export namespace storage {
 	
+	export class ExternalInterceptorRun {
+	    ID: string;
+	    InterceptorName: string;
+	    StartedAt: number;
+	    StoppedAt: sql.NullInt64;
+	    PID: sql.NullInt64;
+	    Status: sql.NullString;
+	    Config: sql.NullString;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExternalInterceptorRun(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.InterceptorName = source["InterceptorName"];
+	        this.StartedAt = source["StartedAt"];
+	        this.StoppedAt = this.convertValues(source["StoppedAt"], sql.NullInt64);
+	        this.PID = this.convertValues(source["PID"], sql.NullInt64);
+	        this.Status = this.convertValues(source["Status"], sql.NullString);
+	        this.Config = this.convertValues(source["Config"], sql.NullString);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Session {
 	    id: string;
 	    name: string;
@@ -850,6 +966,77 @@ export namespace storage {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace system {
+	
+	export class JavaProxyStatus {
+	    enabled: boolean;
+	    trustStore?: string;
+	    javaHome?: string;
+	    proxyHost?: string;
+	    proxyPort?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new JavaProxyStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.trustStore = source["trustStore"];
+	        this.javaHome = source["javaHome"];
+	        this.proxyHost = source["proxyHost"];
+	        this.proxyPort = source["proxyPort"];
+	    }
+	}
+	export class LaunchResult {
+	    success: boolean;
+	    pid?: number;
+	    error?: string;
+	    appId: string;
+	    appName: string;
+	    processName?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LaunchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.pid = source["pid"];
+	        this.error = source["error"];
+	        this.appId = source["appId"];
+	        this.appName = source["appName"];
+	        this.processName = source["processName"];
+	    }
+	}
+	export class LaunchableApp {
+	    id: string;
+	    name: string;
+	    icon: string;
+	    path: string;
+	    found: boolean;
+	    category: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LaunchableApp(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	        this.path = source["path"];
+	        this.found = source["found"];
+	        this.category = source["category"];
+	        this.description = source["description"];
+	    }
 	}
 
 }

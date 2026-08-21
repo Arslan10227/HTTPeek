@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { api } from './apiAdapter';
 import {
   HttpRequest,
   HttpResponse,
@@ -36,8 +37,8 @@ interface ProxyStore {
   setStatus: (status: ProxyStatus) => void;
 
   // Active view & navigation
-  activeTab: 'requests' | 'favorites' | 'history' | 'toolbox' | 'settings' | 'capture' | 'rules';
-  setActiveTab: (tab: 'requests' | 'favorites' | 'history' | 'toolbox' | 'settings' | 'capture' | 'rules') => void;
+  activeTab: 'requests' | 'favorites' | 'history' | 'toolbox' | 'settings' | 'capture' | 'rules' | 'interceptors';
+  setActiveTab: (tab: 'requests' | 'favorites' | 'history' | 'toolbox' | 'settings' | 'capture' | 'rules' | 'interceptors') => void;
 
   viewMode: 'sequence' | 'tree';
   setViewMode: (mode: 'sequence' | 'tree') => void;
@@ -51,6 +52,7 @@ interface ProxyStore {
   searchQuery: string;
   showFavoritesOnly: boolean;
   capturePaused: boolean;
+  processFilter: string | null; // Phase 9-C: filter request list by process name
 
   maxRequests: number;
   setMaxRequests: (n: number) => void;
@@ -95,6 +97,12 @@ interface ProxyStore {
   connectedMobileDevices: MobileDeviceInfo[];
   setConnectedMobileDevices: (devices: MobileDeviceInfo[]) => void;
 
+  // Active External Interceptors
+  activeInterceptors: ActiveInterceptorInfo[];
+  addActiveInterceptor: (interceptor: ActiveInterceptorInfo) => void;
+  removeActiveInterceptor: (idOrType: string) => void;
+  clearActiveInterceptors: () => void;
+
   // Actions
   addRequest: (req: HttpRequest) => void;
   updateResponse: (resp: HttpResponse) => void;
@@ -105,6 +113,7 @@ interface ProxyStore {
   setSearchQuery: (query: string) => void;
   setShowFavoritesOnly: (v: boolean) => void;
   setCapturePaused: (v: boolean) => void;
+  setProcessFilter: (name: string | null) => void;
   setRequests: (requests: HttpRequest[]) => void;
   clearRequests: () => void;
   deleteRequest: (id: string) => void;
@@ -122,6 +131,15 @@ interface ProxyStore {
   selectPrev: () => void;
 }
 
+export interface ActiveInterceptorInfo {
+  id: string;
+  type: 'adb' | 'frida' | 'browser' | 'jvm' | 'electron' | 'terminal' | 'system';
+  name: string;
+  target?: string;
+  runId?: string;
+  deviceSerial?: string;
+}
+
 export interface MobileDeviceInfo {
   deviceId: string;
   deviceName: string;
@@ -134,6 +152,22 @@ export interface MobileDeviceInfo {
 }
 
 export const useProxyStore = create<ProxyStore>((set, get) => ({
+  activeInterceptors: [],
+  addActiveInterceptor: (interceptor) =>
+    set((state) => ({
+      activeInterceptors: [
+        ...state.activeInterceptors.filter((i) => i.id !== interceptor.id),
+        interceptor,
+      ],
+    })),
+  removeActiveInterceptor: (idOrType) =>
+    set((state) => ({
+      activeInterceptors: state.activeInterceptors.filter(
+        (i) => i.id !== idOrType && i.type !== idOrType && i.runId !== idOrType
+      ),
+    })),
+  clearActiveInterceptors: () => set({ activeInterceptors: [] }),
+
   connectedMobileDevices: [],
   setConnectedMobileDevices: (connectedMobileDevices) => set({ connectedMobileDevices }),
 
@@ -150,7 +184,7 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   },
   setStatus: (status) => set({ status }),
 
-  activeTab: 'requests',
+  activeTab: 'interceptors',
   setActiveTab: (activeTab) => set({ activeTab }),
 
   viewMode: 'sequence',
@@ -164,6 +198,7 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   searchQuery: '',
   showFavoritesOnly: false,
   capturePaused: false,
+  processFilter: null,
 
   environments: [
     {
@@ -326,6 +361,7 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setShowFavoritesOnly: (showFavoritesOnly) => set({ showFavoritesOnly }),
   setCapturePaused: (capturePaused) => set({ capturePaused }),
+  setProcessFilter: (processFilter) => set({ processFilter }),
   setRequests: (requests) => {
     const newMap = new Map<string, HttpRequest>();
     requests.forEach((r) => newMap.set(r.id, r));
@@ -340,6 +376,7 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   },
   deleteRequest: (id) => {
     const { requests, requestMap, favorites, selectedRequestId } = get();
+    const req = requestMap.get(id) || requests.find((r) => r.id === id) || favorites.find((f) => f.id === id);
     const newMap = new Map(requestMap);
     newMap.delete(id);
     set({
@@ -349,6 +386,13 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
       selectedRequestId: selectedRequestId === id ? null : selectedRequestId,
       selectedRequest: selectedRequestId === id ? null : get().selectedRequest,
     });
+    // If this request was a favorite, remove it permanently from the database
+    // so it does not reappear on the next software launch.
+    if (req?.isFavorite) {
+      api.deleteFavorite(id).catch((err) => {
+        console.error('Failed to permanently delete favorite from database:', err);
+      });
+    }
   },
   removeRequest: (id) => {
     const { requests, requestMap, favorites, selectedRequestId } = get();
@@ -364,8 +408,8 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   },
 
   toggleFavorite: (id) => {
-    const { requests, favorites } = get();
-    const req = requests.find((r) => r.id === id);
+    const { requests, favorites, requestMap } = get();
+    const req = requests.find((r) => r.id === id) || favorites.find((f) => f.id === id) || requestMap.get(id);
     if (!req) return;
 
     const isFav = !req.isFavorite;
@@ -374,11 +418,16 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
     let nextFavs = favorites;
     if (isFav) {
       if (!favorites.some((f) => f.id === id)) {
-        nextFavs = [...favorites, { ...req, isFavorite: true }];
+        nextFavs = [{ ...req, isFavorite: true }, ...favorites];
       }
     } else {
       nextFavs = favorites.filter((f) => f.id !== id);
     }
+
+    // Persist to backend database so favorites survive software restarts
+    api.toggleFavorite(id, isFav).catch((err) => {
+      console.error('Failed to toggle favorite in database:', err);
+    });
 
     set({ requests: nextRequests, favorites: nextFavs });
   },

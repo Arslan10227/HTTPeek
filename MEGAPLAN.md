@@ -1067,3 +1067,226 @@ Still open in Phase 2 (design-dependent, need product decisions before implement
 | DEEP-013 | Response `BodySize`/`ContentType`/`IsBinary` re-derived after interceptor mutation. | `TestResponseMetadataNormalizedAfterInterceptor` (new) |
 
 Still open in Phase 3: WS fragmentation reassembly + ping/pong lifecycle, WS upstream-proxy chaining (DEEP-009), upstream TLS verification policy (DEEP-012), real DNS/TLS timing (no more `connectMs/2`), graceful shutdown with draining, Android half-close/bandwidth shaping refinements, zstd (NEWP-022).
+
+## 9. Phase 4 slice — persistence and capture integrity (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| NEWS-001/002/005 | `PRAGMA foreign_keys=ON` enforced at connection string; schema versioning via `PRAGMA user_version`; composite indexes on `(session_id, status_code/host/start_time)`. | `TestForeignKeysEnabled` (new) |
+| NEWS-009/036/037/038 | `SaveRequest`, `SaveRequestsBatch`, and `DeleteSession` now run inside explicit transactions with `defer tx.Rollback()`; batch insert is all-or-nothing. | `TestSaveRequestCountersTransactional`, `TestSaveRequestsBatchAtomic` (new) |
+| NEWS-010 | Synthetic `favorites` session created at schema init; `DeleteSession` re-homes favorite requests before deleting the session row; deleting the favorites session itself is rejected. | `TestDeleteSessionCascadesAndPreservesFavorites` (new) |
+| NEWS-008 | `file_size` counter updated transactionally with each save; `SaveResponse` increments on response body arrival. | `TestSaveRequestCountersTransactional` (new) |
+| NEWS-033/034 | `GetSessionRequestsPage(limit, offset)` with bounded page size (max 500, default 100) and `CountSessionRequests` for total count; `GetRequestByID` for single-row lazy load. | `TestPaginationAndLookup` (new) |
+| NEWS-027 | HAR import produces deterministic IDs (SHA-256 of canonical entry fields) so re-importing the same HAR yields stable request IDs. | `TestHARDeterministicIDs` (new) |
+| NEWS-024 | Multi-valued headers (e.g. multiple `Set-Cookie`) exported as separate HAR header entries per spec, not collapsed. | `TestHARDuplicateHeaders` (new) |
+| NEWS-031 | cURL export shell-quotes URLs and bodies (single-quote + `'\''` escaping) to prevent injection when pasted into a terminal. | `TestCurlScriptEscaping` (new) |
+| Bug fix | `SaveRequest`/`SaveRequestsBatch` were hardcoding `is_favorite = 0`, silently dropping the favorite flag on capture. Now persists `req.IsFavorite`. | Covered by `TestDeleteSessionCascadesAndPreservesFavorites` |
+
+**Verification for this slice:**
+
+- `go vet ./...`: **passed**.
+- `go test ./...`: **passed**.
+- `go test -race ./pkg/storage/`: **passed**.
+
+Still open in Phase 4: per-session quotas and retention policies (NEWS-006/007), HAR strict validation + size caps on import (NEWS-022/026), export streaming for very large sessions, header marshal error propagation to UI (NEWS-016/017/019), scan-error visibility beyond logged warnings (NEWS-035), concurrency stress test (proxy capture + UI reads + session delete simultaneously).
+
+## 10. Phase 5 slice A — rule engine hardening (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| NEWI-053/054 | `rules.json` now written atomically via temp-file + rename; previous file rotated to `rules.json.bak` before replacement. A crash never leaves a truncated rules file. Legacy `app_rules.go` save path uses the same atomic helper. | `TestAtomicRulesSaveAndBackup`, `TestRulesLoadFallsBackToBackup` (new) |
+| NEWI-003 | Schema versioning via `schemaVersion` field in `SavedRulesConfig`; `Load` rejects files with a newer schema than the binary supports. | `TestRulesSchemaVersionRejectsFuture`, `TestRulesSchemaVersionInSave` (new) |
+| NEWI-007/012/030 | All `SetRules` methods (block, mock, crypto, breakpoint, rewrite, script, hosts, throttle) now use `compilePatternErr` which returns the regex compile error; invalid regexes are logged via `logger.Warn` and the rule's regex is set to nil (never matches) instead of silently dropping the error. | `TestInvalidRegexDoesNotPanic` (new) |
+| NEWI-002 | New `EnsureUniqueIDs` generic helper auto-assigns UUIDs to empty rule IDs and suffixes duplicates. Applied in every `SetRules`/`SetProfiles` method across all rule families. | `TestRuleIDUniqueness`, `TestRuleIDUniquenessAcrossFamilies` (new) |
+| NEWI-018/016 | Mock (static + file) and block synthetic responses now set `Content-Length` header to match the body, preventing client hangs on HTTP/1.1 keep-alive connections. | `TestBlockResponseContentLength`, `TestMockResponseContentLength` (new) |
+| NEWI-036/037 | Throttle interceptor no longer panics on nil `proxy.Context`; falls back to `context.Background`. Latency delay is now ctx-aware (uses `time.NewTimer` + `select` on `ctx.Done()`) so cancelled requests abort immediately. Rate-limit `WaitN` errors are propagated, not silently swallowed. | `TestThrottleNilContextDoesNotPanic`, `TestThrottleCtxCancellation`, `TestThrottleRateLimitErrorPropagated` (new) |
+| Bug fix | `SavedRulesConfig` in `internal/services` was missing `ThrottleConfig` field (present in the legacy `app_rules.go` copy but not the service). Added it to `Snapshot()` and `Apply()` so global throttle config survives save/load. | `TestRulesThrottleConfigPersisted` (new) |
+
+**Verification for this slice:**
+
+- `go vet ./...`: **passed**.
+- `go test ./...`: **passed**.
+- `go test -race ./pkg/interceptor/ ./internal/services/`: **passed**.
+
+Still open in Phase 5: chain continue-on-error policy + per-rule error events + match counters (NEWI-001), filtered=true end-to-end bypass (NEWI-011), rewrite header canonicalization + encoding-aware body rewrite (NEWI-027/028), script exec timeout/memory budget/sandbox (NEWI-040-043/048), rule dry-run/simulation, rule import/export, per-rule stats, conditional rules, pattern tester UI, deterministic chain ordering (NEWI-005), IDN/port matching (NEWI-008/009).
+
+## 11. Phase 6 slice A — frontend hardening (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| DEEP-037 | New `httpFetch`/`httpText` typed fetch wrappers in `apiAdapter.ts`: check `res.ok`, enforce 30s timeout via `AbortController`, throw structured `ApiError` (with `status`, `endpoint`, `message`). All 12+ HTTP fallback methods in the adapter now use these wrappers instead of raw `fetch` + `res.json()`. | `npm run build` (tsc + vite) passes |
+| NEWF-003 | WebSocket reconnect now uses exponential backoff **with jitter** (0–30% of current delay) to avoid thundering-herd reconnect storms. Added `destroy()` method that nulls all WS callbacks, closes the socket, clears the reconnect timer, and clears listeners — prevents leaks on HMR/shutdown. | Manual review |
+| DEEP-039 | `App.tsx` `useEffect` now returns a cleanup function that calls `api.off()` for every event registered (`proxy:request`, `proxy:response`, `proxy:ws_frame`, `proxy:sse_event`, `breakpoint:paused`, `log:event`, `app:init_error`). Prevents duplicate listeners under React strict mode double-invoke. | Manual review |
+| NEWF-006 | Audited all 33 `JSON.parse()` calls in `frontend/src/` — all are already wrapped in try/catch with fallback handling. No unguarded parses found. | Manual audit |
+| NEWF-009 | Audited inspector, request-list, and UI components for null-dereference risk. All response/headers/body accesses use optional chaining (`resp?.statusCode`, `resp?.headers`, `request.hostPort?.host`). `TransformCard` and `PerformanceCard` handle undefined props with early returns. No unguarded null-deref found. | Manual audit |
+
+**Verification for this slice:**
+
+- `npm run build` (tsc + vite): **passed**; existing 705 kB chunk warning remains (NEWF-011 code-splitting backlog).
+
+Still open in Phase 6: API contract tests for every Wails-vs-HTTP pair (DEEP-038), resolve `useTrafficStore` ownership (NEWF-001/AUD-007), retention semantics with visible dropped-count (DEEP-040), startup file import completion (DEEP-041), dynamic IP detection replacing `192.168.1.100` (DEEP-042), Monaco body caps (NEWF-007), bundle splitting for Monaco (NEWF-011), a11y + i18n pass (NEWF-012/013), stable selectors (NEWF-014), canonical status fields (NEWF-010), WS cleanup/reconnect strict-mode safety in all consumers (NEWF-008).
+
+## 12. Phase 7 slice A — Android engine, lifecycle, and bridge (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| NEWA-017 | `DesktopBridgeClient` reconnect now uses exponential backoff (1s → 2s → 4s → ... → 30s cap) **with jitter** (0–30% of base delay) to avoid thundering-herd reconnect storms. Replaced the fixed 3s delay. | `gradlew assembleDebug` passes |
+| NEWA-018 | Added heartbeat watchdog: tracks `lastServerActivity` timestamp on every incoming WS message. A separate coroutine checks every 12.5s; if no activity for 25s, force-cancels the socket so `onFailure` triggers a reconnect. Detects dead connections that don't send close frames. | Manual review |
+| DEEP-022 | Device ID in `flushPendingQueue` batch sync now uses the same `deviceId` lazy property (based on `ANDROID_ID`) as the WS handshake, instead of `Build.MODEL`. Desktop can correctly correlate batch-synced traffic with the paired device. | Manual review |
+| NEWM-015 | Pending offline queues now bounded by **both** count (500 req/500 resp) **and** byte budget (8 MiB total via `AtomicLong`). Over-budget items are dropped with a warning log instead of growing unbounded and causing OOM. Byte accounting is updated on enqueue, dequeue, and flush. | Manual review |
+| NEWA-015 | `RulesEngine` rule lists (`whitelist`, `blacklist`, `rewriteRules`, `mockRules`) are now private `_`-prefixed `mutableListOf` fields guarded by `synchronized(this)`. Public accessors return immutable `List` snapshots. All evaluation methods (`shouldInterceptHost`, `evaluateMockRule`, `evaluateRewriteRequest`, `evaluateRewriteResponse`) snapshot lists under lock then evaluate outside lock. New synchronized mutation API: `addWhitelistRule`, `addBlacklistRule`, `addRewriteRule`, `addMockRule`, `removeRuleById`, `setRewriteRuleEnabled`, `setMockRuleEnabled`, `setWhitelistRuleEnabled`, `setBlacklistRuleEnabled`. `RulesFragment` and `RulesDialog` updated to use the new API instead of direct list mutation. | `gradlew assembleDebug` passes |
+| DEEP-032 | `MitmProxyServer.start()` now returns `Boolean` and catches `BindException` specifically with a clear log message. `HttpeekVpnService.startVpnCapture()` checks the return value; if the proxy failed to start (port conflict), it disconnects the bridge, stops foreground, and calls `stopSelf()` instead of proceeding to establish a VPN tunnel that routes to a dead proxy. | Manual review |
+
+**Verification for this slice:**
+
+- `gradlew.bat assembleDebug`: **passed** (BUILD SUCCESSFUL, exit code 0). Pre-existing warnings only (WebSocketListener parameter naming, unused MitmProxyServer parameters).
+
+Still open in Phase 7: failed-MITM replay with byte accounting (DEEP-024), durable capture store with SQLite/paging (DEEP-033/NEWB-008), VPN typed error/state events to UI (DEEP-030/NEWA-014), lifecycle-aware state replacing static callbacks (DEEP-031), IPv6 + DNS (NEWA-010/011), POST_NOTIFICATIONS runtime request (NEWA-012), durable spool with ack/retry (DEEP-021/NEWA-019), rules sync merge/confirm (NEWA-016), WebSocket/SSE capture parity, device registry cleanup (NEWM-010), emulator matrix testing.
+
+## 13. Phase 8 slice A — Android release readiness (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| NEWB-002/023 | Created `proguard-rules.pro` with keeps for Gson-serialized model classes (`com.httpeek.app.model.**`, `com.httpeek.app.core.rules.**`), Bouncy Castle reflection, OkHttp/Okio, Kotlin coroutines, view binding, ZXing, ML Kit, CameraX, Lottie, and enum value methods. Log statements stripped in release via `assumenosideeffects`. Enabled `minifyEnabled true` + `shrinkResources true` in the release build type. | `gradlew assembleRelease` passes; APK 26.6 MB |
+| NEWB-001 | Added `signingConfigs.release` that reads keystore path, passwords, and alias from environment variables (`HTTPEEK_KEYSTORE_FILE`, `HTTPEEK_KEYSTORE_PASSWORD`, `HTTPEEK_KEY_ALIAS`, `HTTPEEK_KEY_PASSWORD`). Falls back to debug signing if env vars are not set. | `gradlew assembleRelease` passes with debug fallback |
+| NEWB-019 | Enabled `lint { checkReleaseBuilds true; abortOnError true }` — lint vital report now runs during release builds and blocks on errors. | `lintVitalRelease` task passed |
+| NEWB-015 | Created `backup_rules.xml` (`fullBackupContent`) that excludes pairing history shared prefs, capture database, and dynamic CA store from auto-backup. Referenced in `AndroidManifest.xml` via `android:fullBackupContent`. | `gradlew assembleRelease` passes |
+| NEWB-018 | Created `network_security_config.xml` that defaults to TLS-only for all remote hosts, permits cleartext only to `127.0.0.1`, `localhost`, and `10.0.0.2` (embedded proxy + LAN bridge). Referenced in `AndroidManifest.xml` via `android:networkSecurityConfig`. | `gradlew assembleRelease` passes |
+| NEWB-004 | **Blocked**: Bouncy Castle 1.78.1 is compiled with Java 21 bytecode (class file version 65) which the AGP 8.2.2 Jetifier cannot process. Reverted to 1.77 with a documented note. Upgrading to BC 1.78+ requires either AGP 8.4+ or disabling Jetifier (project already uses AndroidX exclusively). Left as backlog. | N/A — documented as blocked |
+
+**Verification for this slice:**
+
+- `gradlew.bat assembleRelease`: **passed** (BUILD SUCCESSFUL, exit code 0). R8 minification + resource shrinking + lintVitalRelease all passed.
+- Release APK: `app-release.apk` (26.6 MB) produced at `android/app/build/outputs/apk/release/`.
+- `gradlew.bat assembleDebug`: **passed** (verified in Phase 7-A).
+
+Still open in Phase 8: AndroidX/CameraX/MLKit/Lottie version updates (NEWB-005/006/007), QUERY_ALL_PACKAGES policy decision (NEWB-017), foreground-service type justification review (NEWA-013), data-safety form inputs, bounded lists + DiffUtil (NEWB-008/009), strings.xml + a11y (NEWB-010/011), state preservation + back handling (NEWB-012/013), unit/instrumentation test scaffold (NEWB-020), Play pre-launch report, upgrade/uninstall smoke tests, BC 1.78+ upgrade (requires AGP/Jetifier change).
+
+## 14. Phase 9 slice A — product features (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| Advanced filters | Extended `SearchFilterConditions` with 6 new filter fields: `protocol` (http/https/ws/wss/sse), `minDurationMs`/`maxDurationMs` (duration range), `minSizeBytes`/`maxSizeBytes` (response body size range), `hasRuleHits` (only requests with `appliedRules`), `bodyRegex` (regex test against request+response bodies). Added UI fields in `SearchConditionDialog.tsx`. Updated filter logic in `RequestList.tsx`. Updated `hasActiveConditions` check in `SearchBar.tsx`. | `npm run build` passes |
+| Proxy health center | New `ProxyHealthCenter.tsx` component showing 8 health items: proxy engine status (running/port), SSL/TLS MITM, CA trust status, CA expiry (with days-remaining warning), system proxy, connected mobile devices, ADB devices, upstream proxy. Uses `Promise.allSettled` for resilient data fetching. Integrated into `SettingsView.tsx` at the top. Summary banner shows healthy/warning state. | `npm run build` passes |
+
+**Verification for this slice:**
+
+- `npm run build` (tsc + vite): **passed** (exit code 0). Bundle 710 kB (pre-existing chunk warning).
+
+Still open in Phase 9: streaming inspector, timeline/waterfall, request dependency graph, diff & replay sets, durable capture profiles, unified rule DSL, rule simulation/versioning/conditional rules, webhook delivery controls, rule templates, safe system-proxy transactions, multi-profile environments, diagnostics/support bundle, startup import completion, request replay profiles, CLI/headless mode, plugin/extension API, connection health panel (mobile), per-app capture profiles, QUIC/UDP visibility, offline-first encrypted bridge spool, remote action acks, unified search, session continuity, HAR redaction profiles, OpenTelemetry trace correlation, secret detection, trusted-cert verification, CA expiry rotation UX.
+
+## 15. Phase 10 slice A — test infrastructure and observability (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| Fuzz: HTTP headers | `FuzzHTTPHeaders` and `FuzzHTTPRequestLine` in `pkg/proxy/fuzz_security_test.go` — fuzz `http.ReadRequest` with arbitrary raw HTTP to ensure malformed headers never panic the proxy. | `go test` passes |
+| Fuzz: HAR import | `FuzzHARImport` and `FuzzHARExportReimport` in `pkg/storage/har_fuzz_test.go` — fuzz `ImportHARBytes` with arbitrary JSON to ensure malformed HAR data never panics. | `go test` passes |
+| Fuzz: rule regex | `FuzzCompilePatternErr` in `pkg/interceptor/fuzz_test.go` — fuzz regex compilation with adversarial patterns (`[invalid`, `(unclosed`, deeply nested groups) to ensure invalid regexes return errors, never panic. | `go test` passes |
+| Security: oversized payloads | `TestOversizedRequestRejected` — verifies a 17 MiB body (exceeding the 16 MiB default `MaxRequestBodyBytes`) is handled without panic. | `go test` passes |
+| Security: path traversal | `TestPathTraversalInURL` — verifies traversal URLs (`../../../etc/passwd`, `%2e%2e` encoded) parse without panic and don't produce drive-letter paths (Windows FS escape). | `go test` passes |
+| Security: token auth | `TestTokenAuthRejectsInvalidToken` — verifies that with `HTTPEEK_API_TOKEN` set, requests without a token or with a wrong token get 401, and correct token gets 200. | `go test` passes |
+| Security: CSV injection | `TestCSVInjectionEscaping` — verifies detection of CSV formula injection vectors (`=`, `+`, `-`, `@`, `\t`, `\r` prefixes). | `go test` passes |
+| Contract: event names | `TestEventNamesContract` — verifies all 14 event names (`proxy:request`, `proxy:response`, `proxy:ws_frame`, `proxy:sse_event`, `proxy:error`, `breakpoint:paused`, `log:event`, `app:init_error`, `mobile:hello`, `mobile:ping`, `rules:sync`, `remote:vpn_start`, `remote:vpn_stop`, `remote:traffic_clear`) follow `namespace:action` format. | `go test` passes |
+| Contract: mobile sync schema | `TestMobileSyncSchemaContract` — verifies `MobileAPIManager` device registration, `GetConnectedDevices()` snapshot, and removal all work correctly. | `go test` passes |
+| HAR: BOM + trailing commas | `TestHARImportWithBOM` and `TestHARImportWithTrailingCommas` — verify the resilient parser handles UTF-8 BOM and trailing commas (common in browser-exported HARs). | `go test` passes |
+| HAR: malformed JSON | `TestHARImportMalformedJSON` — verifies truncated, wrong-type, and null-entry HAR payloads are handled gracefully without panic. | `go test` passes |
+| HAR: export validity | `TestHARExportValidJSON` — verifies exported HAR is valid JSON with correct `log.entries` structure. | `go test` passes |
+| Rule ID uniqueness | `TestEnsureUniqueIDsFuzz` — 100 iterations with adversarial input (all-empty, all-duplicate IDs). **Found and fixed a real bug**: the old `EnsureUniqueIDs` suffix logic produced duplicate IDs when 3+ rules shared the same ID (e.g., `same-1` collision). Fixed to use a `map[string]bool` with iterative suffix probing. | `go test` passes |
+
+**Bug fix (NEWI-002 regression):** `EnsureUniqueIDs` in `pkg/interceptor/rule_ids.go` had a suffix collision bug. The old code used `seen[id]++` as a counter and appended `-count` as suffix, but when 3+ rules shared ID `same`, the 2nd got `same-1`, the 3rd also got `same-1` (because `seen["same"]` was 2, producing `same-2`, but `seen["same-1"]` was never checked). The fix uses a `map[string]bool` and probes suffixes `same-1`, `same-2`, etc. until an unused candidate is found.
+
+**Verification for this slice:**
+
+- `go vet ./...`: **passed** (exit code 0)
+- `go test ./... -count=1 -timeout 180s`: **passed** (all packages: `internal/services`, `pkg/cert`, `pkg/interceptor`, `pkg/proxy`, `pkg/storage`)
+
+Still open in Phase 10: race/leak tests (server restart, mobile connect/disconnect, event subscriptions, breakpoint queues, storage writes, discovery), contract tests (Wails-vs-HTTP adapter, HAR fixtures from Chrome/Firefox/Charles/Fiddler), Android matrix (API 24–34 emulator + physical devices, network fault injection), observability (redacted diagnostics bundle, health endpoints, storage metrics, per-rule counters, capture-error events, slow-query log), coverage report, CI fuzz/race/security suites, known-limitations doc.
+
+## 16. Phase 9 slice B — secret detection + rule import/export (completed 2026-08-18)
+
+| Item | Work done | Verification |
+|---|---|---|
+| Secret detection in bodies | New `frontend/src/lib/secretScanner.ts` with 14 detectors: AWS access key ID, AWS secret key, Google API key, GitHub token, Slack token, Stripe secret key, Bearer token, generic API key, password, private key block, JWT, connection string with credentials, generic token, client secret. Each detector has severity (high/medium/low) and masks matched values. New `SecretDetectionCard.tsx` component in the inspector showing findings with severity icons, location labels (req header/body, resp header/body, URL, cookie), masked previews, and line numbers. Wired into `InspectorPanel.tsx` between response body and transform card. | `npm run build` passes |
+| Rule import/export | New `ExportRules()` and `ImportRules(jsonData)` Wails-bound methods on `App` in `app_rules.go`. Export serializes `SavedRulesConfig` to JSON; import parses, validates schema version, applies to interceptors, and persists. Added `ExportRules`/`ImportRules` to `MobileAPIBridge` interface and `appMobileBridge` implementation. New HTTP endpoints: `GET /api/rules/export` and `POST /api/rules/import`. Frontend `apiAdapter.ts` has `exportRules()` and `importRules()` with Wails+HTTP fallback. UI: Export/Import buttons in `RulesModal.tsx` header — export downloads a JSON file, import reads a file and reloads. | `go test` + `npm run build` pass |
+
+**Verification for this slice:**
+
+- `go vet ./...`: **passed**
+- `go test ./pkg/proxy/ ./internal/services/ -count=1 -timeout 120s`: **passed**
+- `npm run build` (tsc + vite): **passed** (exit code 0, 711 kB bundle)
+
+Still open in Phase 9: streaming inspector, timeline/waterfall, request dependency graph, diff & replay sets, durable capture profiles, unified rule DSL, rule simulation/versioning/conditional rules, webhook delivery controls, rule templates, safe system-proxy transactions, multi-profile environments, diagnostics/support bundle, startup import completion, request replay profiles, CLI/headless mode, plugin/extension API, connection health panel (mobile), per-app capture profiles, QUIC/UDP visibility, offline-first encrypted bridge spool, remote action acks, unified search, session continuity, HAR redaction profiles, OpenTelemetry trace correlation, trusted-cert verification, CA expiry rotation UX.
+
+## 17. Phase 9 slice C — per-app interceptors & Java JVM proxy (completed 2026-08-19)
+
+| Item | Work done | Verification |
+|---|---|---|
+| App detection | New `pkg/system/app_launcher.go` (shared interface + types), `app_launcher_windows.go` (registry App Paths + standard paths + `exec.LookPath`), `app_launcher_darwin.go` (`/Applications/*.app/Contents/MacOS/*` + `exec.LookPath`), `app_launcher_linux.go` (`exec.LookPath` for `google-chrome`, `chromium`, `microsoft-edge`, `firefox`, terminal emulators, `node`, `python3`). Detects Chrome, Edge, Firefox, Safari (macOS), Chromium (Linux), Terminal/PowerShell, Node.js, Python. | `go vet ./...` passes |
+| App launch with proxy | `LaunchApp()` builds per-app launch profiles: Chrome/Edge/Chromium get `--proxy-server` flag; Firefox/Terminal/Node/Python get `HTTP_PROXY`/`HTTPS_PROXY` env vars; Node gets `NODE_EXTRA_CA_CERTS`; Python gets `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`. On Windows, processes are detached via `CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS`. | `go vet` passes |
+| Java global JVM proxy | `SetJavaGlobalProxy()` sets `JAVA_TOOL_OPTIONS` env var with `-Dhttp.proxyHost`, `-Dhttp.proxyPort`, `-Dhttps.proxyHost`, `-Dhttps.proxyPort`, `-Djavax.net.ssl.trustStore=<cacerts>`, `-Djavax.net.ssl.trustStorePassword=changeit`. On Windows: persists via registry `HKCU\Environment`. On macOS/Linux: `os.Setenv` (session-scoped). `GetJavaGlobalProxyStatus()` parses current state. | `go vet` passes |
+| Wails bindings | `app_launcher.go` (root): `DetectLaunchableApps()`, `LaunchAndIntercept(appID)` (auto-starts proxy if not running, checks CA installed, gets CA cert path, launches app), `LaunchCustomApp(path)`, `SetJavaGlobalProxy(enable)`, `GetJavaGlobalProxyStatus()`, `GetLaunchableAppCAs()`. | `go vet .` passes |
+| Mobile REST API | 5 new endpoints in `mobile_api.go`: `GET /api/apps/detect`, `POST /api/apps/launch`, `POST /api/apps/launch-custom`, `POST /api/java/proxy`, `GET /api/java/proxy/status`. Bridge interface extended with 5 methods, implemented in `app_mobile_bridge.go`. | `go test ./pkg/proxy/` passes |
+| Frontend API adapter | `apiAdapter.ts`: `detectLaunchableApps()`, `launchAndIntercept(appId)`, `launchCustomApp(path)`, `setJavaGlobalProxy(enable)`, `getJavaGlobalProxyStatus()`, `getLaunchableAppCAs()` — all with Wails + HTTP fallback. | `npm run build` passes |
+| LaunchPanel UI | New `frontend/src/components/launch/LaunchPanel.tsx`: app cards grouped by category (Browsers, Terminals, Runtimes), custom app file picker, Java JVM proxy toggle with detected installations list + CA install buttons. Active interception banner with "Stop Intercepting" button. | `npm run build` passes |
+| Nav tab | New 'launch' tab added to `LeftNavigationBar.tsx` with Rocket icon. Wired into `DesktopHome.tsx` `renderLeftNavigationView()`. `useProxyStore` `activeTab` type extended. | `npm run build` passes |
+| Process filter | `useProxyStore.ts`: new `processFilter` state + `setProcessFilter`. `RequestList.tsx`: filters requests by `req.process.name` when `processFilter` is set. `SearchBar.tsx`: purple chip showing active process filter with X to clear. `SearchConditionDialog.tsx`: `processName` field added to `SearchFilterConditions`. | `npm run build` passes |
+
+**Verification for this slice:**
+
+- `go vet ./...`: **passed**
+- `go test ./pkg/system/ ./pkg/proxy/ ./internal/services/ -count=1 -timeout 120s`: **passed**
+- `npm run build` (tsc + vite): **passed** (exit code 0, 726 kB bundle)
+
+Still open in Phase 9: streaming inspector, timeline/waterfall, request dependency graph, diff & replay sets, durable capture profiles, unified rule DSL, rule simulation/versioning/conditional rules, webhook delivery controls, rule templates, safe system-proxy transactions, multi-profile environments, diagnostics/support bundle, startup import completion, request replay profiles, CLI/headless mode, plugin/extension API, connection health panel (mobile), QUIC/UDP visibility, offline-first encrypted bridge spool, remote action acks, unified search, session continuity, HAR redaction profiles, OpenTelemetry trace correlation, trusted-cert verification, CA expiry rotation UX, Firefox proxy config (about:config), process resolution on macOS/Linux (currently Windows-only).
+
+---
+
+## Phase 9-D / 10-B — Deep Audit Findings & Backlog
+
+### P0 Fixes (implemented)
+
+#### P0-1: Per-app interceptor captured ALL traffic instead of just the launched app
+**Root cause:** `LaunchAndIntercept`, `LaunchCustomApp`, and `SetJavaGlobalProxy` all called `a.Start()` which calls `StartProxy(0, true, true)` — the third `true` enables OS-wide system proxy, so every application on the machine routed through HTTPeek, not just the launched one.
+**Fix:** Added `startProxyForIsolatedCapture()` helper in `app_launcher.go` that starts the proxy with `enableSystemProxy=false`. All three launcher flows now use this helper. The toolbar's explicit Start/Stop button remains full system-wide capture by design.
+
+#### P0-2: Java interception kept capturing all traffic after "stopping"
+**Root cause:** Same system-wide proxy bug as P0-1, plus `LaunchPanel.tsx`'s "Stop Intercepting" only cleared a frontend UI filter — never called any backend stop API.
+**Fix:** Applied P0-1 fix. Added `activeLaunchKind: 'app' | 'java' | null` state to `LaunchPanel.tsx`. "Stop Intercepting" now calls `api.setJavaGlobalProxy(false)` for Java sessions (with honest messaging for launched-app sessions that can't be remotely un-proxied).
+
+#### P0-3: Android app did not connect / connected devices not shown
+**Root cause:** `wireMobileEvents()` was called once at startup before the proxy server existed, so the device-change callback never attached to the real `mobileAPI` instance. Worse, `StartProxy()`/`SetProxyPort()` fully discarded and recreated `a.server` on every call, dropping live Android WebSocket connections and resetting the device list.
+**Fix:** `StartProxy()` and `SetProxyPort()` now call `a.wireMobileEvents()` after every server (re)creation, and reuse the existing Server instance via `Restart()` (which preserves `handler.mobileAPI` identity) instead of always building a new one.
+
+#### P0-4: ADB smart discovery + auto-download
+**Problem:** `exec.Command("adb", ...)` relied solely on PATH. No fallback search, no bundling, no auto-download.
+**Fix:** New `pkg/adb/adb_locator.go` package with `ResolvePath()` (searches PATH, ANDROID_HOME, ANDROID_SDK_ROOT, Android Studio default locations, cached auto-download) and `Download()` (fetches official Google platform-tools zip, extracts to `<dataDir>/tools/platform-tools`). Wired into `pkg/cert/android_adb.go` and `app_mobile.go`. New Wails methods `ResolveADBPath()` and `DownloadADBIfMissing()`. Frontend adapter methods added.
+
+#### P0-5: Domain list default expand/collapse setting + new-traffic blink
+**Problem:** `DomainList.tsx` always started fully expanded; no persistence, no setting.
+**Fix:** Added `domainListDefaultCollapsed` setting to `useAppConfig.ts` with toggle in `PreferenceDialog.tsx`. `DomainList.tsx` now applies the default-collapse on first-seen domain and blinks collapsed domain headers when new traffic arrives (CSS keyframe `domain-blink`, guarded against initial bulk-load).
+
+#### P0-6: Full visual Rewrite Rule builder
+**Problem:** The rewrite rule editor only exposed name/action/URL/status/one body textarea despite the data model supporting itemized headers, form-data, and body types.
+**Fix:** New `frontend/src/components/rules/rewrite/RewriteRuleBuilder.tsx` with 5 tabs: Match (URL/method/regex tester/stage), Headers (add/remove/set rows with autocomplete), Body (type selector + Monaco editor + form-data table), Status (StatusCodePicker), Advanced (raw JSON editor with Apply button). Integrated into `RequestRewriteDialog.tsx`.
+
+### Verification (Phase 9-D)
+- `go vet ./...`: **passed**
+- `npm run build` (tsc + vite): **passed** (744 kB bundle)
+
+### Backlog — Desktop
+- **Reference-counted proxy lifecycle**: Multiple features (toolbar Start, Launch panel, Java proxy, port change) each assume they "own" start/stop. Introduce a refcount so stopping one feature doesn't kill the proxy if another still needs it.
+- **MobileAPIManager connection diagnostics ring buffer**: Ties into P0-3. Show last 5 connection attempts (success/fail) in Settings to help users self-diagnose firewall/network issues.
+- **Extend rule builder pattern to Mock/Block/Crypto dialogs**: P0-6's tabbed builder pattern should be applied to other rule dialogs for consistency.
+- **Chunked/streaming inspector for huge bodies**: Already flagged in Phase 9 backlog — carry forward.
+- **Reduce main JS bundle size** (currently 744KB) via route-level code splitting.
+- **Centralize overlapping stores** (`useProxyStore` vs `useTrafficStore`) — noted in AGENTS.md as a known risk.
+- **Audit silent error swallowing** in `SetExternalProxy`/`SetSSLEnabled` per AGENTS.md "do not silently swallow errors" rule.
+- **RulesModal.tsx rewrite tab schema migration**: The items-based editor (`addHeader`/`updateHeader`/`replaceStatus` action types) uses a different schema from the new `RewriteRuleBuilder`. Migrate to the unified `RewriteRule` type for consistency.
+
+### Backlog — Android
+- **Sync full rule schema**: Currently "subset/schema translation" per AGENTS.md — audit gaps vs desktop rule types.
+- **Android reconnect/backoff jitter tuning**: Validate under real network loss conditions.
+- **Doze-mode VPN service survivability**: Flagged as untested by static inspection in AGENTS.md.
+- **QUIC/UDP visibility**: Already a known Phase 9 gap.
+- **Android ADB reverse auto-trigger**: When a USB device is detected, automatically offer `adb reverse` without requiring manual user action.
+

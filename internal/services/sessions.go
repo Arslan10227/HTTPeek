@@ -68,11 +68,9 @@ func (s *SessionService) ImportHAR(harJSON, sessionName string) (*storage.Sessio
 		return nil, err
 	}
 
-	for _, req := range requests {
-		_ = s.repo.SaveRequest(sess.ID, req)
-		if req.Response != nil {
-			_ = s.repo.SaveResponse(req.Response)
-		}
+	if err := s.repo.SaveRequestsBatch(sess.ID, requests); err != nil {
+		_ = s.repo.DeleteSession(sess.ID)
+		return nil, fmt.Errorf("import session failed: %w", err)
 	}
 	return sess, nil
 }

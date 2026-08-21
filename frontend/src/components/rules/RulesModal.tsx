@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Plus, 
-  Trash2, 
-  Check, 
-  Globe, 
-  Sliders, 
-  Code2, 
-  Lock, 
-  ShieldAlert, 
-  FileText, 
+import {
+  X,
+  Plus,
+  Trash2,
+  Check,
+  Globe,
+  Sliders,
+  Code2,
+  Lock,
+  ShieldAlert,
+  FileText,
   Gauge,
   FolderOpen,
   FileCode,
@@ -20,13 +20,16 @@ import {
   HelpCircle,
   Sparkles,
   ArrowRight,
-  PlusCircle
+  PlusCircle,
+  Download,
+  Upload,
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { useProxyStore } from '../../store/useProxyStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import { toast } from '../../store/useToastStore';
 import { logger } from '../../store/useLogStore';
+import { api } from '../../store/apiAdapter';
 import { ColorfulIcon } from '../common/ColorfulIcon';
 import { LottiePlayer } from '../common/LottiePlayer';
 import { 
@@ -45,6 +48,49 @@ export const RulesModal: React.FC<{ isOpen: boolean; isEmbedded?: boolean; onClo
   const { renderTemplate } = useProxyStore();
   const { monacoTheme } = useThemeStore();
   const [activeTab, setActiveTab] = useState<'mock' | 'rewrite' | 'breakpoint' | 'script' | 'hosts' | 'throttle' | 'block' | 'crypto'>('mock');
+
+  // ==================== Rule Import/Export (Phase 9-B) ====================
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExportRules = async () => {
+    try {
+      const jsonStr = await api.exportRules();
+      if (!jsonStr) {
+        toast.error('Export failed', 'No rules data returned');
+        return;
+      }
+      // Trigger a download in the browser.
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `httpeek-rules-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Rules exported');
+    } catch (e: any) {
+      toast.error('Export failed', e?.message || String(e));
+    }
+  };
+
+  const handleImportRules = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      await api.importRules(text);
+      toast.success('Rules imported', 'Reloading rules...');
+      // Reload the page state by closing and reopening, or trigger a refresh.
+      setTimeout(() => window.location.reload(), 500);
+    } catch (e: any) {
+      toast.error('Import failed', e?.message || String(e));
+    } finally {
+      // Reset the input so the same file can be re-selected.
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // ==================== 1. MOCK RULES STATE ====================
   const [mockRules, setMockRules] = useState<any[]>([
@@ -252,12 +298,35 @@ function onResponse(context, request, response) {
             <p className="text-[11px] text-slate-400">Configure synthetic mocks, rewrite mutations, scripts, and breakpoints</p>
           </div>
         </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleExportRules}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            title="Export all rules as JSON"
+          >
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            title="Import rules from JSON file"
+          >
+            <Upload className="w-3.5 h-3.5" /> Import
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImportRules}
+            className="hidden"
+          />
           <button
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
       </div>
       )}
 

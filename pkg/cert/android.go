@@ -42,6 +42,15 @@ type ADBDeviceInfo struct {
 	Rooted bool   `json:"rooted"`
 }
 
+// AndroidAppInfo describes an application installed or running on Android.
+type AndroidAppInfo struct {
+	Package   string `json:"package"`
+	Name      string `json:"name"`
+	PID       int    `json:"pid"`
+	IsRunning bool   `json:"isRunning"`
+	IsSystem  bool   `json:"isSystem"`
+}
+
 // AndroidInstallResult aggregates all fallback install attempts from desktop via ADB.
 type AndroidInstallResult struct {
 	Success      bool                `json:"success"`

@@ -14,6 +14,15 @@ export interface SearchFilterConditions {
   searchResponseBody: boolean;
   caseSensitive: boolean;
   isRegex: boolean;
+  // Advanced filters (Phase 9-A)
+  protocol: string;          // '', 'http', 'https', 'ws', 'wss', 'sse'
+  minDurationMs: string;     // empty = no filter
+  maxDurationMs: string;     // empty = no filter
+  minSizeBytes: string;      // empty = no filter
+  maxSizeBytes: string;      // empty = no filter
+  hasRuleHits: boolean;      // filter to requests with appliedRules
+  bodyRegex: string;         // regex to test against request+response bodies
+  processName: string;       // Phase 9-C: filter by process name
 }
 
 export const defaultSearchConditions: SearchFilterConditions = {
@@ -27,6 +36,14 @@ export const defaultSearchConditions: SearchFilterConditions = {
   searchResponseBody: true,
   caseSensitive: false,
   isRegex: false,
+  protocol: '',
+  minDurationMs: '',
+  maxDurationMs: '',
+  minSizeBytes: '',
+  maxSizeBytes: '',
+  hasRuleHits: false,
+  bodyRegex: '',
+  processName: '',
 };
 
 interface SearchConditionDialogProps {
@@ -211,6 +228,105 @@ export const SearchConditionDialog: React.FC<SearchConditionDialogProps> = ({
               />
               <span>{isZh ? '正则表达式' : 'Regular Expression'}</span>
             </label>
+          </div>
+
+          {/* Advanced Filters (Phase 9-A) */}
+          <div className="flex flex-col gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <span className="font-semibold text-gray-600 dark:text-gray-400">
+              {isZh ? '高级过滤:' : 'Advanced Filters:'}
+            </span>
+
+            {/* Protocol */}
+            <div className="flex flex-col gap-1">
+              <label className="font-medium">{isZh ? '协议:' : 'Protocol:'}</label>
+              <select
+                value={form.protocol}
+                onChange={(e) => setForm({ ...form, protocol: e.target.value })}
+                className="px-3 py-1.5 rounded-lg border bg-transparent focus:outline-none cursor-pointer"
+                style={{ borderColor: 'var(--md-sys-color-outline)' }}
+              >
+                {['', 'http', 'https', 'ws', 'wss', 'sse'].map((p) => (
+                  <option key={p} value={p}>
+                    {p || (isZh ? '全部协议' : 'All Protocols')}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Duration range */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="font-medium">{isZh ? '最小耗时 (ms):' : 'Min Duration (ms):'}</label>
+                <input
+                  type="text"
+                  value={form.minDurationMs}
+                  onChange={(e) => setForm({ ...form, minDurationMs: e.target.value })}
+                  placeholder="e.g. 100"
+                  className="px-3 py-1.5 rounded-lg border bg-transparent font-mono focus:outline-none"
+                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="font-medium">{isZh ? '最大耗时 (ms):' : 'Max Duration (ms):'}</label>
+                <input
+                  type="text"
+                  value={form.maxDurationMs}
+                  onChange={(e) => setForm({ ...form, maxDurationMs: e.target.value })}
+                  placeholder="e.g. 5000"
+                  className="px-3 py-1.5 rounded-lg border bg-transparent font-mono focus:outline-none"
+                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                />
+              </div>
+            </div>
+
+            {/* Size range */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="font-medium">{isZh ? '最小大小 (bytes):' : 'Min Size (bytes):'}</label>
+                <input
+                  type="text"
+                  value={form.minSizeBytes}
+                  onChange={(e) => setForm({ ...form, minSizeBytes: e.target.value })}
+                  placeholder="e.g. 1024"
+                  className="px-3 py-1.5 rounded-lg border bg-transparent font-mono focus:outline-none"
+                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="font-medium">{isZh ? '最大大小 (bytes):' : 'Max Size (bytes):'}</label>
+                <input
+                  type="text"
+                  value={form.maxSizeBytes}
+                  onChange={(e) => setForm({ ...form, maxSizeBytes: e.target.value })}
+                  placeholder="e.g. 1048576"
+                  className="px-3 py-1.5 rounded-lg border bg-transparent font-mono focus:outline-none"
+                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
+                />
+              </div>
+            </div>
+
+            {/* Rule hits + body regex */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.hasRuleHits}
+                onChange={(e) => setForm({ ...form, hasRuleHits: e.target.checked })}
+                className="rounded"
+              />
+              <span>{isZh ? '仅显示命中规则的请求' : 'Only requests with rule hits'}</span>
+            </label>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-medium">{isZh ? 'Body 正则匹配:' : 'Body Regex:'}</label>
+              <input
+                type="text"
+                value={form.bodyRegex}
+                onChange={(e) => setForm({ ...form, bodyRegex: e.target.value })}
+                placeholder={'e.g. "token"|"password"'}
+                className="px-3 py-1.5 rounded-lg border bg-transparent font-mono focus:outline-none"
+                style={{ borderColor: 'var(--md-sys-color-outline)' }}
+              />
+            </div>
           </div>
         </div>
 

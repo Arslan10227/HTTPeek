@@ -3,12 +3,14 @@ package interceptor
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 
 	"github.com/google/uuid"
@@ -76,8 +78,15 @@ func (b *RequestBlockInterceptor) SetRules(rules []*BlockRule) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(r *BlockRule) string { return r.ID }, func(r *BlockRule, id string) { r.ID = id })
 	for _, r := range rules {
-		r.regex = compilePattern(r.URLPattern)
+		regex, err := compilePatternErr(r.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("block rule %q has invalid regex %q: %v", r.Name, r.URLPattern, err))
+			r.regex = nil
+		} else {
+			r.regex = regex
+		}
 	}
 	b.rules = rules
 }
@@ -111,6 +120,7 @@ func (b *RequestBlockInterceptor) Execute(ctx *proxy.Context, req *proxy.HttpReq
 		bodyBytes := []byte("Blocked by HTTPeek")
 		headers := make(http.Header)
 		headers.Set("Content-Type", "text/plain")
+		headers.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 		headers.Set("X-Blocked-By", "HTTPeek")
 
 		return &proxy.HttpResponse{

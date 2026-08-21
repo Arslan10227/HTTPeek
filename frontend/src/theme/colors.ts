@@ -8,6 +8,14 @@ export interface ColorPreset {
 }
 
 export const ColorMapping: Record<string, ColorPreset> = {
+  Teal: {
+    name: 'Teal',
+    hex: '#00E5A3',
+    primaryContainer: 'rgba(0, 229, 163, 0.15)',
+    onPrimaryContainer: '#004D34',
+    darkPrimaryContainer: 'rgba(0, 229, 163, 0.2)',
+    darkOnPrimaryContainer: '#00E5A3',
+  },
   Blue: {
     name: 'Blue',
     hex: '#2196F3',
@@ -16,6 +24,7 @@ export const ColorMapping: Record<string, ColorPreset> = {
     darkPrimaryContainer: '#004A77',
     darkOnPrimaryContainer: '#D0E4FF',
   },
+
   Pink: {
     name: 'Pink',
     hex: '#E91E63',
@@ -48,14 +57,7 @@ export const ColorMapping: Record<string, ColorPreset> = {
     darkPrimaryContainer: '#00522B',
     darkOnPrimaryContainer: '#C4EED0',
   },
-  Teal: {
-    name: 'Teal',
-    hex: '#009688',
-    primaryContainer: '#B2DFDB',
-    onPrimaryContainer: '#00201D',
-    darkPrimaryContainer: '#004F48',
-    darkOnPrimaryContainer: '#B2DFDB',
-  },
+
   Cyan: {
     name: 'Cyan',
     hex: '#00BCD4',

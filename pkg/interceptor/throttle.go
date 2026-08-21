@@ -1,13 +1,16 @@
 package interceptor
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand"
 	"regexp"
 	"sync"
 	"time"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 
 	"golang.org/x/time/rate"
@@ -146,6 +149,7 @@ func (t *NetworkThrottleInterceptor) SetProfiles(profiles []*ThrottleProfile) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	EnsureUniqueIDs(profiles, func(p *ThrottleProfile) string { return p.ID }, func(p *ThrottleProfile, id string) { p.ID = id })
 	for _, p := range profiles {
 		t.initProfileLimiters(p)
 	}
@@ -184,7 +188,13 @@ func (t *NetworkThrottleInterceptor) GetConfig() ThrottleConfig {
 
 func (t *NetworkThrottleInterceptor) initProfileLimiters(p *ThrottleProfile) {
 	if p.URLPattern != "" {
-		p.regex = compilePattern(p.URLPattern)
+		regex, err := compilePatternErr(p.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("throttle profile %q has invalid regex %q: %v", p.Name, p.URLPattern, err))
+			p.regex = nil
+		} else {
+			p.regex = regex
+		}
 	}
 	if p.DownstreamKBps > 0 {
 		bytesPerSec := p.DownstreamKBps * 1024
@@ -200,6 +210,11 @@ func (t *NetworkThrottleInterceptor) initProfileLimiters(p *ThrottleProfile) {
 func (t *NetworkThrottleInterceptor) OnRequest(ctx *proxy.Context, req *proxy.HttpRequest) (*proxy.HttpRequest, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
+
+	var bgCtx = context.Background()
+	if ctx != nil && ctx.Context != nil {
+		bgCtx = ctx.Context
+	}
 
 	var activeList []*ThrottleProfile
 	if t.globalConfig.Enabled && t.globalConfig.Profile != nil {
@@ -220,7 +235,7 @@ func (t *NetworkThrottleInterceptor) OnRequest(ctx *proxy.Context, req *proxy.Ht
 			return nil, errors.New("simulated network packet drop on request")
 		}
 
-		// Apply latency & jitter
+		// Apply latency & jitter (ctx-aware so cancellation aborts the delay)
 		delay := p.LatencyMs
 		if p.JitterMs > 0 {
 			jitter := rand.Intn(p.JitterMs*2) - p.JitterMs
@@ -230,12 +245,20 @@ func (t *NetworkThrottleInterceptor) OnRequest(ctx *proxy.Context, req *proxy.Ht
 			}
 		}
 		if delay > 0 {
-			time.Sleep(time.Duration(delay) * time.Millisecond)
+			timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
+			select {
+			case <-timer.C:
+			case <-bgCtx.Done():
+				timer.Stop()
+				return nil, bgCtx.Err()
+			}
 		}
 
 		// Rate limit upstream body
 		if p.upLimiter != nil && len(req.Body) > 0 {
-			_ = p.upLimiter.WaitN(ctx.Context, len(req.Body))
+			if err := p.upLimiter.WaitN(bgCtx, len(req.Body)); err != nil {
+				return nil, fmt.Errorf("throttle upstream rate limit: %w", err)
+			}
 		}
 	}
 
@@ -246,6 +269,11 @@ func (t *NetworkThrottleInterceptor) OnRequest(ctx *proxy.Context, req *proxy.Ht
 func (t *NetworkThrottleInterceptor) OnResponse(ctx *proxy.Context, req *proxy.HttpRequest, resp *proxy.HttpResponse) (*proxy.HttpResponse, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
+
+	var bgCtx = context.Background()
+	if ctx != nil && ctx.Context != nil {
+		bgCtx = ctx.Context
+	}
 
 	var activeList []*ThrottleProfile
 	if t.globalConfig.Enabled && t.globalConfig.Profile != nil {
@@ -268,7 +296,9 @@ func (t *NetworkThrottleInterceptor) OnResponse(ctx *proxy.Context, req *proxy.H
 
 		// Rate limit downstream body
 		if p.downLimiter != nil && len(resp.Body) > 0 {
-			_ = p.downLimiter.WaitN(ctx.Context, len(resp.Body))
+			if err := p.downLimiter.WaitN(bgCtx, len(resp.Body)); err != nil {
+				return nil, fmt.Errorf("throttle downstream rate limit: %w", err)
+			}
 		}
 	}
 

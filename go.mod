@@ -1,6 +1,6 @@
 module httpeek
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/andybalholm/brotli v1.2.2
@@ -51,4 +51,5 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-// replace github.com/wailsapp/wails/v2 v2.14.0 => F:\DevPlatform\Caches\go-workspace\pkg\mod
+// replace internal imports to local module
+replace github.com/Arslan10227/HTTPeek => ./

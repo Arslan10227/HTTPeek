@@ -18,6 +18,10 @@ export function AddHostToWhitelist(arg1) {
   return window['go']['main']['App']['AddHostToWhitelist'](arg1);
 }
 
+export function AttachJVM(arg1, arg2) {
+  return window['go']['main']['App']['AttachJVM'](arg1, arg2);
+}
+
 export function CheckCAInstalled() {
   return window['go']['main']['App']['CheckCAInstalled']();
 }
@@ -30,16 +34,32 @@ export function CreateNewSession(arg1) {
   return window['go']['main']['App']['CreateNewSession'](arg1);
 }
 
+export function DeleteFavorite(arg1) {
+  return window['go']['main']['App']['DeleteFavorite'](arg1);
+}
+
 export function DeleteSession(arg1) {
   return window['go']['main']['App']['DeleteSession'](arg1);
+}
+
+export function DeployFridaServer(arg1) {
+  return window['go']['main']['App']['DeployFridaServer'](arg1);
 }
 
 export function DetectJavaInstallations() {
   return window['go']['main']['App']['DetectJavaInstallations']();
 }
 
+export function DetectLaunchableApps() {
+  return window['go']['main']['App']['DetectLaunchableApps']();
+}
+
 export function DisconnectMobileDevice(arg1) {
   return window['go']['main']['App']['DisconnectMobileDevice'](arg1);
+}
+
+export function DownloadADBIfMissing() {
+  return window['go']['main']['App']['DownloadADBIfMissing']();
 }
 
 export function ExitApp() {
@@ -56,6 +76,10 @@ export function ExportRequestsAs(arg1, arg2) {
 
 export function ExportRootCA() {
   return window['go']['main']['App']['ExportRootCA']();
+}
+
+export function ExportRules() {
+  return window['go']['main']['App']['ExportRules']();
 }
 
 export function GetAllRules() {
@@ -94,6 +118,14 @@ export function GetHostsRules() {
   return window['go']['main']['App']['GetHostsRules']();
 }
 
+export function GetJavaGlobalProxyStatus() {
+  return window['go']['main']['App']['GetJavaGlobalProxyStatus']();
+}
+
+export function GetLaunchableAppCAs() {
+  return window['go']['main']['App']['GetLaunchableAppCAs']();
+}
+
 export function GetLocalIPs() {
   return window['go']['main']['App']['GetLocalIPs']();
 }
@@ -104,6 +136,10 @@ export function GetLogDir() {
 
 export function GetLogFilePath() {
   return window['go']['main']['App']['GetLogFilePath']();
+}
+
+export function GetMobileAPIToken() {
+  return window['go']['main']['App']['GetMobileAPIToken']();
 }
 
 export function GetMockRules() {
@@ -154,6 +190,10 @@ export function ImportHAR(arg1, arg2) {
   return window['go']['main']['App']['ImportHAR'](arg1, arg2);
 }
 
+export function ImportRules(arg1) {
+  return window['go']['main']['App']['ImportRules'](arg1);
+}
+
 export function InstallAndroidRootCA(arg1) {
   return window['go']['main']['App']['InstallAndroidRootCA'](arg1);
 }
@@ -178,8 +218,60 @@ export function IsHARAssociated() {
   return window['go']['main']['App']['IsHARAssociated']();
 }
 
+export function LaunchAndIntercept(arg1) {
+  return window['go']['main']['App']['LaunchAndIntercept'](arg1);
+}
+
+export function LaunchBrowserInterceptor(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LaunchBrowserInterceptor'](arg1, arg2, arg3);
+}
+
+export function LaunchCustomApp(arg1) {
+  return window['go']['main']['App']['LaunchCustomApp'](arg1);
+}
+
+export function LaunchElectronApp(arg1, arg2) {
+  return window['go']['main']['App']['LaunchElectronApp'](arg1, arg2);
+}
+
+export function LaunchFrida(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LaunchFrida'](arg1, arg2, arg3);
+}
+
+export function LaunchFridaAttach(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LaunchFridaAttach'](arg1, arg2, arg3);
+}
+
+export function LaunchJVMApp(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LaunchJVMApp'](arg1, arg2, arg3);
+}
+
+export function LaunchTerminal(arg1, arg2) {
+  return window['go']['main']['App']['LaunchTerminal'](arg1, arg2);
+}
+
 export function ListADBDevices() {
   return window['go']['main']['App']['ListADBDevices']();
+}
+
+export function ListActiveExternalRuns() {
+  return window['go']['main']['App']['ListActiveExternalRuns']();
+}
+
+export function ListAndroidInstalledApps(arg1) {
+  return window['go']['main']['App']['ListAndroidInstalledApps'](arg1);
+}
+
+export function ListAndroidRunningApps(arg1) {
+  return window['go']['main']['App']['ListAndroidRunningApps'](arg1);
+}
+
+export function ListExternalRuns() {
+  return window['go']['main']['App']['ListExternalRuns']();
+}
+
+export function ListJVMTargets() {
+  return window['go']['main']['App']['ListJVMTargets']();
 }
 
 export function ListSessions() {
@@ -204,6 +296,10 @@ export function RepeatRequest(arg1, arg2, arg3) {
 
 export function ReplayRequest(arg1) {
   return window['go']['main']['App']['ReplayRequest'](arg1);
+}
+
+export function ResolveADBPath() {
+  return window['go']['main']['App']['ResolveADBPath']();
 }
 
 export function ResumeBreakpoint(arg1, arg2, arg3) {
@@ -250,6 +346,10 @@ export function SetHostsRules(arg1) {
   return window['go']['main']['App']['SetHostsRules'](arg1);
 }
 
+export function SetJavaGlobalProxy(arg1) {
+  return window['go']['main']['App']['SetJavaGlobalProxy'](arg1);
+}
+
 export function SetMockRules(arg1) {
   return window['go']['main']['App']['SetMockRules'](arg1);
 }
@@ -294,12 +394,24 @@ export function Start() {
   return window['go']['main']['App']['Start']();
 }
 
+export function StartADBInterception(arg1) {
+  return window['go']['main']['App']['StartADBInterception'](arg1);
+}
+
 export function StartProxy(arg1, arg2, arg3) {
   return window['go']['main']['App']['StartProxy'](arg1, arg2, arg3);
 }
 
 export function Stop() {
   return window['go']['main']['App']['Stop']();
+}
+
+export function StopADBInterception(arg1) {
+  return window['go']['main']['App']['StopADBInterception'](arg1);
+}
+
+export function StopFrida(arg1) {
+  return window['go']['main']['App']['StopFrida'](arg1);
 }
 
 export function StopProxy() {

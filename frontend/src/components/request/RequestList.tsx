@@ -34,7 +34,7 @@ export const RequestList: React.FC<RequestListProps> = ({
   onOpenBreakpoint,
 }) => {
   const { t } = useTranslation();
-  const { requests, removeRequest } = useProxyStore();
+  const { requests, removeRequest, processFilter } = useProxyStore();
   const { getActiveColorPreset } = useAppConfig();
   const [activeTab, setActiveTab] = useState<TrafficTab>('domain');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +46,12 @@ export const RequestList: React.FC<RequestListProps> = ({
   const filteredRequests = useMemo(() => {
     return requests.filter((req) => {
       if (!req) return false;
+
+      // 0. Process filter (Phase 9-C: auto-filter by launched app's process name)
+      if (processFilter) {
+        const pn = String(req.process?.name || '').toLowerCase();
+        if (!pn || !pn.includes(processFilter.toLowerCase())) return false;
+      }
 
       // 1. Basic search query on URL
       if (searchQuery.trim()) {
@@ -119,6 +125,69 @@ export const RequestList: React.FC<RequestListProps> = ({
         if (!match) return false;
       }
 
+      // Advanced filters (Phase 9-A)
+
+      // Protocol filter
+      if (conditions.protocol) {
+        const url = String(req.url || '').toLowerCase();
+        const isWs = req.method === 'WS' || url.startsWith('ws://') || url.startsWith('wss://');
+        const isSse = req.method === 'SSE';
+        const isHttps = url.startsWith('https://') || (req.hostPort as any)?.ssl;
+        const isHttp = url.startsWith('http://') || (!isHttps && !isWs && !isSse);
+        const proto = conditions.protocol.toLowerCase();
+        if (proto === 'http' && !isHttp) return false;
+        if (proto === 'https' && !isHttps) return false;
+        if (proto === 'ws' && !(isWs && !url.startsWith('wss://'))) return false;
+        if (proto === 'wss' && !url.startsWith('wss://')) return false;
+        if (proto === 'sse' && !isSse) return false;
+      }
+
+      // Duration range filter
+      const durationMs = req.durationMs ?? req.duration ?? (req.response as any)?.durationMs;
+      if (conditions.minDurationMs) {
+        const min = parseInt(conditions.minDurationMs, 10);
+        if (!isNaN(min) && (durationMs == null || durationMs < min)) return false;
+      }
+      if (conditions.maxDurationMs) {
+        const max = parseInt(conditions.maxDurationMs, 10);
+        if (!isNaN(max) && (durationMs == null || durationMs > max)) return false;
+      }
+
+      // Size range filter (response body size)
+      const sizeBytes = (req.response as any)?.bodySize ?? (req.response?.bodyString?.length ?? 0);
+      if (conditions.minSizeBytes) {
+        const min = parseInt(conditions.minSizeBytes, 10);
+        if (!isNaN(min) && sizeBytes < min) return false;
+      }
+      if (conditions.maxSizeBytes) {
+        const max = parseInt(conditions.maxSizeBytes, 10);
+        if (!isNaN(max) && sizeBytes > max) return false;
+      }
+
+      // Rule hits filter
+      if (conditions.hasRuleHits) {
+        const hasRules = req.appliedRules && Array.isArray(req.appliedRules) && req.appliedRules.length > 0;
+        if (!hasRules) return false;
+      }
+
+      // Body regex filter — test against both request and response bodies
+      if (conditions.bodyRegex) {
+        let bodyMatch = false;
+        try {
+          const bodyRegex = new RegExp(conditions.bodyRegex, 'i');
+          const reqBody = req.body || req.bodyString || '';
+          const respBody = req.response?.body || req.response?.bodyString || '';
+          if (typeof reqBody === 'string' && bodyRegex.test(reqBody)) bodyMatch = true;
+          if (!bodyMatch && typeof respBody === 'string' && bodyRegex.test(respBody)) bodyMatch = true;
+        } catch (_) {
+          // Invalid regex — fall back to literal includes
+          const reqBody = String(req.body || req.bodyString || '');
+          const respBody = String(req.response?.body || req.response?.bodyString || '');
+          if (reqBody.includes(conditions.bodyRegex) || respBody.includes(conditions.bodyRegex)) bodyMatch = true;
+        }
+        if (!bodyMatch) return false;
+      }
+
       return true;
     });
   }, [requests, searchQuery, conditions]);
@@ -169,40 +238,37 @@ export const RequestList: React.FC<RequestListProps> = ({
     <div
       className="flex-1 flex flex-col overflow-hidden min-h-0 select-none border-r"
       style={{
-        backgroundColor: 'var(--md-sys-color-surface)',
-        borderColor: 'var(--md-sys-color-divider)',
+        backgroundColor: 'var(--color-surface)',
+        borderColor: 'var(--color-border)',
       }}
     >
-      {/* Tab Header (Domain List vs Sequence) */}
+      {/* Tab Header */}
       <div
-        className="flex items-center justify-between px-3 h-[38px] border-b shrink-0"
-        style={{ borderColor: 'var(--md-sys-color-divider)' }}
+        className="flex items-center justify-between px-4 h-10 border-b shrink-0"
+        style={{ borderColor: 'var(--color-border)' }}
       >
-        <div className="flex items-center gap-4 text-xs font-semibold">
+        <div className="flex items-center gap-5">
           <button
             type="button"
             onClick={() => setActiveTab('domain')}
-            className={`py-2 px-1 cursor-pointer transition-colors relative ${
-              activeTab === 'domain' ? 'md3-tab-active' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            className={`tab-item ${activeTab === 'domain' ? 'tab-item-active' : ''}`}
           >
             {t.domainList}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('sequence')}
-            className={`py-2 px-1 cursor-pointer transition-colors relative ${
-              activeTab === 'sequence' ? 'md3-tab-active' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            className={`tab-item ${activeTab === 'sequence' ? 'tab-item-active' : ''}`}
           >
             {t.sequence}
           </button>
         </div>
 
-        <div className="text-[11px] text-gray-400 font-mono">
-          {filteredRequests.length} / {requests.length}
+        <div className="text-[11px] font-mono" style={{ color: 'var(--color-text-subtle)' }}>
+          {filteredRequests.length}/{requests.length}
         </div>
       </div>
+
 
       {/* Multi-selection Action Bar */}
       <SelectionActionBar

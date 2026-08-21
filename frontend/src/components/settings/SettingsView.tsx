@@ -12,6 +12,7 @@ import { useProxyStore } from '../../store/useProxyStore';
 import { ColorfulIcon } from '../common/ColorfulIcon';
 import { toast } from '../../store/useToastStore';
 import { ReportWebhooksPanel } from './ReportWebhooksPanel';
+import { ProxyHealthCenter } from './ProxyHealthCenter';
 import { PageContainer } from '../ui/PageContainer';
 
 export const SettingsView: React.FC = () => {
@@ -117,6 +118,9 @@ export const SettingsView: React.FC = () => {
   return (
     <PageContainer description="Configure Root CA certificate and traffic capture runtime options.">
       <div className="space-y-5">
+        {/* Proxy Health Center */}
+        <ProxyHealthCenter />
+
         <div className="htk-section space-y-5">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">

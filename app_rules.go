@@ -2,11 +2,33 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
+	"httpeek/internal/services"
 	"httpeek/pkg/interceptor"
 )
+
+// atomicWriteFile writes data to dir/filename atomically via a temp file +
+// rename, backing up the previous file to filename.bak.
+func atomicWriteFile(dir, filename string, data []byte) error {
+	finalPath := filepath.Join(dir, filename)
+	backupPath := filepath.Join(dir, filename+".bak")
+	tempPath := filepath.Join(dir, "."+filename+".tmp")
+
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
+		return err
+	}
+	if _, err := os.Stat(finalPath); err == nil {
+		_ = os.Rename(finalPath, backupPath)
+	}
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		_ = os.Rename(backupPath, finalPath)
+		return err
+	}
+	return nil
+}
 
 // GetHostsRules retrieves DNS mapping rules.
 func (a *App) GetHostsRules() []*interceptor.HostRule {
@@ -228,6 +250,40 @@ func (a *App) GetAllRules() map[string]any {
 	}
 }
 
+// ExportRules exports all rules as a JSON string that can be saved to a file
+// and later imported via ImportRules. The format matches SavedRulesConfig.
+func (a *App) ExportRules() (string, error) {
+	if a.rules == nil {
+		return "", fmt.Errorf("rules service not initialized")
+	}
+	cfg := a.rules.Snapshot()
+	cfg.SchemaVersion = 1
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal rules: %w", err)
+	}
+	return string(data), nil
+}
+
+// ImportRules imports rules from a JSON string (previously produced by
+// ExportRules or manually created). Rules are merged into the current
+// interceptors and persisted. The schema version must be <= current.
+func (a *App) ImportRules(jsonData string) error {
+	if a.rules == nil {
+		return fmt.Errorf("rules service not initialized")
+	}
+	var cfg services.SavedRulesConfig
+	if err := json.Unmarshal([]byte(jsonData), &cfg); err != nil {
+		return fmt.Errorf("parse rules JSON: %w", err)
+	}
+	if cfg.SchemaVersion > 1 {
+		return fmt.Errorf("rules schema version %d is newer than supported", cfg.SchemaVersion)
+	}
+	a.rules.Apply(cfg)
+	a.rules.Save()
+	return nil
+}
+
 func (a *App) loadRules() {
 	if a.rules != nil {
 		a.rules.Load()
@@ -298,7 +354,7 @@ func (a *App) saveRules() {
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err == nil {
-		_ = os.WriteFile(filepath.Join(a.dataDir, "rules.json"), data, 0644)
+		_ = atomicWriteFile(a.dataDir, "rules.json", data)
 	}
 }
 

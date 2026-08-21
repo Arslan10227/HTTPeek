@@ -2,15 +2,18 @@ package interceptor
 
 import (
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"httpeek/pkg/logger"
 	"httpeek/pkg/proxy"
 
 	"github.com/google/uuid"
@@ -95,8 +98,15 @@ func (m *RequestMapInterceptor) SetRules(rules []*MapRule) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	EnsureUniqueIDs(rules, func(r *MapRule) string { return r.ID }, func(r *MapRule, id string) { r.ID = id })
 	for _, r := range rules {
-		r.regex = compilePattern(r.URLPattern)
+		regex, err := compilePatternErr(r.URLPattern)
+		if err != nil {
+			logger.Warn("Interceptor", fmt.Sprintf("mock rule %q has invalid regex %q: %v", r.Name, r.URLPattern, err))
+			r.regex = nil
+		} else {
+			r.regex = regex
+		}
 	}
 	m.rules = rules
 }
@@ -176,6 +186,7 @@ func (m *RequestMapInterceptor) buildStaticMock(req *proxy.HttpRequest, rule *Ma
 	headers.Set("X-Mocked-By", "HTTPeek")
 
 	bodyBytes := []byte(rule.Body)
+	headers.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 	now := time.Now()
 
 	return &proxy.HttpResponse{
@@ -208,6 +219,7 @@ func (m *RequestMapInterceptor) buildFileResponse(req *proxy.HttpRequest, data [
 		headers.Set(k, v)
 	}
 	headers.Set("Content-Type", ct)
+	headers.Set("Content-Length", strconv.Itoa(len(data)))
 	headers.Set("X-Mapped-By", "HTTPeek")
 
 	now := time.Now()

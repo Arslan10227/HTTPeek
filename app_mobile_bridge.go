@@ -110,19 +110,26 @@ func (b *appMobileBridge) RepeatRequest(requestID string) (any, error) {
 	if b.app.sessionRepo == nil {
 		return nil, fmt.Errorf("session repo not initialized")
 	}
-	reqs, err := b.app.sessionRepo.GetSessionRequests("")
-	if err == nil {
-		for _, r := range reqs {
-			if r.ID == requestID {
-				return b.app.ReplayRequest(r)
-			}
-		}
+	r, err := b.app.sessionRepo.GetRequestByID(requestID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup request %s failed: %w", requestID, err)
 	}
-	return nil, fmt.Errorf("request %s not found", requestID)
+	if r == nil {
+		return nil, fmt.Errorf("request %s not found", requestID)
+	}
+	return b.app.ReplayRequest(r)
 }
 
 func (b *appMobileBridge) GetAllRules() (map[string]any, error) {
 	return b.app.GetAllRules(), nil
+}
+
+func (b *appMobileBridge) ExportRules() (string, error) {
+	return b.app.ExportRules()
+}
+
+func (b *appMobileBridge) ImportRules(jsonData string) error {
+	return b.app.ImportRules(jsonData)
 }
 
 func (b *appMobileBridge) AbortBreakpoint(requestID string, isResponse bool) error {
@@ -131,6 +138,38 @@ func (b *appMobileBridge) AbortBreakpoint(requestID string, isResponse bool) err
 
 func (b *appMobileBridge) SendCustomRequest(reqJSON string) (any, error) {
 	return b.app.SendCustomRequest(reqJSON)
+}
+
+func (b *appMobileBridge) DetectLaunchableApps() (any, error) {
+	return b.app.DetectLaunchableApps(), nil
+}
+
+func (b *appMobileBridge) LaunchAndIntercept(appID string) (any, error) {
+	return b.app.LaunchAndIntercept(appID), nil
+}
+
+func (b *appMobileBridge) LaunchCustomApp(executablePath string) (any, error) {
+	return b.app.LaunchCustomApp(executablePath), nil
+}
+
+func (b *appMobileBridge) SetJavaGlobalProxy(enable bool) error {
+	return b.app.SetJavaGlobalProxy(enable)
+}
+
+func (b *appMobileBridge) GetJavaGlobalProxyStatus() (any, error) {
+	return b.app.GetJavaGlobalProxyStatus(), nil
+}
+
+func (b *appMobileBridge) ResolveADBPath() (string, error) {
+	p := b.app.ResolveADBPath()
+	if p == "" {
+		return "", fmt.Errorf("adb not found")
+	}
+	return p, nil
+}
+
+func (b *appMobileBridge) DownloadADBIfMissing() (string, error) {
+	return b.app.DownloadADBIfMissing()
 }
 
 func (a *App) attachMobileBridge() {

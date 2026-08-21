@@ -739,6 +739,153 @@ func (m *MobileAPIManager) handleREST(clientConn net.Conn, req *http.Request) {
 		}
 		sendJSONResponse(clientConn, http.StatusOK, rules)
 
+	case path == "/rules/export" && req.Method == http.MethodGet:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		jsonStr, err := bridge.ExportRules()
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"rules": jsonStr})
+
+	case path == "/rules/import" && req.Method == http.MethodPost:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		bodyBytes, _ := readJSONBody(req)
+		var payload struct {
+			Rules string `json:"rules"`
+		}
+		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if err := bridge.ImportRules(payload.Rules); err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"ok": "true"})
+
+	case path == "/apps/detect" && req.Method == http.MethodGet:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		apps, err := bridge.DetectLaunchableApps()
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, apps)
+
+	case path == "/apps/launch" && req.Method == http.MethodPost:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		bodyBytes, _ := readJSONBody(req)
+		var payload struct {
+			AppID string `json:"appId"`
+		}
+		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		result, err := bridge.LaunchAndIntercept(payload.AppID)
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, result)
+
+	case path == "/apps/launch-custom" && req.Method == http.MethodPost:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		bodyBytes, _ := readJSONBody(req)
+		var payload struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		result, err := bridge.LaunchCustomApp(payload.Path)
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, result)
+
+	case path == "/java/proxy" && req.Method == http.MethodPost:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		bodyBytes, _ := readJSONBody(req)
+		var payload struct {
+			Enable bool `json:"enable"`
+		}
+		if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+			sendJSONResponse(clientConn, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if err := bridge.SetJavaGlobalProxy(payload.Enable); err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"ok": "true"})
+
+	case path == "/java/proxy/status" && req.Method == http.MethodGet:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		status, err := bridge.GetJavaGlobalProxyStatus()
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, status)
+
+	case path == "/adb/resolve" && req.Method == http.MethodGet:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		p, err := bridge.ResolveADBPath()
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusOK, map[string]any{"path": "", "found": false})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]any{"path": p, "found": p != ""})
+
+	case path == "/adb/download" && req.Method == http.MethodPost:
+		bridge := m.server.MobileAPIBridge()
+		if bridge == nil {
+			sendJSONResponse(clientConn, http.StatusServiceUnavailable, map[string]string{"error": "bridge unavailable"})
+			return
+		}
+		p, err := bridge.DownloadADBIfMissing()
+		if err != nil {
+			sendJSONResponse(clientConn, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		sendJSONResponse(clientConn, http.StatusOK, map[string]string{"path": p})
+
 	case strings.HasPrefix(path, "/rules/") && req.Method == http.MethodGet:
 		bridge := m.server.MobileAPIBridge()
 		if bridge == nil {
@@ -1302,16 +1449,16 @@ func sendJSONResponse(conn net.Conn, status int, data any) {
 	resp := fmt.Sprintf(
 		"HTTP/1.1 %d %s\r\n"+
 			"Content-Type: application/json\r\n"+
-			"Access-Control-Allow-Origin: %s\r\n"+
+			"Access-Control-Allow-Origin: *\r\n"+
 			"Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n"+
 			"Access-Control-Allow-Headers: Content-Type, X-HTTPeek-Token\r\n"+
 			"Content-Length: %d\r\n"+
-			"Connection: close\r\n\r\n",
-		status, http.StatusText(status), "*", len(body),
+			"Connection: keep-alive\r\n\r\n",
+		status, http.StatusText(status), len(body),
 	)
 	_, _ = conn.Write([]byte(resp))
 	_, _ = conn.Write(body)
-	_ = conn.Close()
+	// Removed: _ = conn.Close() - keep-alive allowed for mobile API clients
 }
 
 func sendJSONResponseWithOrigin(conn net.Conn, req *http.Request, status int, data any) {

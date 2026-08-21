@@ -44,20 +44,21 @@ func DefaultServerConfig() ServerConfig {
 
 // Server is the core HTTP/HTTPS/WebSocket/SOCKS5 intercepting proxy server.
 type Server struct {
-	cfg          ServerConfig
-	listener     net.Listener
-	certManager  *cert.CertificateManager
-	interceptor  Interceptor
-	handler      *Handler
-	discovery    *DiscoveryBroadcaster
-	listeners    []EventListener
-	listenersMu  sync.RWMutex
-	mobileBridge MobileAPIBridge
-	running      atomic.Bool
-	activeConns  atomic.Int64
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
+	cfg              ServerConfig
+	listener         net.Listener
+	certManager      *cert.CertificateManager
+	interceptor      Interceptor
+	handler          *Handler
+	discovery        *DiscoveryBroadcaster
+	listeners        []EventListener
+	listenersMu      sync.RWMutex
+	mobileBridge     MobileAPIBridge
+	running          atomic.Bool
+	activeConns      atomic.Int64
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	restartMu        sync.Mutex // Serialize config changes and server restarts
 }
 
 // NewServer initializes a new Server instance.
@@ -139,6 +140,8 @@ func (s *Server) Stop() error {
 
 // Restart stops and restarts the server with current or updated config.
 func (s *Server) Restart(newCfg *ServerConfig) error {
+	s.restartMu.Lock()
+	defer s.restartMu.Unlock()
 	_ = s.Stop()
 	if newCfg != nil {
 		s.cfg = *newCfg

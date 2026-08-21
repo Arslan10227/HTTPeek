@@ -8,6 +8,7 @@ import { api } from '../../store/apiAdapter';
 import { HttpRequest, RewriteRule } from '../../types';
 import { StatusCodePicker } from '../common/StatusCodePicker';
 import { HeaderKeyCombobox, HeaderValueCombobox } from '../common/HeaderCombobox';
+import { RewriteRuleBuilder } from './rewrite/RewriteRuleBuilder';
 
 interface RequestRewriteDialogProps {
   onClose: () => void;
@@ -234,81 +235,8 @@ export const RequestRewriteDialog: React.FC<RequestRewriteDialogProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="font-semibold text-gray-600 dark:text-gray-300">Rule Name:</label>
-                <input
-                  type="text"
-                  value={editingRule.name || ''}
-                  onChange={(e) => setEditingRule({ ...editingRule, name: e.target.value })}
-                  placeholder="e.g. Inject Bearer Auth"
-                  className="px-3 py-1.5 rounded-lg border bg-transparent font-mono text-xs focus:outline-none"
-                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-semibold text-gray-600 dark:text-gray-300">Action Type:</label>
-                <select
-                  value={editingRule.action}
-                  onChange={(e) => setEditingRule({ ...editingRule, action: e.target.value as any })}
-                  className="px-3 py-1.5 rounded-lg border font-medium text-xs bg-transparent focus:outline-none cursor-pointer"
-                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
-                >
-                  <option value="replace">Replace (Headers, Body, Status)</option>
-                  <option value="redirect">Redirect (URL Forward)</option>
-                  <option value="update">Update (Regex Search &amp; Replace)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="font-semibold text-gray-600 dark:text-gray-300">URL Match Pattern:</label>
-              <input
-                type="text"
-                value={editingRule.urlPattern}
-                onChange={(e) => setEditingRule({ ...editingRule, urlPattern: e.target.value })}
-                placeholder="*://api.example.com/*"
-                className="px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
-                style={{ borderColor: 'var(--md-sys-color-outline)' }}
-              />
-            </div>
-
-            {editingRule.action === 'redirect' ? (
-              <div className="flex flex-col gap-1">
-                <label className="font-semibold text-gray-600 dark:text-gray-300">Redirect Target URL:</label>
-                <input
-                  type="text"
-                  value={editingRule.redirectUrl || ''}
-                  onChange={(e) => setEditingRule({ ...editingRule, redirectUrl: e.target.value })}
-                  placeholder="https://test.example.com/$1"
-                  className="px-3 py-1.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none"
-                  style={{ borderColor: 'var(--md-sys-color-outline)' }}
-                />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex flex-col gap-1">
-                  <label className="font-semibold text-gray-600 dark:text-gray-300">Override Status Code:</label>
-                  <StatusCodePicker
-                    value={editingRule.statusCode || 200}
-                    onChange={(code) => setEditingRule({ ...editingRule, statusCode: code })}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="font-semibold text-gray-600 dark:text-gray-300">Replace Body (JSON / Text):</label>
-                  <textarea
-                    value={editingRule.replaceBody || ''}
-                    onChange={(e) => setEditingRule({ ...editingRule, replaceBody: e.target.value })}
-                    rows={4}
-                    placeholder='{"code": 0, "msg": "success"}'
-                    className="w-full p-2.5 rounded-lg border font-mono text-xs bg-transparent focus:outline-none resize-none"
-                    style={{ borderColor: 'var(--md-sys-color-outline)' }}
-                  />
-                </div>
-              </div>
-            )}
+            {/* Full visual rule builder — tabs: Match, Headers, Body, Status, Advanced */}
+            <RewriteRuleBuilder rule={editingRule} onChange={setEditingRule} />
 
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
               <button

@@ -95,11 +95,10 @@ func (a *App) ImportHAR(harJSON string, sessionName string) (*storage.Session, e
 		return nil, err
 	}
 
-	for _, req := range requests {
-		_ = a.sessionRepo.SaveRequest(sess.ID, req)
-		if req.Response != nil {
-			_ = a.sessionRepo.SaveResponse(req.Response)
-		}
+	if err := a.sessionRepo.SaveRequestsBatch(sess.ID, requests); err != nil {
+		// Roll back the empty session so a failed import leaves no ghost.
+		_ = a.sessionRepo.DeleteSession(sess.ID)
+		return nil, fmt.Errorf("import session failed: %w", err)
 	}
 
 	return sess, nil
@@ -119,6 +118,15 @@ func (a *App) ToggleFavoriteRequest(requestID string, isFavorite bool) error {
 		return fmt.Errorf("storage not initialized")
 	}
 	return a.sessionRepo.ToggleFavorite(requestID, isFavorite)
+}
+
+// DeleteFavorite permanently removes a request from both the capture session and
+// the durable favorites table so it cannot reappear after a software restart.
+func (a *App) DeleteFavorite(requestID string) error {
+	if a.sessionRepo == nil {
+		return fmt.Errorf("storage not initialized")
+	}
+	return a.sessionRepo.DeleteFavorite(requestID)
 }
 
 // RepeatRequest executes a request multiple times in sequence with specified delay interval.

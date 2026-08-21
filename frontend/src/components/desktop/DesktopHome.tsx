@@ -6,7 +6,10 @@ import { RequestList } from '../request/RequestList';
 import { FavoritesPage } from '../left_menus/FavoritesPage';
 import { HistoryPage } from '../left_menus/HistoryPage';
 import { Toolbox } from '../toolbox/Toolbox';
+import { InterceptorsPage } from '../interceptors/InterceptorsPage';
+import { MockRulesPage } from '../rules/MockRulesPage';
 import { NetworkTabController } from '../panel/NetworkTabController';
+
 import { RequestEditor } from '../editor/RequestEditor';
 import { FilterDialog } from '../rules/FilterDialog';
 import { HostsDialog } from '../rules/HostsDialog';
@@ -27,6 +30,7 @@ import { PCCertDialog } from '../ssl/PCCertDialog';
 import { MobileCertDialog } from '../ssl/MobileCertDialog';
 import { EnvironmentModal } from '../environment/EnvironmentModal';
 import { RequestComposerModal } from '../composer/RequestComposerModal';
+import { PreferenceDialog } from './PreferenceDialog';
 
 import { HttpRequest, HttpResponse } from '../../types';
 import { useProxyStore } from '../../store/useProxyStore';
@@ -34,10 +38,13 @@ import { useAppConfig } from '../../theme/useAppConfig';
 import { toast } from '../../store/useToastStore';
 
 export const DesktopHome: React.FC = () => {
-  const { requests, selectedRequestId, setSelectedRequestId, addRequest } = useProxyStore();
+  const { requests, selectedRequestId, setSelectedRequestId, addRequest, activeTab, setActiveTab } = useProxyStore();
   const { panelRatio, setPanelRatio } = useAppConfig();
 
-  const [activeNavTab, setActiveNavTab] = useState<LeftNavTab>('requests');
+  const activeNavTab: LeftNavTab = (activeTab === 'interceptors' || activeTab === 'requests' || activeTab === 'rules' || activeTab === 'favorites' || activeTab === 'history' || activeTab === 'toolbox') ? activeTab : 'interceptors';
+
+  const setActiveNavTab = (tab: LeftNavTab) => setActiveTab(tab);
+
 
   // Selected Request for Inspector
   const selectedRequest =
@@ -60,6 +67,7 @@ export const DesktopHome: React.FC = () => {
   const [mobileCertPlatform, setMobileCertPlatform] = useState<'ios' | 'android' | null>(null);
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
 
   // Quick Rule Modal
   const [quickRuleState, setQuickRuleState] = useState<{
@@ -186,9 +194,27 @@ export const DesktopHome: React.FC = () => {
             }}
           />
         );
+      case 'interceptors':
+        return <InterceptorsPage />;
+      case 'rules':
+        return (
+          <MockRulesPage
+            onOpenRewrite={() => setIsRewriteOpen(true)}
+            onOpenMap={() => setIsMapOpen(true)}
+            onOpenBlock={() => setIsBlockOpen(true)}
+            onOpenBreakpoint={() => setIsBreakpointOpen(true)}
+            onOpenScript={() => setIsScriptOpen(true)}
+            onOpenHosts={() => setIsHostsOpen(true)}
+            onOpenCrypto={() => setIsCryptoOpen(true)}
+            onOpenWeakNetwork={() => setIsWeakNetworkOpen(true)}
+            onOpenExternalProxy={() => setIsExternalProxyOpen(true)}
+          />
+        );
       default:
         return null;
     }
+
+
   };
 
   return (
@@ -199,6 +225,7 @@ export const DesktopHome: React.FC = () => {
         onOpenPcCert={() => setIsPcCertOpen(true)}
         onOpenMobileCert={(p) => setMobileCertPlatform(p)}
         onManageEnvironments={() => setIsEnvModalOpen(true)}
+        onOpenPreferences={() => setIsPreferencesOpen(true)}
         onOpenFilter={() => setIsFilterOpen(true)}
         onOpenHosts={() => setIsHostsOpen(true)}
         onOpenBlock={() => setIsBlockOpen(true)}
@@ -292,6 +319,7 @@ export const DesktopHome: React.FC = () => {
           onClose={() => setMobileCertPlatform(null)}
         />
       )}
+      {isPreferencesOpen && <PreferenceDialog onClose={() => setIsPreferencesOpen(false)} />}
       {isEnvModalOpen && <EnvironmentModal isOpen onClose={() => setIsEnvModalOpen(false)} />}
       {isComposerOpen && (
         <RequestComposerModal
