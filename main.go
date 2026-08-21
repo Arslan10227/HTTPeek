@@ -24,40 +24,47 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-const hostedBaseURL = "https://httpeek.web.app"
-
 var (
-	hostedClient = &http.Client{
+	hostedCandidateURLs = []string{
+		"https://httpeek.vercel.app",
+		"https://httpeek.web.app",
+	}
+	activeHostedURL = ""
+	hostedClient    = &http.Client{
 		Timeout: 3 * time.Second,
 	}
 	isHostedAvailable = false
 	hostedCheckOnce   sync.Once
 )
 
-func checkHostedAvailability() bool {
-	req, err := http.NewRequest("GET", hostedBaseURL+"/index.html", nil)
-	if err != nil {
-		return false
+func checkHostedAvailability() (string, bool) {
+	for _, baseURL := range hostedCandidateURLs {
+		req, err := http.NewRequest("GET", baseURL+"/index.html", nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Cache-Control", "no-cache")
+		resp, err := hostedClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return baseURL, true
+		}
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 	}
-	// Avoid caching issues during health check
-	req.Header.Set("Cache-Control", "no-cache")
-	resp, err := hostedClient.Do(req)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		resp.Body.Close()
-		return true
-	}
-	if resp != nil && resp.Body != nil {
-		resp.Body.Close()
-	}
-	return false
+	return "", false
 }
 
 func dynamicAssetMiddleware(next http.Handler) http.Handler {
 	hostedCheckOnce.Do(func() {
-		isHostedAvailable = checkHostedAvailability()
-		if isHostedAvailable {
-			logger.Info("AssetServer", fmt.Sprintf("Using Hosted WebUI from %s (Online Mode)", hostedBaseURL))
+		url, ok := checkHostedAvailability()
+		if ok {
+			activeHostedURL = url
+			isHostedAvailable = true
+			logger.Info("AssetServer", fmt.Sprintf("Using Hosted WebUI from %s (Online Mode)", activeHostedURL))
 		} else {
+			isHostedAvailable = false
 			logger.Info("AssetServer", "Hosted WebUI unavailable or offline. Using Embedded Local Assets (Offline Fallback)")
 		}
 	})
@@ -71,8 +78,8 @@ func dynamicAssetMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if isHostedAvailable {
-			targetURL := hostedBaseURL + path
+		if isHostedAvailable && activeHostedURL != "" {
+			targetURL := activeHostedURL + path
 			req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
 			if err == nil {
 				for k, v := range r.Header {
