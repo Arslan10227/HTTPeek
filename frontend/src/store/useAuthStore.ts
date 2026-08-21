@@ -38,9 +38,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      // 1. If running directly on the hosted web app (Vercel or Firebase), direct popup works natively
+      // 1. If running directly on the hosted Vercel web app, direct popup works natively
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-      if (currentHost.includes('vercel.app') || currentHost.includes('web.app') || currentHost.includes('firebaseapp.com')) {
+      if (currentHost.includes('vercel.app')) {
         const user = await loginWithGoogle();
         const profile: AuthUserProfile = {
           uid: user.uid,
