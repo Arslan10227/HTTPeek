@@ -136,7 +136,7 @@ function matchSingleToken(r: HttpRequest, token: string): boolean {
 
   // 7. General text fallback (matches URL, path, host, process, or body)
   const q = lower;
-  return (
+  return Boolean(
     r.url.toLowerCase().includes(q) ||
     (r.path || '').toLowerCase().includes(q) ||
     (r.hostPort?.host || '').toLowerCase().includes(q) ||

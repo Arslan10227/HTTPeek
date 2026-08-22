@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Rocket,
   Globe,
   Terminal,
-  Code,
   Coffee,
   Smartphone,
   Shield,
   Box,
   FolderOpen,
   Play,
-  Square,
   RefreshCw,
   Search,
   CheckCircle2,
@@ -27,6 +25,8 @@ import {
   ArrowRight,
   Check,
   AlertTriangle,
+  Flame,
+  Chrome,
 } from 'lucide-react';
 import { api } from '../../store/apiAdapter';
 import { useProxyStore } from '../../store/useProxyStore';
@@ -107,11 +107,6 @@ export const InterceptorsPage: React.FC = () => {
   const [fridaScript, setFridaScript] = useState('');
   const [spawningFrida, setSpawningFrida] = useState(false);
 
-  // ADB Devices
-  const [adbDevices, setAdbDevices] = useState<ADBDevice[]>([]);
-  const [activeAdbSerial, setActiveAdbSerial] = useState<string | null>(null);
-  const [loadingAdb, setLoadingAdb] = useState(false);
-
   // Custom App Modal
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [customPath, setCustomPath] = useState('');
@@ -141,8 +136,7 @@ export const InterceptorsPage: React.FC = () => {
     }
   }, []);
 
-  // Refresh Active Runs — only syncs runs marked active in the DB; never clobbers
-  // in-memory runs that were just added by the current session.
+  // Refresh Active Runs
   const refreshActiveRuns = useCallback(async () => {
     try {
       const runs = await api.listExternalRuns();
@@ -155,7 +149,6 @@ export const InterceptorsPage: React.FC = () => {
           details: r.details || r.status || `Port ${proxyPort}`,
         }));
         setActiveRuns((prev) => {
-          // Only add DB runs that are not already tracked locally
           const existingIds = new Set(prev.map((r) => r.id));
           const newRuns = dbRuns.filter((r) => !existingIds.has(r.id));
           return newRuns.length > 0 ? [...prev, ...newRuns] : prev;
@@ -165,7 +158,6 @@ export const InterceptorsPage: React.FC = () => {
       // ignore polling errors
     }
   }, [proxyPort]);
-
 
   useEffect(() => {
     refreshApps();
@@ -179,25 +171,6 @@ export const InterceptorsPage: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [refreshApps, refreshJavaStatus, refreshActiveRuns]);
-
-
-  // Master "Intercept Everything" toggle
-  const handleToggleSystemProxy = async () => {
-    setTogglingSystemProxy(true);
-    try {
-      if (isEverythingActive) {
-        await api.stopProxy();
-        toast.info('System Proxy Disabled', 'OS-wide traffic interception stopped');
-      } else {
-        await api.startProxy(proxyPort, true, true);
-        toast.success('System Proxy Active', `Intercepting all traffic on 127.0.0.1:${proxyPort}`);
-      }
-    } catch (err: any) {
-      toast.error('Failed to toggle system proxy', err?.message || String(err));
-    } finally {
-      setTogglingSystemProxy(false);
-    }
-  };
 
   // Launch isolated browser
   const handleLaunchBrowser = async (app: LaunchableApp) => {
@@ -230,7 +203,6 @@ export const InterceptorsPage: React.FC = () => {
       toast.error(`Error launching ${app.name}`, err?.message || String(err));
     }
   };
-
 
   // Launch interactive terminal
   const handleLaunchTerminal = async (shellType: string) => {
@@ -285,7 +257,7 @@ export const InterceptorsPage: React.FC = () => {
     }
   };
 
-  // Open JVM attach modal and list targets
+  // Open JVM attach modal
   const handleOpenJvmModal = async () => {
     setIsJvmModalOpen(true);
     setLoadingJvm(true);
@@ -333,84 +305,6 @@ export const InterceptorsPage: React.FC = () => {
     }
   };
 
-  // ADB Android Interception
-  const handleStartADB = async (serial: string) => {
-    setLoadingAdb(true);
-    try {
-      await api.startADBInterception(serial);
-      setActiveAdbSerial(serial);
-      toast.success('Android ADB Interception Active', `Device ${serial}: Reverse proxy configured`);
-      setActiveRuns((prev) => [
-        ...prev,
-        {
-          id: `adb-${serial}`,
-          name: `Android (${serial})`,
-          pid: 0,
-          type: 'android',
-          details: 'Reverse Port Forward :9099',
-        },
-      ]);
-      addActiveInterceptor({
-        id: `adb-${serial}`,
-        type: 'adb',
-        name: `ADB: ${serial}`,
-        deviceSerial: serial,
-      });
-    } catch (err: any) {
-      toast.error('ADB Interception Failed', err?.message || String(err));
-    } finally {
-      setLoadingAdb(false);
-    }
-  };
-
-  const handleStopADB = async (serial: string) => {
-    try {
-      await api.stopADBInterception(serial);
-      setActiveAdbSerial(null);
-      toast.info('ADB Interception Stopped', `Device ${serial} proxy cleared`);
-      setActiveRuns((prev) => prev.filter((r) => r.id !== `adb-${serial}`));
-      removeActiveInterceptor(`adb-${serial}`);
-    } catch (err: any) {
-      toast.error('Failed to stop ADB', err?.message || String(err));
-    }
-  };
-
-  // Frida Spawn
-  const handleSpawnFrida = async () => {
-    if (!fridaApp.trim()) {
-      toast.warning('Frida App Required', 'Please enter package name or executable');
-      return;
-    }
-
-    setSpawningFrida(true);
-    try {
-      const runId = await api.launchFrida(fridaApp.trim(), fridaScript, fridaSerial);
-      toast.success('Frida Injected', `App: ${fridaApp} (SSL Pinning Bypass Active)`);
-      setActiveRuns((prev) => [
-        ...prev,
-        {
-          id: runId,
-          name: `Frida: ${fridaApp}`,
-          pid: 0,
-          type: 'frida',
-          details: 'SSL Bypass Active',
-        },
-      ]);
-      addActiveInterceptor({
-        id: runId,
-        type: 'frida',
-        name: `Frida: ${fridaApp}`,
-        runId: runId,
-        deviceSerial: fridaSerial,
-      });
-      setIsFridaModalOpen(false);
-    } catch (err: any) {
-      toast.error('Frida Spawn Failed', err?.message || String(err));
-    } finally {
-      setSpawningFrida(false);
-    }
-  };
-
   // Custom App Launch
   const handleLaunchCustom = async () => {
     if (!customPath.trim()) return;
@@ -443,43 +337,54 @@ export const InterceptorsPage: React.FC = () => {
   };
 
   // Filter apps by category and search
-  const filteredApps = apps.filter((app) => {
-    const matchesSearch =
-      app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || app.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredApps = useMemo(() => {
+    return apps.filter((app) => {
+      const matchesSearch =
+        app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || app.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [apps, searchQuery, selectedCategory]);
+
+  // Categories list with counts
+  const categories = useMemo(() => {
+    const browserCount = apps.filter((a) => a.category === 'browser').length;
+    return [
+      { id: 'all', label: 'All Targets', icon: <Layers className="w-3.5 h-3.5" />, count: apps.length + 5 },
+      { id: 'browser', label: 'Browsers', icon: <Globe className="w-3.5 h-3.5" />, count: browserCount },
+      { id: 'terminal', label: 'Terminals & CLI', icon: <Terminal className="w-3.5 h-3.5" />, count: 2 },
+      { id: 'java', label: 'Java / JVM', icon: <Coffee className="w-3.5 h-3.5" />, count: 2 },
+      { id: 'mobile', label: 'Mobile & ADB', icon: <Smartphone className="w-3.5 h-3.5" />, count: 2 },
+      { id: 'desktop', label: 'Custom App', icon: <Box className="w-3.5 h-3.5" />, count: 1 },
+    ];
+  }, [apps]);
 
   return (
     <div
-      className="flex-1 h-full overflow-y-auto p-5 flex flex-col gap-4 select-none font-sans"
+      className="flex-1 h-full overflow-y-auto p-6 flex flex-col gap-6 select-none font-sans"
       style={{ backgroundColor: 'var(--color-bg)' }}
     >
-      {/* 1. ACTIVE PER-APP RUNS HUB */}
+      {/* ── 1. ACTIVE PER-APP RUNS HUB ────────────────────────────────────────── */}
       {activeRuns.length > 0 && (
-        <div
-          className="flex flex-col gap-2.5 p-4 rounded-2xl border transition-all shadow-xs"
-          style={{
-            backgroundColor: 'var(--color-surface)',
-            borderColor: `${activeColor.hex}44`,
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text)' }}>
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/20 via-slate-900/40 to-slate-900/60 p-4 shadow-xl backdrop-blur-xl transition-all">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
                 Active Interceptors ({activeRuns.length})
               </span>
             </div>
             <button
               type="button"
               onClick={() => setActiveRuns([])}
-              className="text-[11px] font-semibold hover:text-red-400 cursor-pointer transition-colors"
-              style={{ color: 'var(--color-text-subtle)' }}
+              className="text-[11px] font-medium text-slate-400 hover:text-rose-400 cursor-pointer transition-colors"
             >
-              Clear All
+              Dismiss All
             </button>
           </div>
 
@@ -487,14 +392,10 @@ export const InterceptorsPage: React.FC = () => {
             {activeRuns.map((run) => (
               <div
                 key={run.id}
-                className="flex items-center justify-between p-3 rounded-xl border shadow-xs transition-all"
-                style={{
-                  borderColor: 'var(--color-border)',
-                  backgroundColor: 'var(--color-surface-raised)',
-                }}
+                className="flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 shadow-sm transition-all"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+                  <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0 border border-emerald-500/20 shadow-xs">
                     {run.type === 'browser' ? (
                       <Globe className="w-4 h-4" />
                     ) : run.type === 'terminal' ? (
@@ -511,13 +412,12 @@ export const InterceptorsPage: React.FC = () => {
                   </div>
                   <div className="truncate">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
                       <span className="font-bold text-xs truncate" style={{ color: 'var(--color-text)' }}>
                         {run.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
-                      {run.pid > 0 && <span className="font-mono">PID: {run.pid}</span>}
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 font-mono">
+                      {run.pid > 0 && <span>PID: {run.pid}</span>}
                       <span>{run.details}</span>
                     </div>
                   </div>
@@ -530,28 +430,23 @@ export const InterceptorsPage: React.FC = () => {
                       setProcessFilter(run.name);
                       setActiveTab('requests');
                     }}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 cursor-pointer transition-colors"
-                    title="Filter Traffic to this app"
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 border border-cyan-500/30 cursor-pointer transition-colors"
                   >
                     View Traffic
                   </button>
                   <button
                     type="button"
                     onClick={async () => {
-                      if (run.type === 'android') {
-                        await handleStopADB(run.id.replace('adb-', ''));
-                      } else if (run.type === 'frida') {
+                      if (run.type === 'frida') {
                         try {
                           await api.stopFrida(run.id);
                         } catch { /* non-fatal */ }
-                        removeActiveInterceptor(run.id);
-                      } else {
-                        removeActiveInterceptor(run.id);
                       }
+                      removeActiveInterceptor(run.id);
                       setActiveRuns((prev) => prev.filter((r) => r.id !== run.id));
                     }}
-                    className="p-1 rounded-lg text-neutral-400 hover:text-red-400 cursor-pointer transition-colors"
-                    title="Stop / Remove"
+                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 cursor-pointer transition-colors"
+                    title="Stop Interceptor"
                   >
                     <XCircle className="w-4 h-4" />
                   </button>
@@ -562,200 +457,221 @@ export const InterceptorsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 2. CATEGORY SELECTOR & SEARCH BAR */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1">
-          {[
-            { id: 'all', label: 'All Interceptors', icon: <Layers className="w-3.5 h-3.5" /> },
-            { id: 'browser', label: 'Browsers', icon: <Globe className="w-3.5 h-3.5" /> },
-            { id: 'terminal', label: 'Terminals & CLI', icon: <Terminal className="w-3.5 h-3.5" /> },
-            { id: 'java', label: 'Java / JVM', icon: <Coffee className="w-3.5 h-3.5" /> },
-            { id: 'mobile', label: 'Mobile & ADB', icon: <Smartphone className="w-3.5 h-3.5" /> },
-            { id: 'desktop', label: 'Custom Binary', icon: <Box className="w-3.5 h-3.5" /> },
-          ].map((tab) => {
+      {/* ── 2. CATEGORY SELECTOR & SEARCH BAR ─────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Category Pills */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1">
+          {categories.map((tab) => {
             const isActive = selectedCategory === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setSelectedCategory(tab.id)}
-                className={`chip ${isActive ? 'chip-active' : ''}`}
-                style={
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-200 border ${
                   isActive
-                    ? {
-                        background: `${activeColor.hex}18`,
-                        color: activeColor.hex,
-                        borderColor: `${activeColor.hex}40`,
-                      }
-                    : {}
-                }
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                    : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 border-white/10'
+                }`}
               >
-                {tab.icon}
-                {tab.label}
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  isActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-slate-400'
+                }`}>
+                  {tab.count}
+                </span>
               </button>
             );
           })}
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+        {/* Search Box */}
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search interceptors..."
+            placeholder="Search launch targets..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-base pl-9 text-xs"
+            className="w-full pl-10 pr-4 py-2 rounded-xl text-xs font-sans bg-white/5 hover:bg-white/8 focus:bg-white/10 border border-white/10 focus:border-emerald-500/50 text-slate-200 placeholder-slate-500 focus:outline-none transition-all shadow-inner"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 3. NORMALIZED 3-COLUMN INTERCEPTORS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {/* ── 3. REFINED 3-COLUMN INTERCEPTORS GRID ─────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {/* === BROWSERS CATEGORY === */}
         {(selectedCategory === 'all' || selectedCategory === 'browser') && (
           <>
             {apps
               .filter((a) => a.category === 'browser')
-              .map((app) => (
-                <div
-                  key={app.id}
-                  className="card group flex flex-col justify-between p-5 card-hover-lift"
-                >
-                  <div>
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-2xl flex items-center justify-center text-blue-400 bg-blue-500/10 shadow-xs">
-                          <Globe className="w-5 h-5" />
+              .map((app) => {
+                const isChrome = app.name.toLowerCase().includes('chrome');
+                const isEdge = app.name.toLowerCase().includes('edge');
+                const isFirefox = app.name.toLowerCase().includes('firefox');
+
+                return (
+                  <div
+                    key={app.id}
+                    className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-emerald-500/30 hover:shadow-2xl hover:shadow-emerald-500/5 transition-all duration-300 backdrop-blur-xl"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-3 rounded-2xl flex items-center justify-center shadow-lg border ${
+                            isChrome
+                              ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                              : isEdge
+                              ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                              : isFirefox
+                              ? 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+                              : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                          }`}>
+                            {isFirefox ? <Flame className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm text-slate-100 group-hover:text-emerald-400 transition-colors">
+                              {app.name}
+                            </h3>
+                            <span className="text-[11px] text-slate-400">
+                              Isolated Profile & Proxy
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
-                            {app.name}
-                          </h3>
-                          <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                            Isolated Profile
-                          </span>
-                        </div>
+
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          Detected
+                        </span>
                       </div>
-                      <span className="badge-status badge-2xx">
-                        Detected
-                      </span>
+
+                      <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
+                        {app.description || 'Launches an isolated browser instance with proxy and certificates pre-configured.'}
+                      </p>
                     </div>
 
-                    <p
-                      className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
-                      {app.description || 'Launches an isolated browser instance with proxy and certificates pre-configured.'}
-                    </p>
+                    <div className="mt-5 pt-3.5 border-t border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => handleLaunchBrowser(app)}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-200 bg-white/5 hover:bg-emerald-500 hover:text-slate-950 border border-white/10 hover:border-emerald-400 cursor-pointer transition-all duration-200 shadow-sm"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Launch {app.name}</span>
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleLaunchBrowser(app)}
-                      className="btn-primary w-full"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      Launch {app.name}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
           </>
         )}
 
         {/* === TERMINALS CATEGORY === */}
         {(selectedCategory === 'all' || selectedCategory === 'terminal') && (
-          <>
-            <div className="card group flex flex-col justify-between p-5 card-hover-lift">
-              <div>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl flex items-center justify-center text-emerald-400 bg-emerald-500/10 shadow-xs">
-                      <Terminal className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
-                        PowerShell / Terminal
-                      </h3>
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                        Environment Injected
-                      </span>
-                    </div>
+          <div className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-cyan-500/30 hover:shadow-2xl hover:shadow-cyan-500/5 transition-all duration-300 backdrop-blur-xl">
+            <div>
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl flex items-center justify-center shadow-lg border bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                    <Terminal className="w-5 h-5" />
                   </div>
-                  <span className="badge-status badge-2xx">
-                    Ready
-                  </span>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-100 group-hover:text-cyan-400 transition-colors">
+                      PowerShell / Terminal
+                    </h3>
+                    <span className="text-[11px] text-slate-400">
+                      Environment Injected Shell
+                    </span>
+                  </div>
                 </div>
 
-                <p
-                  className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  Spawns a shell with HTTP_PROXY, SSL_CERT_FILE, and Node/Python/Git CA variables pre-configured.
-                </p>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Ready
+                </span>
               </div>
 
-              <div className="mt-4 pt-3 border-t flex gap-2" style={{ borderColor: 'var(--color-border)' }}>
-                <button
-                  type="button"
-                  onClick={() => handleLaunchTerminal('powershell')}
-                  className="btn-primary flex-1"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  PowerShell
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleLaunchTerminal('cmd')}
-                  className="btn-ghost flex-1"
-                >
-                  CMD
-                </button>
-              </div>
+              <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
+                Spawns a shell with HTTP_PROXY, SSL_CERT_FILE, and Node/Python/Git CA variables pre-configured.
+              </p>
             </div>
-          </>
+
+            <div className="mt-5 pt-3.5 border-t border-white/10 flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => handleLaunchTerminal('powershell')}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold text-slate-200 bg-white/5 hover:bg-cyan-500 hover:text-slate-950 border border-white/10 hover:border-cyan-400 cursor-pointer transition-all duration-200"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>PowerShell</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLaunchTerminal('cmd')}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold text-slate-300 bg-white/5 hover:bg-white/15 border border-white/10 cursor-pointer transition-all duration-200"
+              >
+                <span>CMD</span>
+              </button>
+            </div>
+          </div>
         )}
 
         {/* === JAVA / JVM CATEGORY === */}
         {(selectedCategory === 'all' || selectedCategory === 'java') && (
           <>
             {/* Java Global Proxy Card */}
-            <div className="card group flex flex-col justify-between p-5 card-hover-lift">
+            <div className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-amber-500/30 hover:shadow-2xl hover:shadow-amber-500/5 transition-all duration-300 backdrop-blur-xl">
               <div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl flex items-center justify-center text-amber-400 bg-amber-500/10 shadow-xs">
+                    <div className="p-3 rounded-2xl flex items-center justify-center shadow-lg border bg-amber-500/10 border-amber-500/20 text-amber-400">
                       <Coffee className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+                      <h3 className="font-bold text-sm text-slate-100 group-hover:text-amber-400 transition-colors">
                         Java Global Proxy
                       </h3>
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      <span className="text-[11px] text-slate-400 font-mono">
                         JAVA_TOOL_OPTIONS
                       </span>
                     </div>
                   </div>
-                  <span className={javaGlobalEnabled ? 'badge-status badge-2xx' : 'badge-status badge-pending'}>
+
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    javaGlobalEnabled
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${javaGlobalEnabled ? 'bg-emerald-400' : 'bg-slate-400'}`} />
                     {javaGlobalEnabled ? 'Active' : 'Disabled'}
                   </span>
                 </div>
 
-                <p
-                  className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
+                <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
                   Sets JAVA_TOOL_OPTIONS and injects HTTPeek Root CA into Java truststores for all running JVMs.
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="mt-5 pt-3.5 border-t border-white/10">
                 <button
                   type="button"
                   onClick={handleToggleJavaGlobal}
                   disabled={javaToggling}
-                  className={javaGlobalEnabled ? 'btn-danger w-full' : 'btn-primary w-full'}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold cursor-pointer transition-all duration-200 border ${
+                    javaGlobalEnabled
+                      ? 'bg-rose-500/15 hover:bg-rose-500 text-rose-300 hover:text-white border-rose-500/30'
+                      : 'bg-white/5 hover:bg-amber-500 hover:text-slate-950 text-slate-200 border-white/10 hover:border-amber-400'
+                  }`}
                 >
                   {javaToggling ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -768,44 +684,42 @@ export const InterceptorsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Attach JVM Agent to Process Card */}
-            <div className="card group flex flex-col justify-between p-5 card-hover-lift">
+            {/* Attach JVM Agent Card */}
+            <div className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-purple-500/30 hover:shadow-2xl hover:shadow-purple-500/5 transition-all duration-300 backdrop-blur-xl">
               <div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl flex items-center justify-center text-purple-400 bg-purple-500/10 shadow-xs">
+                    <div className="p-3 rounded-2xl flex items-center justify-center shadow-lg border bg-purple-500/10 border-purple-500/20 text-purple-400">
                       <Cpu className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+                      <h3 className="font-bold text-sm text-slate-100 group-hover:text-purple-400 transition-colors">
                         Attach JVM Agent
                       </h3>
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      <span className="text-[11px] text-slate-400">
                         Byte Buddy In-Process
                       </span>
                     </div>
                   </div>
-                  <span className="badge-status badge-3xx">
+
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20">
                     v1.3.9 Agent
                   </span>
                 </div>
 
-                <p
-                  className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
+                <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
                   Dynamically inject HTTPeek Java Agent into any running Java process, Tomcat, IDE, or Spring app.
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="mt-5 pt-3.5 border-t border-white/10">
                 <button
                   type="button"
                   onClick={handleOpenJvmModal}
-                  className="btn-ghost w-full"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-200 bg-white/5 hover:bg-purple-500 hover:text-white border border-white/10 hover:border-purple-400 cursor-pointer transition-all duration-200"
                 >
                   <Search className="w-3.5 h-3.5" />
-                  Select Java Process...
+                  <span>Select Java Process...</span>
                 </button>
               </div>
             </div>
@@ -815,142 +729,137 @@ export const InterceptorsPage: React.FC = () => {
         {/* === MOBILE & ANDROID CATEGORY === */}
         {(selectedCategory === 'all' || selectedCategory === 'mobile') && (
           <>
-            {/* Android ADB Reverse Proxy Card */}
-            <div className="card group flex flex-col justify-between p-5 card-hover-lift">
+            {/* Android ADB Card */}
+            <div className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-teal-500/30 hover:shadow-2xl hover:shadow-teal-500/5 transition-all duration-300 backdrop-blur-xl">
               <div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl flex items-center justify-center text-teal-400 bg-teal-500/10 shadow-xs">
+                    <div className="p-3 rounded-2xl flex items-center justify-center shadow-lg border bg-teal-500/10 border-teal-500/20 text-teal-400">
                       <Smartphone className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+                      <h3 className="font-bold text-sm text-slate-100 group-hover:text-teal-400 transition-colors">
                         Android via ADB
                       </h3>
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      <span className="text-[11px] text-slate-400">
                         Reverse Port Forward
                       </span>
                     </div>
                   </div>
-                  <span className="badge-status badge-2xx">
+
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
                     One-Click
                   </span>
                 </div>
 
-                <p
-                  className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
+                <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
                   Connects to Android devices via ADB, configures adb reverse and automatically sets global proxy.
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="mt-5 pt-3.5 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => {
                     setAndroidFridaMode('adb');
                     setIsAndroidFridaOpen(true);
                   }}
-                  className="btn-primary w-full"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-200 bg-white/5 hover:bg-teal-500 hover:text-slate-950 border border-white/10 hover:border-teal-400 cursor-pointer transition-all duration-200"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  Connect via ADB...
+                  <span>Connect via ADB...</span>
                 </button>
               </div>
             </div>
 
-            {/* Frida SSL Pinning Bypass Card */}
-            <div className="card group flex flex-col justify-between p-5 card-hover-lift">
+            {/* Frida SSL Pinning Card */}
+            <div className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-rose-500/30 hover:shadow-2xl hover:shadow-rose-500/5 transition-all duration-300 backdrop-blur-xl">
               <div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl flex items-center justify-center text-rose-400 bg-rose-500/10 shadow-xs">
+                    <div className="p-3 rounded-2xl flex items-center justify-center shadow-lg border bg-rose-500/10 border-rose-500/20 text-rose-400">
                       <Shield className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+                      <h3 className="font-bold text-sm text-slate-100 group-hover:text-rose-400 transition-colors">
                         Frida SSL Unpinning
                       </h3>
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      <span className="text-[11px] text-slate-400">
                         Mobile & Desktop Injection
                       </span>
                     </div>
                   </div>
-                  <span className="badge-status badge-5xx">
+
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                     Script Runner
                   </span>
                 </div>
 
-                <p
-                  className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
+                <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
                   Inspect installed/running Android apps and dynamically inject Frida SSL unpinning scripts into apps or processes.
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="mt-5 pt-3.5 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => {
                     setAndroidFridaMode('frida');
                     setIsAndroidFridaOpen(true);
                   }}
-                  className="btn-ghost w-full"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-200 bg-white/5 hover:bg-rose-500 hover:text-white border border-white/10 hover:border-rose-400 cursor-pointer transition-all duration-200"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  Configure & Inject Frida...
+                  <span>Configure & Inject Frida...</span>
                 </button>
               </div>
             </div>
           </>
         )}
 
-        {/* === CONTAINERS & CUSTOM EXECUTABLES === */}
+        {/* === CUSTOM EXECUTABLES CATEGORY === */}
         {(selectedCategory === 'all' || selectedCategory === 'desktop') && (
-          <>
-            <div className="card group flex flex-col justify-between p-5 card-hover-lift">
-              <div>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl flex items-center justify-center text-indigo-400 bg-indigo-500/10 shadow-xs">
-                      <Box className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
-                        Custom Executable / Electron
-                      </h3>
-                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                        Binary Launcher
-                      </span>
-                    </div>
+          <div className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/5 transition-all duration-300 backdrop-blur-xl">
+            <div>
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl flex items-center justify-center shadow-lg border bg-indigo-500/10 border-indigo-500/20 text-indigo-400">
+                    <Box className="w-5 h-5" />
                   </div>
-                  <span className="badge-status badge-3xx">
-                    Custom
-                  </span>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-100 group-hover:text-indigo-400 transition-colors">
+                      Custom Executable / Electron
+                    </h3>
+                    <span className="text-[11px] text-slate-400">
+                      Binary Launcher
+                    </span>
+                  </div>
                 </div>
 
-                <p
-                  className="text-xs mt-3 line-clamp-2 leading-relaxed"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  Launch custom desktop apps, Slack, VS Code, or custom binary with injected proxy arguments.
-                </p>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                  Custom
+                </span>
               </div>
 
-              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsCustomModalOpen(true)}
-                  className="btn-ghost w-full"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  Launch Custom App...
-                </button>
-              </div>
+              <p className="text-xs mt-3.5 text-slate-400 line-clamp-2 leading-relaxed font-sans">
+                Launch custom desktop apps, Slack, VS Code, or custom binary with injected proxy arguments.
+              </p>
             </div>
-          </>
+
+            <div className="mt-5 pt-3.5 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setIsCustomModalOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-200 bg-white/5 hover:bg-indigo-500 hover:text-white border border-white/10 hover:border-indigo-400 cursor-pointer transition-all duration-200"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>Launch Custom App...</span>
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1035,64 +944,6 @@ export const InterceptorsPage: React.FC = () => {
         </Dialog>
       )}
 
-      {/* === MODAL: FRIDA INJECTION === */}
-      {isFridaModalOpen && (
-        <Dialog
-          isOpen={isFridaModalOpen}
-          onClose={() => setIsFridaModalOpen(false)}
-          title="Frida SSL Unpinning Injection"
-          subtitle="Dynamic SSL certificate pinning bypass for Android & desktop apps."
-          icon={<Shield className="w-5 h-5 text-rose-500" />}
-          iconColor="#f43f5e"
-          maxWidth="max-w-md"
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setIsFridaModalOpen(false)}
-                className="btn-ghost"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSpawnFrida}
-                disabled={!fridaApp.trim() || spawningFrida}
-                className="btn-primary"
-              >
-                {spawningFrida ? 'Injecting...' : 'Inject & Launch'}
-              </button>
-            </>
-          }
-        >
-          <div className="flex flex-col gap-3 text-xs">
-            <div>
-              <FormLabel label="Target Application Package / Executable" required />
-              <FormInput
-                type="text"
-                placeholder="e.g. com.example.app or Twitter"
-                value={fridaApp}
-                onChange={(e) => setFridaApp(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <FormLabel label="Device Serial (Optional, defaults to USB device)" />
-              <FormInput
-                type="text"
-                placeholder="e.g. emulator-5554 or leave blank for -U"
-                value={fridaSerial}
-                onChange={(e) => setFridaSerial(e.target.value)}
-              />
-            </div>
-
-            <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-              Uses bundled universal SSL unpinning script (`assets/frida/ssl_unpinning.js`) covering OkHttp, TrustKit, and Conscrypt.
-            </p>
-          </div>
-        </Dialog>
-      )}
-
       {/* === MODAL: CUSTOM APP LAUNCHER === */}
       {isCustomModalOpen && (
         <Dialog
@@ -1161,4 +1012,3 @@ export const InterceptorsPage: React.FC = () => {
     </div>
   );
 };
-

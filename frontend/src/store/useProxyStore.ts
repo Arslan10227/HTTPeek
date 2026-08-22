@@ -184,7 +184,7 @@ export const useProxyStore = create<ProxyStore>((set, get) => ({
   },
   setStatus: (status) => set({ status }),
 
-  activeTab: 'requests',
+  activeTab: 'interceptors',
   setActiveTab: (activeTab) => set({ activeTab }),
 
   viewMode: 'sequence',
