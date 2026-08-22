@@ -10,6 +10,7 @@ import { QuickRuleDialog } from '../rules/QuickRuleDialog';
 import { LottiePlayer } from '../common/LottiePlayer';
 import { MobileRequestCard } from './MobileRequestCard';
 import { exportRequests } from '../../utils/exportHelper';
+import { matchStructuredQuery } from '../../utils/searchParser';
 
 export const SequenceTableView: React.FC = () => {
   const { 
@@ -57,28 +58,10 @@ export const SequenceTableView: React.FC = () => {
     request: null,
   });
 
-  // Apply tab source (favorites vs capture) and search query
+  // Apply tab source (favorites vs capture) and structured search query
   const filteredRequests = useMemo(() => {
     const sourceList = activeTab === 'favorites' ? favorites : requests;
-    return sourceList.filter((r) => {
-      // Search query filter
-      if (!searchQuery) return true;
-      const q = searchQuery.toLowerCase();
-      if (q.startsWith('status:')) {
-        const code = q.replace('status:', '').trim();
-        return r.response?.statusCode.toString().startsWith(code);
-      }
-      if (q.startsWith('method:')) {
-        const m = q.replace('method:', '').trim().toUpperCase();
-        return r.method === m;
-      }
-      return (
-        r.url.toLowerCase().includes(q) ||
-        (r.path || '').toLowerCase().includes(q) ||
-        (r.hostPort?.host || '').toLowerCase().includes(q) ||
-        (r.process?.name && r.process.name.toLowerCase().includes(q))
-      );
-    });
+    return sourceList.filter((r) => matchStructuredQuery(r, searchQuery));
   }, [requests, favorites, activeTab, searchQuery]);
 
   const rowVirtualizer = useVirtualizer({

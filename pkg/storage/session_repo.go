@@ -196,7 +196,54 @@ func (sr *SessionRepo) SaveRequest(sessionID string, req *proxy.HttpRequest) err
 		return fmt.Errorf("update session counters failed: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Trigger FIFO circular ring buffer cleanup if session exceeds ceiling
+	go func() {
+		_ = sr.EnforceSessionCeiling(sessionID, 50000)
+	}()
+
+	return nil
+}
+
+// EnforceSessionCeiling enforces a FIFO ring buffer limit on captured requests in a session.
+// Non-favorite requests exceeding maxCount are pruned from oldest to newest.
+func (sr *SessionRepo) EnforceSessionCeiling(sessionID string, maxCount int) error {
+	if sessionID == "" || maxCount <= 0 {
+		return nil
+	}
+
+	var currentCount int
+	err := sr.db.Conn().QueryRow(`SELECT COUNT(*) FROM requests WHERE session_id = ? AND is_favorite = 0`, sessionID).Scan(&currentCount)
+	if err != nil || currentCount <= maxCount {
+		return err
+	}
+
+	excess := currentCount - maxCount
+	if excess <= 0 {
+		return nil
+	}
+
+	pruneQuery := `
+		DELETE FROM requests 
+		WHERE id IN (
+			SELECT id FROM requests 
+			WHERE session_id = ? AND is_favorite = 0 
+			ORDER BY start_time ASC 
+			LIMIT ?
+		)
+	`
+	_, err = sr.db.Conn().Exec(pruneQuery, sessionID, excess)
+	if err == nil {
+		// Recalculate session request count
+		var newTotal int
+		if err := sr.db.Conn().QueryRow(`SELECT COUNT(*) FROM requests WHERE session_id = ?`, sessionID).Scan(&newTotal); err == nil {
+			_, _ = sr.db.Conn().Exec(`UPDATE sessions SET request_count = ? WHERE id = ?`, newTotal, sessionID)
+		}
+	}
+	return err
 }
 
 // SaveRequestsBatch persists many requests atomically (used by HAR import).

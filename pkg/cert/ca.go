@@ -41,12 +41,12 @@ type Config struct {
 // DefaultConfig returns default CA configuration.
 func DefaultConfig() Config {
 	return Config{
-		CommonName:   "ProxyPin CA",
-		Organization: "ProxyPin",
-		OrgUnit:      "ProxyPin Network Engine",
-		Country:      "CN",
-		State:        "Beijing",
-		Locality:     "Beijing",
+		CommonName:   "HTTPeek Root CA",
+		Organization: "HTTPeek",
+		OrgUnit:      "HTTPeek Network Engine",
+		Country:      "US",
+		State:        "California",
+		Locality:     "San Francisco",
 		ValidityDays: 3650, // 10 years
 		StorageDir:   "",
 	}
@@ -155,9 +155,16 @@ func LoadCA(certPath, keyPath string) (*CA, error) {
 		return nil, fmt.Errorf("read CA cert file failed: %w", err)
 	}
 
-	keyPEM, err := os.ReadFile(keyPath)
+	rawKeyData, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("read CA key file failed: %w", err)
+	}
+
+	// Decrypt master key via KeyStorage (DPAPI / AES-GCM or plaintext legacy)
+	ks := NewKeyStorage()
+	keyPEM, err := ks.DecryptKey(rawKeyData)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt CA master key failed: %w", err)
 	}
 
 	certBlock, _ := pem.Decode(certPEM)
@@ -195,16 +202,23 @@ func LoadCA(certPath, keyPath string) (*CA, error) {
 		return nil, fmt.Errorf("parse CA private key failed: %w", err)
 	}
 
-	return &CA{
+	ca := &CA{
 		Certificate: cert,
 		PrivateKey:  privKey,
 		CertPEM:     certPEM,
 		KeyPEM:      keyPEM,
 		SubjectRaw:  cert.RawSubject,
-	}, nil
+	}
+
+	// Auto-upgrade legacy plaintext ca.key to encrypted storage
+	if len(rawKeyData) > 10 && string(rawKeyData[:10]) == "-----BEGIN" {
+		_ = ca.Save(filepath.Dir(keyPath))
+	}
+
+	return ca, nil
 }
 
-// Save writes the CA cert and key to disk in the given directory.
+// Save writes the CA cert and encrypted key to disk in the given directory.
 func (ca *CA) Save(dir string) error {
 	ca.mu.RLock()
 	defer ca.mu.RUnlock()
@@ -215,7 +229,16 @@ func (ca *CA) Save(dir string) error {
 	if err := os.WriteFile(certPath, ca.CertPEM, 0644); err != nil {
 		return fmt.Errorf("write ca.crt failed: %w", err)
 	}
-	if err := os.WriteFile(keyPath, ca.KeyPEM, 0600); err != nil {
+
+	// Encrypt master key using KeyStorage (DPAPI / AES-GCM)
+	ks := NewKeyStorage()
+	encryptedKey, err := ks.EncryptKey(ca.KeyPEM)
+	if err != nil {
+		// Fallback to keyPEM if encryption fails
+		encryptedKey = ca.KeyPEM
+	}
+
+	if err := os.WriteFile(keyPath, encryptedKey, 0600); err != nil {
 		return fmt.Errorf("write ca.key failed: %w", err)
 	}
 	return nil

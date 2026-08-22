@@ -25,7 +25,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
       timestamp: new Date(),
       level: 'SYSTEM',
       category: 'Core',
-      message: 'HTTPeek ProxyPin logging system initialized',
+      message: 'HTTPeek logging system initialized',
     },
   ],
 

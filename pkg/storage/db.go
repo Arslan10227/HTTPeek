@@ -82,6 +82,7 @@ func (d *DB) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_requests_url ON requests(url);
 	CREATE INDEX IF NOT EXISTS idx_requests_host ON requests(host);
 	CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status_code);
+	CREATE INDEX IF NOT EXISTS idx_requests_query ON requests(session_id, status_code, host, method, content_type, start_time);
 
 	CREATE TABLE IF NOT EXISTS rules (
 		id TEXT PRIMARY KEY,

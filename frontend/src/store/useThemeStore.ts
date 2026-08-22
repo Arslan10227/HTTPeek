@@ -14,11 +14,11 @@ export interface ThemeOption {
 export const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'emerald',
-    name: 'Emerald Green (ProxyPin)',
+    name: 'Emerald Green (HTTPeek)',
     isDark: false,
     color: '#059669',
     badgeClass: 'bg-emerald-500',
-    description: 'Crisp, high-contrast light theme with signature ProxyPin emerald accents',
+    description: 'Crisp, high-contrast light theme with signature HTTPeek emerald accents',
   },
   {
     id: 'slate',

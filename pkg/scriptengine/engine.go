@@ -370,9 +370,22 @@ func (e *Engine) RunOnResponse(scriptCode string, req *proxy.HttpRequest, resp *
 
 	// Apply response modifications
 	if resRespMap, ok := resultMap["response"].(map[string]any); ok {
-		if statusCode, ok := resRespMap["statusCode"].(int64); ok && statusCode > 0 {
-			resp.StatusCode = int(statusCode)
-			resp.StatusText = http.StatusText(int(statusCode))
+		switch sc := resRespMap["statusCode"].(type) {
+		case int64:
+			if sc > 0 {
+				resp.StatusCode = int(sc)
+				resp.StatusText = http.StatusText(int(sc))
+			}
+		case float64:
+			if sc > 0 {
+				resp.StatusCode = int(sc)
+				resp.StatusText = http.StatusText(int(sc))
+			}
+		case int:
+			if sc > 0 {
+				resp.StatusCode = sc
+				resp.StatusText = http.StatusText(sc)
+			}
 		}
 		if body, ok := resRespMap["body"].(string); ok {
 			resp.Body = []byte(body)

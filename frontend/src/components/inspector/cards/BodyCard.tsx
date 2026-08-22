@@ -4,6 +4,7 @@ import { Maximize2, Minimize2 } from 'lucide-react';
 import { CollapsibleCard } from '../../ui/CollapsibleCard';
 import { getHexDump } from '../../../lib/httpFormat';
 import { useThemeStore } from '../../../store/useThemeStore';
+import { HexViewer } from './HexViewer';
 
 interface BodyCardProps {
   id: string;
@@ -49,7 +50,9 @@ export const BodyCard: React.FC<BodyCardProps> = ({
       {isImage && viewMode === 'editor' ? (
         <img src={`data:${contentType};base64,${bodyRaw}`} alt="response" className="max-h-64 object-contain rounded border" />
       ) : viewMode === 'hex' ? (
-        <pre className="font-mono text-[10px] bg-slate-50 p-3 rounded-lg border overflow-auto max-h-80 select-all">{getHexDump(bodyRaw)}</pre>
+        <div className="rounded-lg border border-white/10 overflow-hidden max-h-80">
+          <HexViewer data={bodyRaw} />
+        </div>
       ) : viewMode === 'raw' ? (
         <pre className="font-mono text-[11px] bg-slate-50 p-3 rounded-lg border overflow-auto max-h-80 select-all whitespace-pre-wrap">{bodyRaw}</pre>
       ) : (

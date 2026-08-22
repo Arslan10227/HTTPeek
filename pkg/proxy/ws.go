@@ -294,7 +294,7 @@ func (h *Handler) interceptWSFrames(ctx *Context, reqID string, src io.Reader, d
 			Timestamp:  time.Now(),
 		}
 
-		h.server.DispatchWsFrame(ctx, frame)
+		go h.server.DispatchWsFrame(ctx, frame)
 
 		// Forward the exact raw frame bytes to destination
 		if _, err := dst.Write(header); err != nil {

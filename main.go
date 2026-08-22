@@ -68,6 +68,6 @@ func main() {
 	})
 
 	if err != nil {
-		logger.Fatal("Main", fmt.Sprintf("ProxyPin execution failed: %v", err))
+		logger.Fatal("Main", fmt.Sprintf("HTTPeek execution failed: %v", err))
 	}
 }

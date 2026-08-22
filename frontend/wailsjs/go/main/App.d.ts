@@ -107,6 +107,8 @@ export function ImportHAR(arg1:string,arg2:string):Promise<storage.Session>;
 
 export function ImportRules(arg1:string):Promise<void>;
 
+export function InjectFridaCustomScript(arg1:string,arg2:string,arg3:string):Promise<Record<string, any>>;
+
 export function InstallAndroidRootCA(arg1:string):Promise<cert.AndroidInstallResult>;
 
 export function InstallCertToAndroid(arg1:string):Promise<cert.AndroidInstallResult>;
@@ -149,9 +151,13 @@ export function ListJVMTargets():Promise<Array<external.JVMTarget>>;
 
 export function ListSessions():Promise<Array<storage.Session>>;
 
+export function LoadProtoDescriptor(arg1:string):Promise<Record<string, any>>;
+
 export function LogFromUI(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function OpenLogFolder():Promise<void>;
+
+export function PatchNetworkSecurityConfig(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function RegisterHARAssociation():Promise<void>;
 

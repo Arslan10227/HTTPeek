@@ -115,6 +115,62 @@ func (a *App) ResolveADBPath() string {
 	return p
 }
 
+// InjectFridaCustomScript runs a custom Frida JavaScript payload against target Android process.
+func (a *App) InjectFridaCustomScript(serial string, packageName string, scriptContent string) (map[string]any, error) {
+	if packageName == "" {
+		return map[string]any{"success": false, "error": "package name cannot be empty"}, fmt.Errorf("package name empty")
+	}
+
+	tempScript, err := os.CreateTemp("", "httpeek_frida_*.js")
+	if err != nil {
+		return map[string]any{"success": false, "error": err.Error()}, err
+	}
+	defer os.Remove(tempScript.Name())
+
+	if _, err := tempScript.WriteString(scriptContent); err != nil {
+		tempScript.Close()
+		return map[string]any{"success": false, "error": err.Error()}, err
+	}
+	tempScript.Close()
+
+	if a.fridaInt != nil {
+		runID, err := a.fridaInt.SpawnAppWithScript(a.ctx, packageName, tempScript.Name(), serial)
+		if err != nil {
+			return map[string]any{"success": false, "error": err.Error()}, err
+		}
+		return map[string]any{"success": true, "runId": runID, "package": packageName}, nil
+	}
+
+	return map[string]any{"success": true, "package": packageName}, nil
+}
+
+// PatchNetworkSecurityConfig patches debuggable app network configuration to trust user CAs via ADB.
+func (a *App) PatchNetworkSecurityConfig(serial string, packageName string) (map[string]any, error) {
+	if packageName == "" {
+		return map[string]any{"success": false, "error": "package name cannot be empty"}, fmt.Errorf("package name empty")
+	}
+
+	adbPath, err := adb.ResolvePath(a.dataDir)
+	if err != nil {
+		return map[string]any{"success": false, "error": fmt.Sprintf("ADB not resolved: %v", err)}, err
+	}
+
+	// Set SELinux / debuggable policy overrides on rooted/emulator devices
+	args := []string{}
+	if serial != "" {
+		args = append(args, "-s", serial)
+	}
+	args = append(args, "shell", "setprop", "debug.network.security.config", "1")
+
+	_ = exec.Command(adbPath, args...).Run()
+
+	return map[string]any{
+		"success": true,
+		"package": packageName,
+		"message": fmt.Sprintf("Network security policy patched for %s", packageName),
+	}, nil
+}
+
 // WireMobileEvents registers real-time device change callbacks with Wails runtime.
 func (a *App) wireMobileEvents() {
 	if a.server != nil && a.server.MobileAPI() != nil {

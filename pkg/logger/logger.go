@@ -117,30 +117,37 @@ func Init() *Logger {
 			}
 		}
 
-		// 1. Primary: Local application logs directory (e.g. build/bin/logs/proxypin.log or ./logs/proxypin.log)
+		// 1. Primary: Local application logs directory (e.g. build/bin/logs/httpeek.log or ./logs/httpeek.log)
 		execPath, err := os.Executable()
 		var localLogDir string
 		if err == nil && execPath != "" {
 			execDir := filepath.Dir(execPath)
 			localLogDir = filepath.Join(execDir, "logs")
-			addLogFile(filepath.Join(localLogDir, "proxypin.log"))
+			addLogFile(filepath.Join(localLogDir, "httpeek.log"))
 
-			// Clean up legacy/redundant files in root if they exist
+			// Clean up legacy/redundant files in root and logs
 			_ = os.Remove(filepath.Join(execDir, "goproxypin.log"))
 			_ = os.Remove(filepath.Join(execDir, "proxypin.log"))
+			_ = os.Remove(filepath.Join(execDir, "httpeek.log"))
+			_ = os.Remove(filepath.Join(localLogDir, "proxypin.log"))
+			_ = os.Remove(filepath.Join(localLogDir, "goproxypin.log"))
 		}
 
 		// 2. Also log to AppData if on Windows / Desktop OS
 		userConfigDir, err := os.UserConfigDir()
 		var appDataLogDir string
 		if err == nil && userConfigDir != "" {
-			appDataLogDir = filepath.Join(userConfigDir, "ProxyPin", "logs")
-			addLogFile(filepath.Join(appDataLogDir, "proxypin.log"))
+			appDataLogDir = filepath.Join(userConfigDir, "HTTPeek", "logs")
+			addLogFile(filepath.Join(appDataLogDir, "httpeek.log"))
 
-			// Clean up legacy files in AppData root
+			// Clean up legacy files in AppData root and ProxyPin
+			_ = os.Remove(filepath.Join(userConfigDir, "HTTPeek", "goproxypin.log"))
+			_ = os.Remove(filepath.Join(userConfigDir, "HTTPeek", "proxypin.log"))
+			_ = os.Remove(filepath.Join(appDataLogDir, "goproxypin.log"))
+			_ = os.Remove(filepath.Join(appDataLogDir, "proxypin.log"))
 			_ = os.Remove(filepath.Join(userConfigDir, "ProxyPin", "goproxypin.log"))
 			_ = os.Remove(filepath.Join(userConfigDir, "ProxyPin", "proxypin.log"))
-			_ = os.Remove(filepath.Join(appDataLogDir, "goproxypin.log"))
+			_ = os.Remove(filepath.Join(userConfigDir, "ProxyPin", "logs", "proxypin.log"))
 		}
 
 		primary := ""
@@ -162,7 +169,7 @@ func Init() *Logger {
 			maxBuf:      500,
 		}
 
-		startupMsg := fmt.Sprintf("=== ProxyPin Logger Initialized (PID: %d, OS: %s/%s, Executable: %s, Log: %s) ===",
+		startupMsg := fmt.Sprintf("=== HTTPeek Logger Initialized (PID: %d, OS: %s/%s, Executable: %s, Log: %s) ===",
 			os.Getpid(), runtime.GOOS, runtime.GOARCH, execPath, primary)
 		defaultLogger.log(LevelInfo, "Logger", startupMsg, nil, 2)
 	})

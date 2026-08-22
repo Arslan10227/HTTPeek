@@ -10,6 +10,7 @@ import { ExportCard } from './cards/ExportCard';
 import { TransformCard, PerformanceCard } from './cards/TransformPerformanceCards';
 import { WebSocketCard, SSECard } from './cards/StreamCards';
 import { SecretDetectionCard } from './cards/SecretDetectionCard';
+import { DiffCard } from './cards/DiffCard';
 import { PaneHeader } from '../ui/PaneHeader';
 import { useProxyStore } from '../../store/useProxyStore';
 import { toast } from '../../store/useToastStore';
@@ -75,6 +76,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ request }) => {
           reqBodyRaw={derived.reqBodyRaw}
           respBodyRaw={derived.respBodyRaw}
         />
+        {request.appliedRules && request.appliedRules.length > 0 && (
+          <div className="mb-4">
+            <DiffCard
+              originalText={request.rawOriginalBody || derived.reqBodyRaw}
+              modifiedText={derived.reqFormatted.formatted || derived.reqBodyRaw}
+              originalLabel="Original Upstream"
+              modifiedLabel="Rewritten / Intercepted"
+            />
+          </div>
+        )}
         <TransformCard appliedRules={request.appliedRules} />
         <PerformanceCard timings={request.timings} durationMs={request.durationMs} />
         <WebSocketCard frames={derived.resp?.wsFrames} />

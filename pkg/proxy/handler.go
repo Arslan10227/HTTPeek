@@ -452,7 +452,7 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 	}
 
 	// Limit Accept-Encoding to formats we decompress reliably
-	outReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	outReq.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	removeHopByHopHeaders(outReq.Header)
 
 	// Send upstream request
@@ -463,7 +463,10 @@ func (h *Handler) forwardHTTPRequest(ctx *Context, clientConn net.Conn, req *htt
 		h.server.DispatchError(ctx, httpReq, err)
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 	contentType := resp.Header.Get("Content-Type")
 	contentEncoding := resp.Header.Get("Content-Encoding")
 	isBinary := isBinaryContentType(contentType)

@@ -8,17 +8,37 @@ import (
 )
 
 // GetUserConfigDir returns the user configuration directory for the application.
-// It creates (if necessary) a subdirectory "ProxyPin" under the OS-specific
+// It creates (if necessary) a subdirectory "HTTPeek" under the OS-specific
 // user config directory and returns its absolute path.
 func GetUserConfigDir() (string, error) {
     base, err := os.UserConfigDir()
     if err != nil {
         return "", err
     }
-    cfgDir := filepath.Join(base, "ProxyPin")
+    cfgDir := filepath.Join(base, "HTTPeek")
     if err := os.MkdirAll(cfgDir, 0o700); err != nil {
         return "", err
     }
+
+    // Auto-migrate legacy files from ProxyPin if present
+    legacyDir := filepath.Join(base, "ProxyPin")
+    if info, err := os.Stat(legacyDir); err == nil && info.IsDir() {
+        legacyDB := filepath.Join(legacyDir, "httpeek.db")
+        newDB := filepath.Join(cfgDir, "httpeek.db")
+        if _, err := os.Stat(legacyDB); err == nil {
+            if _, err := os.Stat(newDB); os.IsNotExist(err) {
+                _ = os.Rename(legacyDB, newDB)
+            }
+        }
+        legacyRules := filepath.Join(legacyDir, "rules.json")
+        newRules := filepath.Join(cfgDir, "rules.json")
+        if _, err := os.Stat(legacyRules); err == nil {
+            if _, err := os.Stat(newRules); os.IsNotExist(err) {
+                _ = os.Rename(legacyRules, newRules)
+            }
+        }
+    }
+
     return cfgDir, nil
 }
 

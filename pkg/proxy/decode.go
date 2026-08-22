@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
@@ -50,6 +51,13 @@ func DecodeBody(rawBytes []byte, contentEncoding, contentType string) ([]byte, s
 		brReader := brotli.NewReader(bytes.NewReader(rawBytes))
 		if uncompressed, err := io.ReadAll(brReader); err == nil {
 			decodedBytes = uncompressed
+		}
+	case strings.Contains(encoding, "zstd"):
+		if zstdReader, err := zstd.NewReader(bytes.NewReader(rawBytes)); err == nil {
+			if uncompressed, err := io.ReadAll(zstdReader); err == nil {
+				decodedBytes = uncompressed
+			}
+			zstdReader.Close()
 		}
 	}
 

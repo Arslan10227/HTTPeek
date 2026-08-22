@@ -198,6 +198,10 @@ export function ImportRules(arg1) {
   return window['go']['main']['App']['ImportRules'](arg1);
 }
 
+export function InjectFridaCustomScript(arg1, arg2, arg3) {
+  return window['go']['main']['App']['InjectFridaCustomScript'](arg1, arg2, arg3);
+}
+
 export function InstallAndroidRootCA(arg1) {
   return window['go']['main']['App']['InstallAndroidRootCA'](arg1);
 }
@@ -282,12 +286,20 @@ export function ListSessions() {
   return window['go']['main']['App']['ListSessions']();
 }
 
+export function LoadProtoDescriptor(arg1) {
+  return window['go']['main']['App']['LoadProtoDescriptor'](arg1);
+}
+
 export function LogFromUI(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['LogFromUI'](arg1, arg2, arg3, arg4);
 }
 
 export function OpenLogFolder() {
   return window['go']['main']['App']['OpenLogFolder']();
+}
+
+export function PatchNetworkSecurityConfig(arg1, arg2) {
+  return window['go']['main']['App']['PatchNetworkSecurityConfig'](arg1, arg2);
 }
 
 export function RegisterHARAssociation() {
