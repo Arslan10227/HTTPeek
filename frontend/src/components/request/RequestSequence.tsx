@@ -143,30 +143,13 @@ export const RequestSequence: React.FC<RequestSequenceProps> = ({
                   }
                 }}
                 onContextMenu={(e) => handleContextMenu(e, req)}
-                className="group flex items-center px-2 py-1.5 border-b cursor-pointer font-mono text-[11px] transition-colors animate-row-in"
-                style={{
-                  borderColor: 'var(--color-border)',
-                  background: isSelected
-                    ? 'rgba(0,229,163,0.08)'
+                className={`group flex items-center px-2 py-1.5 border-b cursor-pointer font-mono text-[11px] transition-colors border-[var(--color-border)] ${
+                  isSelected
+                    ? 'bg-emerald-500/10 border-l-[3px] border-l-emerald-500 text-emerald-400 font-semibold'
                     : isChecked
-                    ? 'var(--color-surface-raised)'
-                    : idx % 2 === 0
-                    ? 'transparent'
-                    : 'rgba(0,0,0,0.01)',
-                  borderLeft: isSelected ? `3px solid var(--color-primary)` : '3px solid transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = 'var(--color-surface-raised)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected)
-                    e.currentTarget.style.background =
-                      isChecked
-                        ? 'var(--color-surface-raised)'
-                        : idx % 2 === 0
-                        ? 'transparent'
-                        : 'rgba(0,0,0,0.01)';
-                }}
+                    ? 'bg-[var(--color-surface-raised)] border-l-[3px] border-l-transparent text-slate-200'
+                    : 'border-l-[3px] border-l-transparent hover:bg-slate-100/60 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300'
+                }`}
               >
                 {selectedIds.size > 0 && (
                   <div className="w-6 shrink-0 flex items-center">
