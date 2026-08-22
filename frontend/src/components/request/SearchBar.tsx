@@ -128,7 +128,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={isZh ? '搜索请求 URL...' : 'Search URL…'}
+            placeholder={isZh ? '搜索请求 (例如: status:>=400 AND method:POST)...' : 'Search (e.g. status:>=400 AND method:POST)...'}
             className="w-full pl-8 pr-7 py-1.5 rounded-lg text-xs font-mono focus:outline-none transition-all border"
             style={{
               background: 'var(--color-surface-raised)',

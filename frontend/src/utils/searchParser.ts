@@ -141,7 +141,9 @@ function matchSingleToken(r: HttpRequest, token: string): boolean {
     (r.path || '').toLowerCase().includes(q) ||
     (r.hostPort?.host || '').toLowerCase().includes(q) ||
     (r.process?.name && r.process.name.toLowerCase().includes(q)) ||
-    (r.bodyText && r.bodyText.toLowerCase().includes(q)) ||
-    (r.response?.bodyText && r.response.bodyText.toLowerCase().includes(q))
+    (r.body && r.body.toLowerCase().includes(q)) ||
+    (r.bodyString && r.bodyString.toLowerCase().includes(q)) ||
+    (r.response?.body && r.response.body.toLowerCase().includes(q)) ||
+    (r.response?.bodyString && r.response.bodyString.toLowerCase().includes(q))
   );
 }
