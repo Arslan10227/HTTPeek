@@ -56,21 +56,21 @@ export const LeftNavigationBar: React.FC<LeftNavigationBarProps> = ({
     badge?: number;
   }[] = [
     {
+      id: 'requests',
+      label: 'Traffic',
+      icon: (
+        <LayoutGrid className="w-[19px] h-[19px] text-emerald-500 transition-all duration-300 group-hover:scale-115 group-hover:rotate-3 drop-shadow-[0_2px_8px_rgba(16,185,129,0.4)]" />
+      ),
+      color: '#10B981',
+      badge: requestCount > 0 ? requestCount : undefined,
+    },
+    {
       id: 'interceptors',
       label: 'Intercept',
       icon: (
         <Rocket className="w-[19px] h-[19px] text-amber-500 transition-all duration-300 group-hover:-translate-y-1 group-hover:rotate-12 group-hover:scale-110 drop-shadow-[0_2px_8px_rgba(245,158,11,0.4)]" />
       ),
       color: '#F59E0B',
-    },
-    {
-      id: 'requests',
-      label: 'View',
-      icon: (
-        <LayoutGrid className="w-[19px] h-[19px] text-emerald-500 transition-all duration-300 group-hover:scale-115 group-hover:rotate-3 drop-shadow-[0_2px_8px_rgba(16,185,129,0.4)]" />
-      ),
-      color: '#10B981',
-      badge: requestCount > 0 ? requestCount : undefined,
     },
     {
       id: 'rules',

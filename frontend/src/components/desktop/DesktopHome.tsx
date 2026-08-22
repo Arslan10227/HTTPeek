@@ -41,7 +41,7 @@ export const DesktopHome: React.FC = () => {
   const { requests, selectedRequestId, setSelectedRequestId, addRequest, activeTab, setActiveTab } = useProxyStore();
   const { panelRatio, setPanelRatio } = useAppConfig();
 
-  const activeNavTab: LeftNavTab = (activeTab === 'interceptors' || activeTab === 'requests' || activeTab === 'rules' || activeTab === 'favorites' || activeTab === 'history' || activeTab === 'toolbox') ? activeTab : 'interceptors';
+  const activeNavTab: LeftNavTab = (activeTab === 'interceptors' || activeTab === 'requests' || activeTab === 'rules' || activeTab === 'favorites' || activeTab === 'history' || activeTab === 'toolbox') ? activeTab : 'requests';
 
   const setActiveNavTab = (tab: LeftNavTab) => setActiveTab(tab);
 
