@@ -926,6 +926,26 @@ class ApiAdapter {
     return [];
   }
 
+  public async getBinaryToolsStatus(): Promise<Record<string, any>> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.GetBinaryToolsStatus) {
+      return await (window as any).go.main.App.GetBinaryToolsStatus();
+    }
+    return {};
+  }
+
+  public async downloadBinaryTool(toolName: string): Promise<any> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.DownloadBinaryTool) {
+      return await (window as any).go.main.App.DownloadBinaryTool(toolName);
+    }
+    return { success: false, error: 'Available in desktop mode' };
+  }
+
+  public async openBinariesFolder(): Promise<void> {
+    if (this.isWailsApp() && (window as any).go?.main?.App?.OpenBinariesFolder) {
+      return await (window as any).go.main.App.OpenBinariesFolder();
+    }
+  }
+
   public isMobile(): boolean {
     return !this.isWails || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
   }

@@ -715,13 +715,13 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       {/* ── Category Filter & Search Bar Header Strip ─────────── */}
       {!activeTool && (
         <div
-          className="p-4 border-b shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3"
+          className="p-4 border-b shrink-0 flex flex-col sm:flex-row items-center justify-between gap-4"
           style={{
             backgroundColor: 'var(--color-surface)',
             borderColor: 'var(--color-border)',
           }}
         >
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
             {[
               { id: 'all', label: 'All Tools', icon: <Layers className="w-3.5 h-3.5" /> },
               { id: 'network', label: 'API & Network', icon: <Wifi className="w-3.5 h-3.5" /> },
@@ -735,31 +735,34 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
                   key={cat.id}
                   type="button"
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`chip ${isActive ? 'chip-active' : ''}`}
-                  style={isActive ? { background: `${activeColor.hex}18`, color: activeColor.hex, borderColor: `${activeColor.hex}40` } : {}}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-200 border ${
+                    isActive
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40 shadow-sm'
+                      : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 border-white/10'
+                  }`}
                 >
-                  {cat.icon}
-                  {cat.label}
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
             <div className="relative flex-1 sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search tools..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input-base pl-9 text-xs"
+                className="w-full pl-9 pr-4 py-2 rounded-xl text-xs font-sans bg-white/5 hover:bg-white/8 focus:bg-white/10 border border-white/10 focus:border-emerald-500/50 text-slate-200 placeholder-slate-500 focus:outline-none transition-all shadow-inner"
               />
             </div>
             <button
               type="button"
               onClick={onOpenRequestEditor}
-              className="btn-primary py-1.5 px-3 text-xs shrink-0"
+              className="btn-primary py-2 px-4 text-xs font-bold shrink-0 shadow-sm"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Composer</span>
@@ -769,53 +772,51 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
       )}
 
       {/* ── Main Container ───────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-5 min-h-0">
+      <div className="flex-1 overflow-y-auto p-6 min-h-0">
         {!activeTool ? (
           /* Tool Grid Cards (Standardized 3-Column) */
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filteredTools.map((tool) => {
               const Icon = tool.icon;
               return (
                 <div
                   key={tool.id}
                   onClick={() => setActiveTool(tool.id)}
-                  className="card group p-5 cursor-pointer flex flex-col justify-between card-hover-lift"
+                  className="group relative flex flex-col justify-between p-5 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] hover:from-white/[0.12] hover:to-white/[0.05] hover:border-emerald-500/40 hover:shadow-2xl hover:shadow-emerald-500/5 transition-all duration-300 backdrop-blur-xl cursor-pointer"
                 >
                   <div>
                     <div className="flex items-start justify-between">
                       <div
-                        className="p-3 rounded-2xl text-white shadow-xs group-hover:scale-105 transition-transform"
+                        className="p-3 rounded-2xl text-white shadow-md group-hover:scale-105 transition-transform"
                         style={{ backgroundColor: tool.color }}
                       >
                         <Icon className="w-5 h-5" />
                       </div>
                       {tool.badge && (
-                        <span className="badge-status badge-2xx">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                           {tool.badge}
                         </span>
                       )}
                     </div>
                     <div className="mt-4">
                       <h3
-                        className="text-sm font-bold group-hover:text-emerald-400 transition-colors"
-                        style={{ color: 'var(--color-text)' }}
+                        className="text-sm font-bold group-hover:text-emerald-400 transition-colors text-slate-100"
                       >
                         {tool.title}
                       </h3>
                       <p
-                        className="text-xs mt-1 leading-relaxed line-clamp-2"
-                        style={{ color: 'var(--color-text-muted)' }}
+                        className="text-xs mt-1.5 leading-relaxed line-clamp-2 text-slate-400 font-sans"
                       >
                         {tool.description}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
-                    <span className="text-xs font-semibold" style={{ color: 'var(--color-primary)' }}>
+                  <div className="mt-5 pt-3.5 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-400 group-hover:underline">
                       Open Tool
                     </span>
-                    <span className="text-xs text-neutral-400 group-hover:translate-x-1 transition-transform">→</span>
+                    <span className="text-xs text-slate-400 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all">→</span>
                   </div>
                 </div>
               );
@@ -824,7 +825,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onOpenRequestEditor }) => {
         ) : (
           /* Active Tool Dialog Container */
           <div
-            className="rounded-3xl p-6 border shadow-xl flex flex-col h-full min-h-[550px]"
+            className="rounded-3xl p-6 border shadow-2xl flex flex-col h-full min-h-[550px] backdrop-blur-xl"
             style={{
               backgroundColor: 'var(--color-surface)',
               borderColor: 'var(--color-border)',

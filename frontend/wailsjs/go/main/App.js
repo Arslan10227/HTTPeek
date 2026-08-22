@@ -66,6 +66,10 @@ export function DownloadADBIfMissing() {
   return window['go']['main']['App']['DownloadADBIfMissing']();
 }
 
+export function DownloadBinaryTool(arg1) {
+  return window['go']['main']['App']['DownloadBinaryTool'](arg1);
+}
+
 export function ExitApp() {
   return window['go']['main']['App']['ExitApp']();
 }
@@ -88,6 +92,10 @@ export function ExportRules() {
 
 export function GetAllRules() {
   return window['go']['main']['App']['GetAllRules']();
+}
+
+export function GetBinaryToolsStatus() {
+  return window['go']['main']['App']['GetBinaryToolsStatus']();
 }
 
 export function GetBlockRules() {
@@ -292,6 +300,10 @@ export function LoadProtoDescriptor(arg1) {
 
 export function LogFromUI(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['LogFromUI'](arg1, arg2, arg3, arg4);
+}
+
+export function OpenBinariesFolder() {
+  return window['go']['main']['App']['OpenBinariesFolder']();
 }
 
 export function OpenLogFolder() {

@@ -26,7 +26,6 @@ import {
   Check,
   AlertTriangle,
   Flame,
-  Chrome,
 } from 'lucide-react';
 import { api } from '../../store/apiAdapter';
 import { useProxyStore } from '../../store/useProxyStore';

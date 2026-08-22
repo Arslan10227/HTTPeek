@@ -17,6 +17,12 @@ import {
   Sliders,
   Cpu,
   RefreshCw,
+  Download,
+  CheckCircle2,
+  AlertCircle,
+  Terminal,
+  Smartphone,
+  HardDrive,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useAppConfig, ThemeMode } from '../../theme/useAppConfig';
@@ -28,7 +34,7 @@ import { Dialog, FormSection, FormLabel, FormInput, FormMonospaceInput } from '.
 
 interface PreferenceDialogProps {
   onClose: () => void;
-  initialTab?: 'general' | 'proxy' | 'filter' | 'storage';
+  initialTab?: 'general' | 'proxy' | 'filter' | 'storage' | 'tools';
 }
 
 export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose, initialTab = 'general' }) => {
@@ -58,10 +64,43 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose, ini
   const { status, setStatus, filterConfig, setFilterConfig } = useProxyStore();
   const activeColor = getActiveColorPreset();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'proxy' | 'filter' | 'storage'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'proxy' | 'filter' | 'storage' | 'tools'>(initialTab);
   const [portInput, setPortInput] = useState<string>(String(status.port || 9099));
   const [maxReqInput, setMaxReqInput] = useState(String(useProxyStore.getState().maxRequests || 10000));
   const [isHarAssoc, setIsHarAssoc] = useState(false);
+
+  // Tools & Binaries state
+  const [toolsStatus, setToolsStatus] = useState<Record<string, any>>({});
+  const [downloadingTool, setDownloadingTool] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<{ downloaded: number; total: number; percent: number }>({
+    downloaded: 0,
+    total: 0,
+    percent: 0,
+  });
+
+  const loadToolsStatus = async () => {
+    try {
+      const res = await api.getBinaryToolsStatus();
+      setToolsStatus(res || {});
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    loadToolsStatus();
+
+    // Listen to download progress
+    if ((window as any).runtime?.EventsOn) {
+      (window as any).runtime.EventsOn('tool:download_progress', (data: any) => {
+        if (data) {
+          setDownloadProgress({
+            downloaded: data.downloaded || 0,
+            total: data.total || 0,
+            percent: data.percent || 0,
+          });
+        }
+      });
+    }
+  }, []);
 
   // Filter rules state
   const [filterMode, setFilterMode] = useState<'blacklist' | 'whitelist'>(
@@ -190,6 +229,7 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose, ini
             { id: 'proxy' as const, label: 'Proxy & Network', icon: <Radio className="w-3.5 h-3.5" /> },
             { id: 'filter' as const, label: 'Domain Filter', icon: <Shield className="w-3.5 h-3.5" /> },
             { id: 'storage' as const, label: 'Limits & Logs', icon: <Cpu className="w-3.5 h-3.5" /> },
+            { id: 'tools' as const, label: 'Tools & Binaries', icon: <Download className="w-3.5 h-3.5" /> },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -662,6 +702,206 @@ export const PreferenceDialog: React.FC<PreferenceDialogProps> = ({ onClose, ini
                 GitHub Repo
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ── TAB 5: Tools & Binaries (ADB, Frida on-demand) ─────── */}
+        {activeTab === 'tools' && (
+          <div className="flex flex-col gap-5 animate-in fade-in duration-100">
+            {/* Header / Folder Info */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl border bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/20">
+              <div>
+                <div className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-emerald-400" />
+                  <span>On-Demand Binary Downloader</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Companion tools are downloaded on-demand into your local app data folder instead of bloating installer assets.
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadToolsStatus}
+                  className="btn-ghost py-1.5 px-3 text-xs flex items-center gap-1.5"
+                  title="Refresh status"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await api.openBinariesFolder();
+                    toast.info('Opening binaries folder in Explorer');
+                  }}
+                  className="btn-ghost py-1.5 px-3 text-xs flex items-center gap-1.5"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>Open Folder</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 1. Android ADB Tools */}
+            {(() => {
+              const adb = toolsStatus.adb || {};
+              const isAdDownloading = downloadingTool === 'adb';
+
+              return (
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-white/5 flex flex-col gap-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-teal-500/15 text-teal-400 border border-teal-500/30">
+                        <Smartphone className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                          <span>Android ADB Platform Tools</span>
+                          {adb.installed ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Installed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <AlertCircle className="w-3 h-3" />
+                              Not Installed
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Required for automatic USB device detection, reverse port forwarding, and APK inspection.
+                        </div>
+                        {adb.path && (
+                          <div className="text-[10px] font-mono text-slate-400 mt-1 truncate max-w-md">
+                            Path: {adb.path} {adb.size ? `(${(adb.size / (1024 * 1024)).toFixed(1)} MB)` : ''}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isAdDownloading}
+                      onClick={async () => {
+                        setDownloadingTool('adb');
+                        setDownloadProgress({ downloaded: 0, total: 0, percent: 0 });
+                        toast.info('Downloading Android ADB Platform Tools from Google...');
+                        try {
+                          await api.downloadBinaryTool('adb');
+                          toast.success('Android ADB Tools installed successfully!');
+                          await loadToolsStatus();
+                        } catch (err: any) {
+                          toast.error('Download failed', err?.message || String(err));
+                        } finally {
+                          setDownloadingTool(null);
+                        }
+                      }}
+                      className="btn-primary py-1.5 px-3.5 text-xs flex items-center gap-1.5 shrink-0"
+                    >
+                      <Download className={`w-3.5 h-3.5 ${isAdDownloading ? 'animate-bounce' : ''}`} />
+                      <span>{isAdDownloading ? 'Downloading...' : adb.installed ? 'Reinstall' : 'Download (12 MB)'}</span>
+                    </button>
+                  </div>
+
+                  {isAdDownloading && (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                        <span>Downloading Google Platform Tools...</span>
+                        <span>{downloadProgress.percent}% ({downloadProgress.downloaded ? `${(downloadProgress.downloaded / (1024 * 1024)).toFixed(1)} MB` : 'Connecting...'})</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-700/50 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 transition-all duration-200"
+                          style={{ width: `${downloadProgress.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* 2. Frida Dynamic Tools */}
+            {(() => {
+              const frida = toolsStatus.frida || {};
+              const isFridaDownloading = downloadingTool === 'frida';
+
+              return (
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-white/5 flex flex-col gap-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                        <Shield className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                          <span>Frida Dynamic Instrumentation CLI</span>
+                          {frida.installed ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Installed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <AlertCircle className="w-3 h-3" />
+                              Not Installed
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Enables runtime SSL unpinning injection, process hooking, and Frida script execution.
+                        </div>
+                        {frida.path && (
+                          <div className="text-[10px] font-mono text-slate-400 mt-1 truncate max-w-md">
+                            Path: {frida.path} {frida.size ? `(${(frida.size / (1024 * 1024)).toFixed(1)} MB)` : ''}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isFridaDownloading}
+                      onClick={async () => {
+                        setDownloadingTool('frida');
+                        setDownloadProgress({ downloaded: 0, total: 0, percent: 0 });
+                        toast.info('Downloading Frida standalone executable from GitHub...');
+                        try {
+                          await api.downloadBinaryTool('frida');
+                          toast.success('Frida tools installed successfully!');
+                          await loadToolsStatus();
+                        } catch (err: any) {
+                          toast.error('Download failed', err?.message || String(err));
+                        } finally {
+                          setDownloadingTool(null);
+                        }
+                      }}
+                      className="btn-primary py-1.5 px-3.5 text-xs flex items-center gap-1.5 shrink-0"
+                    >
+                      <Download className={`w-3.5 h-3.5 ${isFridaDownloading ? 'animate-bounce' : ''}`} />
+                      <span>{isFridaDownloading ? 'Downloading...' : frida.installed ? 'Reinstall' : 'Download (18 MB)'}</span>
+                    </button>
+                  </div>
+
+                  {isFridaDownloading && (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                        <span>Downloading Frida Inject Release...</span>
+                        <span>{downloadProgress.percent}% ({downloadProgress.downloaded ? `${(downloadProgress.downloaded / (1024 * 1024)).toFixed(1)} MB` : 'Connecting...'})</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-700/50 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-rose-500 to-amber-400 transition-all duration-200"
+                          style={{ width: `${downloadProgress.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

@@ -6,6 +6,7 @@ import {grpc} from '../models';
 import {cert} from '../models';
 import {system} from '../models';
 import {proxy} from '../models';
+import {platform} from '../models';
 import {logger} from '../models';
 import {external} from '../models';
 
@@ -41,6 +42,8 @@ export function DisconnectMobileDevice(arg1:string):Promise<void>;
 
 export function DownloadADBIfMissing():Promise<string>;
 
+export function DownloadBinaryTool(arg1:string):Promise<Record<string, any>>;
+
 export function ExitApp():Promise<void>;
 
 export function ExportHAR(arg1:Array<proxy.HttpRequest>):Promise<string>;
@@ -52,6 +55,8 @@ export function ExportRootCA():Promise<string>;
 export function ExportRules():Promise<string>;
 
 export function GetAllRules():Promise<Record<string, any>>;
+
+export function GetBinaryToolsStatus():Promise<Record<string, platform.ToolStatus>>;
 
 export function GetBlockRules():Promise<Array<interceptor.BlockRule>>;
 
@@ -154,6 +159,8 @@ export function ListSessions():Promise<Array<storage.Session>>;
 export function LoadProtoDescriptor(arg1:string):Promise<Record<string, any>>;
 
 export function LogFromUI(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function OpenBinariesFolder():Promise<void>;
 
 export function OpenLogFolder():Promise<void>;
 
